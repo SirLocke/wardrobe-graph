@@ -19,3 +19,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+@layer utilities {
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .pb-safe {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+

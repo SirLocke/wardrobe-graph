@@ -44,6 +44,7 @@ export interface BiometricProfile {
   wardrobeScope?: WardrobeScope;
   defaultSizes?: DefaultSizes;
   brandSizeRules?: BrandSizeRule[];
+  isDemoMode?: boolean;
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear';

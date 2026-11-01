@@ -75,9 +75,20 @@ export default function App() {
   const [editingGarment, setEditingGarment] = useState<Garment | null>(null);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
   const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
+  const [wizardStartOwnMode, setWizardStartOwnMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const isEn = locale === 'en';
+
+  const isDemoActive = useMemo(() => {
+    if (profile.isDemoMode === false) return false;
+    return garments.some(
+      (g) =>
+        g.id.startsWith('seed_') ||
+        g.id.startsWith('fem_') ||
+        g.id.startsWith('uni_')
+    );
+  }, [profile.isDemoMode, garments]);
 
   // Scroll to top when switching primary tabs
   useEffect(() => {
@@ -267,19 +278,46 @@ export default function App() {
     const nextProfile: BiometricProfile = {
       ...profile,
       wardrobeScope: preset.scope,
+      isDemoMode: true,
     };
     await handleStructuredImport(preset.garments, 'replace', nextProfile);
     setContext((prev) => ({ ...prev, lockedGarmentIds: [] }));
+  };
+
+  const handleExitDemoAndOpenWizard = () => {
+    setWizardStartOwnMode(true);
+    setIsSetupWizardOpen(true);
+  };
+
+  const handleExitDemoAndClearDirectly = async () => {
+    const nextProfile: BiometricProfile = {
+      ...profile,
+      isDemoMode: false,
+    };
+    await handleStructuredImport([], 'replace', nextProfile);
+    setContext((prev) => ({ ...prev, lockedGarmentIds: [] }));
+    openAddNewGarment();
   };
 
   const handleCompleteSetupWizard = async (payload: {
     profile: BiometricProfile;
     styleVibe: StyleVibe;
     garmentsToLoad: Garment[] | null;
+    additionalGarmentsToAppend?: Garment[];
+    openAddModalAfter?: boolean;
   }) => {
     await handleUpdateProfile(payload.profile);
-    if (payload.garmentsToLoad) {
+    if (payload.garmentsToLoad !== null) {
       await handleStructuredImport(payload.garmentsToLoad, 'replace', payload.profile);
+    } else if (
+      payload.additionalGarmentsToAppend &&
+      payload.additionalGarmentsToAppend.length > 0
+    ) {
+      await handleStructuredImport(
+        payload.additionalGarmentsToAppend,
+        'merge',
+        payload.profile
+      );
     }
     setContext((prev) => ({
       ...prev,
@@ -287,6 +325,9 @@ export default function App() {
       lockedGarmentIds: [],
     }));
     setActiveTab('stylist');
+    if (payload.openAddModalAfter) {
+      openAddNewGarment();
+    }
   };
 
   const handleImportBackupFile = async (file: File) => {
@@ -294,7 +335,11 @@ export default function App() {
       const text = await file.text();
       const parsed = parseAndNormalizeWardrobeImport(text);
       if (parsed.ok && parsed.garments.length > 0) {
-        await handleStructuredImport(parsed.garments, 'replace', parsed.profile);
+        await handleStructuredImport(
+          parsed.garments,
+          'replace',
+          parsed.profile ? { ...parsed.profile, isDemoMode: false } : { ...profile, isDemoMode: false }
+        );
       }
     } catch {
       // Ignore malformed JSON
@@ -325,10 +370,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col pb-20 md:pb-12">
-      {/* Top Bar Contract: Strictly 3 zones separated by gap-8 */}
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col pb-28 sm:pb-32 md:pb-12 overflow-x-hidden">
+      {/* Top Bar Contract: Strictly 3 zones separated by responsive gap */}
       <header className="sticky top-0 z-30 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/90">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-8 px-4 sm:px-6 h-14">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-6 md:gap-8 px-3.5 sm:px-6 h-14">
           {/* Zone 1: Single text element wordmark */}
           <a
             href="#stylist"
@@ -336,7 +381,7 @@ export default function App() {
               e.preventDefault();
               setActiveTab('stylist');
             }}
-            className="text-base sm:text-lg font-bold tracking-tight text-zinc-100 whitespace-nowrap shrink-0"
+            className="text-sm sm:text-base md:text-lg font-bold tracking-tight text-zinc-100 whitespace-nowrap shrink-0 hover:text-amber-400 transition-colors"
           >
             ATELIER BIOMETRIC
           </a>
@@ -388,15 +433,15 @@ export default function App() {
             })}
           </nav>
 
-          {/* Zone 3: Settings, Language Switcher + Primary Action */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Zone 3: Settings, Language Switcher + Primary Action with mobile touch targets */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
               title={isEn ? 'Settings, Clothing Choice & Colors' : 'Einstellungen, Kleidungs-Auswahl & Farben'}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+              className="inline-flex items-center justify-center min-w-[38px] min-h-[38px] p-2 sm:px-2.5 sm:py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 cursor-pointer touch-manipulation active:scale-95"
             >
-              <Settings2 className="w-3.5 h-3.5 text-amber-400" />
+              <Settings2 className="w-4 h-4 text-amber-400" />
               <span className="hidden sm:inline">{isEn ? 'Settings' : 'Einstellungen'}</span>
             </button>
 
@@ -404,25 +449,67 @@ export default function App() {
               type="button"
               onClick={() => setLocale((prev) => (prev === 'de' ? 'en' : 'de'))}
               title={isEn ? 'Switch to German (DE)' : 'Auf Englisch umschalten (EN)'}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs font-mono text-zinc-300 cursor-pointer"
+              className="inline-flex items-center justify-center min-h-[38px] px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs font-mono text-zinc-300 cursor-pointer touch-manipulation active:scale-95"
             >
-              {isEn ? 'EN · DE' : 'DE · EN'}
+              {isEn ? 'EN' : 'DE'}
             </button>
 
             <button
               type="button"
               onClick={openAddNewGarment}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-zinc-950 bg-zinc-100 rounded-lg hover:bg-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-950 bg-zinc-100 rounded-lg hover:bg-white transition-colors whitespace-nowrap shrink-0 cursor-pointer touch-manipulation active:scale-95"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{isEn ? '+ Add Garment' : '+ Kleidungsstück'}</span>
+              <Plus className="w-4 h-4" />
+              <span>
+                <span className="inline sm:hidden">{isEn ? 'Add' : 'Neu'}</span>
+                <span className="hidden sm:inline">{isEn ? 'Add Garment' : 'Kleidungsstück'}</span>
+              </span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Content Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-5 space-y-5">
+        {/* Demo Mode Exit Banner */}
+        {isLoaded && isDemoActive && (
+          <div className="rounded-2xl bg-amber-500/10 border border-amber-500/35 px-4 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <p className="text-xs sm:text-sm font-semibold text-amber-200">
+                {isEn
+                  ? 'Demo Mode Active (Example Wardrobe)'
+                  : 'Demo-Modus aktiv (Du siehst aktuell Beispiel-Kleidung zum Ausprobieren)'}
+              </p>
+              <p className="text-xs text-zinc-300">
+                {isEn
+                  ? 'Ready to build your own wardrobe? Exit demo mode to launch the wizard and add your own clothes.'
+                  : 'Möchtest du deinen eigenen Kleiderschrank starten? Beende den Demo-Modus – der Assistent startet direkt mit deiner eigenen Kleidungs-Auswahl.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleExitDemoAndClearDirectly}
+                className="px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer whitespace-nowrap"
+              >
+                {isEn ? 'Empty Closet & Add 1st Item' : 'Schrank direkt leeren & 1. Teil anlegen'}
+              </button>
+              <button
+                type="button"
+                onClick={handleExitDemoAndOpenWizard}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 cursor-pointer whitespace-nowrap"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>
+                  {isEn
+                    ? 'Exit Demo Mode & Start Setup Wizard'
+                    : 'Demo-Modus beenden & Eigenen Schrank einrichten'}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {!isLoaded ? (
           <div className="space-y-4 py-8">
             <div className="h-28 rounded-2xl bg-zinc-900/50 border border-zinc-800 animate-pulse" />
@@ -440,7 +527,7 @@ export default function App() {
                 onMarkOutfitWorn={handleMarkOutfitWorn}
                 onWashAllGarments={handleWashAllGarments}
                 onOpenAddModal={openAddNewGarment}
-                onOpenSetupWizard={() => setIsSetupWizardOpen(true)}
+                onOpenSetupWizard={handleExitDemoAndOpenWizard}
                 onOpenSettings={() => setIsSettingsOpen(true)}
               />
             )}
@@ -453,7 +540,7 @@ export default function App() {
                 outfitCountsByGarmentId={gapReport.outfitCountsByGarmentId}
                 onOpenAddModal={openAddNewGarment}
                 onOpenImportExportModal={() => setIsImportExportOpen(true)}
-                onOpenSetupWizard={() => setIsSetupWizardOpen(true)}
+                onOpenSetupWizard={handleExitDemoAndOpenWizard}
                 onLoadCollectionPreset={handleLoadCollectionPreset}
                 onEditGarment={openEditGarment}
                 onDeleteGarment={handleDeleteGarment}
@@ -481,6 +568,7 @@ export default function App() {
                 onExportBackup={handleExportBackup}
                 onImportBackupFile={handleImportBackupFile}
                 onResetToSeed={handleResetToSeed}
+                onStartOwnClosetWizard={handleExitDemoAndOpenWizard}
               />
             )}
           </>
@@ -508,7 +596,7 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => setIsSetupWizardOpen(true)}
+            onClick={handleExitDemoAndOpenWizard}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-xs text-amber-200 cursor-pointer whitespace-nowrap"
           >
             <Wand2 className="w-3.5 h-3.5 text-amber-400" />
@@ -525,15 +613,15 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Mobile Bottom Navigation Bar (Thumb Zone) */}
+      {/* Mobile Bottom Navigation Bar (Thumb Zone with iOS Safe Area) */}
       <nav
         aria-label="Mobile Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800 grid grid-cols-4 items-center h-14"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/90 grid grid-cols-4 items-center h-16 pb-safe touch-manipulation shadow-2xl"
       >
         {(
           [
             { id: 'stylist', label: 'Outfits', icon: Compass },
-            { id: 'closet', label: isEn ? 'Closet' : 'Kleiderschrank', icon: Shirt },
+            { id: 'closet', label: isEn ? 'Closet' : 'Schrank', icon: Shirt },
             { id: 'gaps', label: isEn ? 'Missing' : 'Was fehlt?', icon: Grid },
             { id: 'profile', label: isEn ? 'My Colors' : 'Mein Typ', icon: UserCheck },
           ] as const
@@ -544,12 +632,15 @@ export default function App() {
               key={id}
               type="button"
               onClick={() => setActiveTab(id)}
-              className={`flex flex-col items-center justify-center h-full transition-colors cursor-pointer ${
+              className={`flex flex-col items-center justify-center min-h-[48px] h-full transition-all cursor-pointer touch-manipulation active:scale-95 select-none relative ${
                 isActive ? 'text-amber-400 font-semibold' : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px] mt-0.5 whitespace-nowrap">{label}</span>
+              {isActive && (
+                <span className="absolute top-0 w-8 h-0.5 bg-amber-400 rounded-full" />
+              )}
+              <Icon className="w-5 h-5 mb-0.5" />
+              <span className="text-[11px] leading-tight tracking-tight">{label}</span>
             </button>
           );
         })}
@@ -568,13 +659,17 @@ export default function App() {
         initialGarment={editingGarment}
       />
 
-      {/* 3-Step Quick Setup Wizard Modal */}
+      {/* 4-Step Quick Setup Wizard Modal (with Demo Exit & Direct Clothing Builder) */}
       <SetupWizardModal
         isOpen={isSetupWizardOpen}
-        onClose={() => setIsSetupWizardOpen(false)}
+        onClose={() => {
+          setIsSetupWizardOpen(false);
+          setWizardStartOwnMode(false);
+        }}
         locale={locale}
         currentProfile={profile}
         currentStyleVibe={context.styleVibe || 'balanced'}
+        startInOwnClosetMode={wizardStartOwnMode}
         onCompleteSetup={handleCompleteSetupWizard}
       />
 

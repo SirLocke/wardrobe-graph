@@ -3,10 +3,13 @@ import {
   Camera,
   Check,
   Copy,
+  Database,
   Download,
+  HelpCircle,
   Pipette,
   RotateCcw,
   Upload,
+  Wand2,
 } from 'lucide-react';
 import { WARDROBE_SCOPE_META } from '../data/seedData';
 import { deriveSeasonPalette, hexToHsl } from '../engine/colorMath';
@@ -30,24 +33,25 @@ interface BiometricProfileViewProps {
   onExportBackup: () => void;
   onImportBackupFile: (file: File) => Promise<void>;
   onResetToSeed: () => Promise<void>;
+  onStartOwnClosetWizard?: () => void;
 }
 
 const EYE_PRESETS = [
-  { name: 'Grün-Haselnuss (Green-Hazel)', hex: '#6E7D4E' },
-  { name: 'Waldgrün / Salbei', hex: '#4F6D5A' },
-  { name: 'Haselnuss-Bernstein', hex: '#8B6331' },
-  { name: 'Dunkelbraun / Espresso', hex: '#3B281E' },
-  { name: 'Stahlblau / Graublau', hex: '#54728C' },
-  { name: 'Eisblau', hex: '#7BA7C7' },
+  { name: 'Grün-Braun / Haselnuss', hex: '#6E7D4E' },
+  { name: 'Grün / Graugrün', hex: '#4F6D5A' },
+  { name: 'Hellbraun / Bernstein', hex: '#8B6331' },
+  { name: 'Dunkelbraun', hex: '#3B281E' },
+  { name: 'Blau / Blaugrau', hex: '#54728C' },
+  { name: 'Hellblau / Eisblau', hex: '#7BA7C7' },
 ];
 
 const HAIR_PRESETS = [
   { name: 'Dunkelblond / Aschbraun', hex: '#5A4D41' },
   { name: 'Mittelbraun / Kastanie', hex: '#4A3222' },
-  { name: 'Espresso / Schwarzbraun', hex: '#231C18' },
-  { name: 'Tiefschwarz', hex: '#121214' },
-  { name: 'Honigblond / Goldblond', hex: '#9C7A4C' },
-  { name: 'Salz & Pfeffer / Silbergrau', hex: '#7A7D82' },
+  { name: 'Dunkelbraun / Schwarzbraun', hex: '#231C18' },
+  { name: 'Schwarz', hex: '#121214' },
+  { name: 'Blond / Honigblond', hex: '#9C7A4C' },
+  { name: 'Grau / Silbergrau', hex: '#7A7D82' },
 ];
 
 type SelfieTarget = 'skin' | 'eye' | 'hair';
@@ -60,6 +64,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
   onExportBackup,
   onImportBackupFile,
   onResetToSeed,
+  onStartOwnClosetWizard,
 }) => {
   const [copiedHex, setCopiedHex] = useState<string | null>(null);
   const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
@@ -74,13 +79,12 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
   const handleCopyHex = (hex: string, name: string) => {
     navigator.clipboard?.writeText(hex);
     setCopiedHex(hex);
-    setStatusBanner(`Farbcode ${name} (${hex}) in die Zwischenablage kopiert.`);
+    setStatusBanner(`Farbe „${name}“ wurde kopiert.`);
     setTimeout(() => {
       setCopiedHex((prev) => (prev === hex ? null : prev));
     }, 2000);
   };
 
-  // Render either uploaded selfie or built-in daylight calibration card onto canvas
   useEffect(() => {
     if (!showSelfieTool || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -98,16 +102,12 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
       };
       img.src = selfieDataUrl;
     } else {
-      // Draw synthetic daylight calibration reference zones so user can test the pipette immediately
       canvas.width = 360;
       canvas.height = 160;
-      // Skin zone
       ctx.fillStyle = profile.skinHex || '#C8A98E';
       ctx.fillRect(0, 0, 120, 160);
-      // Eye zone
       ctx.fillStyle = profile.eyeHex || '#6E7D4E';
       ctx.fillRect(120, 0, 120, 160);
-      // Hair zone
       ctx.fillStyle = profile.hairHex || '#5A4D41';
       ctx.fillRect(240, 0, 120, 160);
 
@@ -115,9 +115,9 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
       ctx.fillRect(0, 128, 360, 32);
       ctx.fillStyle = '#f4f4f5';
       ctx.font = '11px sans-serif';
-      ctx.fillText('1. Kieferlinie (Haut)', 10, 148);
-      ctx.fillText('2. Iris (Auge)', 142, 148);
-      ctx.fillText('3. Haaransatz', 262, 148);
+      ctx.fillText('1. Hautton', 10, 148);
+      ctx.fillText('2. Augenfarbe', 142, 148);
+      ctx.fillText('3. Haarfarbe', 262, 148);
     }
   }, [showSelfieTool, selfieDataUrl, profile.skinHex, profile.eyeHex, profile.hairHex]);
 
@@ -143,14 +143,13 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
       setActiveSelfieTarget('eye');
     } else if (activeSelfieTarget === 'eye') {
       nextProfile.eyeHex = hex;
-      nextProfile.eyeColorName = `Kalibriert (${hex})`;
+      nextProfile.eyeColorName = 'Aus Foto gewählt';
       setActiveSelfieTarget('hair');
     } else {
       nextProfile.hairHex = hex;
-      nextProfile.hairColorName = `Kalibriert (${hex})`;
+      nextProfile.hairColorName = 'Aus Foto gewählt';
     }
 
-    // Auto-calculate lightness contrast delta between skin and hair
     const skinL = hexToHsl(nextProfile.skinHex).l;
     const hairL = hexToHsl(nextProfile.hairHex).l;
     const deltaL = Math.abs(skinL - hairL);
@@ -159,26 +158,35 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
     else nextProfile.contrastLevel = 'high';
 
     onUpdateProfile(nextProfile);
-    setStatusBanner(
-      `Pipetten-Messung übernommen (${hex}). Empfohlener Haut-Haar-Kontrast: ${nextProfile.contrastLevel.toUpperCase()} (ΔL ${deltaL}%).`
-    );
+    setStatusBanner('Farbe aus deinem Foto übernommen!');
   };
 
   return (
-    <div className="space-y-10">
-      {/* Top Header & Backup Controls */}
-      <section className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6">
+    <div className="space-y-8">
+      {/* Top Header, Own Database Explanation & Backup Controls */}
+      <section className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-              Mein Typ, Frisur &amp; persönliche Farben
+              Mein Typ, Frisur &amp; persönliche Farben (Einfach erklärt)
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Deine besten Kleiderfarben und Ausschnitte – passend zu Hautton, Augenfarbe und Frisur
+              Keine Fachbegriffe nötig: Finde mit einfachen Alltags-Checks heraus, welche Farben und Kragenformen dir am besten stehen.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {onStartOwnClosetWizard && (
+              <button
+                type="button"
+                onClick={onStartOwnClosetWizard}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/25 cursor-pointer whitespace-nowrap"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Eigenen Schrank einrichten (Wizard)</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setShowSelfieTool((prev) => !prev)}
@@ -193,8 +201,8 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
               onClick={onOpenImportExportModal}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-amber-500/40 text-xs font-medium text-amber-200 hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
             >
-              <Download className="w-3.5 h-3.5 text-amber-400" />
-              <span>Backup &amp; Import ({garments.length})</span>
+              <Database className="w-3.5 h-3.5 text-amber-400" />
+              <span>Datenbank &amp; Backup ({garments.length})</span>
             </button>
 
             <button
@@ -233,7 +241,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
         </div>
 
         {statusBanner && (
-          <div className="mt-4 px-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-amber-300 flex items-center justify-between">
+          <div className="px-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-amber-300 flex items-center justify-between">
             <span>{statusBanner}</span>
             <button
               type="button"
@@ -247,7 +255,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
 
         {/* Daylight Selfie Pipette Drawer */}
         {showSelfieTool && (
-          <div className="mt-5 pt-5 border-t border-zinc-800 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+          <div className="pt-4 border-t border-zinc-800 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
             <div className="md:col-span-5 flex flex-col items-center">
               <canvas
                 ref={canvasRef}
@@ -279,7 +287,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
             <div className="md:col-span-7 space-y-3">
               <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
                 <Pipette className="w-4 h-4 text-amber-400" />
-                <span>Haut-, Augen- &amp; Haarfarbe per Klick aufnehmen</span>
+                <span>Haut-, Augen- &amp; Haarfarbe per Klick aus Foto übernehmen</span>
               </div>
               <p className="text-xs text-zinc-400 leading-relaxed">
                 Wähle unten einen Punkt aus und tippe anschließend im Foto auf die entsprechende Stelle.
@@ -321,14 +329,31 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Calibration Form (6 cols) */}
         <section className="lg:col-span-6 rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 space-y-6">
-          <h2 className="text-base font-semibold text-zinc-100 border-b border-zinc-800 pb-3">
-            1. Deine Angaben (Für dich &amp; deine Farben)
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+            <h2 className="text-base font-semibold text-zinc-100">
+              Deine 5 einfachen Angaben
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                onUpdateProfile({
+                  ...profile,
+                  undertone: 'neutral',
+                  contrastLevel: 'medium',
+                  chromaLevel: 'muted',
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-amber-400/50 text-[11px] text-amber-300 cursor-pointer"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Unsicher? „Neutral“ setzen (passt immer)</span>
+            </button>
+          </div>
 
           {/* Wardrobe Scope (Frauen / Männer / Unisex / Beides) */}
           <div className="space-y-2">
-            <label className="block text-xs font-medium text-zinc-300">
-              Welche Kleidung trägst du? (Frauen erhalten selbstverständlich auch Hoodies, T-Shirts &amp; Sneaker)
+            <label className="block text-xs font-semibold text-zinc-200">
+              Für wen stellen wir Outfits zusammen?
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {(['womenswear', 'menswear', 'unisex', 'all'] as WardrobeScope[]).map((sc) => {
@@ -339,7 +364,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                     key={sc}
                     type="button"
                     onClick={() => onUpdateProfile({ ...profile, wardrobeScope: sc })}
-                    className={`px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                    className={`px-3 py-2.5 min-h-[42px] rounded-xl border text-xs font-medium transition-all cursor-pointer touch-manipulation active:scale-95 ${
                       active
                         ? 'border-amber-400 bg-amber-500/10 text-zinc-100 font-semibold'
                         : 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:text-zinc-200'
@@ -352,33 +377,42 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Skin Undertone with Practical Visual Hints */}
+          {/* 1. Skin Undertone with Jewelry & Sun Check */}
           <div className="space-y-2.5">
-            <label className="block text-xs font-medium text-zinc-300">
-              Welcher Hautton passt am ehesten zu dir?
-            </label>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-200">
+                1. Dein Hautton – Steht dir eher Gold- oder Silberschmuck?
+              </label>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Kleiner Alltags-Check: Wem Goldschmuck besser steht und wer schnell braun wird, hat meist einen warmen/oliven Ton. Wem Silberschmuck besser steht, hat einen kühlen Ton. Wenn beides passt: Neutral.
+              </p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {(
                 [
                   {
                     id: 'olive',
-                    title: 'Oliv / Leicht gebräunt',
-                    hint: 'Du wirst im Sommer schnell braun, Erd- und Grüntöne stehen dir besonders gut',
+                    title: 'Leicht gebräunt / Oliv (Warm-Neutral)',
+                    jewelry: 'Gold- & Kupferschmuck stehen dir gut',
+                    hint: 'Du wirst im Sommer schnell braun; Naturtöne wie Olivgrün, Salbei, Beige & Braun sehen super aus.',
                   },
                   {
                     id: 'warm',
-                    title: 'Warm (Gold / Pfirsich)',
-                    hint: 'Goldschmuck steht dir gut, warme Farben wie Beige, Kamel & Rost wirken frisch',
+                    title: 'Warm / Goldig',
+                    jewelry: 'Goldschmuck steht dir deutlich besser als Silber',
+                    hint: 'Warme Farben wie Kamel, Beige, Creme, Terrakotta & Braun lassen dich frisch wirken.',
                   },
                   {
                     id: 'cool',
-                    title: 'Kühl (Rosig / Hell)',
-                    hint: 'Silberschmuck steht dir gut, Dunkelblau, Grau, Weinrot & klare Töne passen super',
+                    title: 'Kühl / Rosig-Hell',
+                    jewelry: 'Silberschmuck steht dir besonders gut',
+                    hint: 'Klare, kühle Farben wie Dunkelblau, Grau, Schwarz, Weiß & Weinrot stehen dir perfekt.',
                   },
                   {
                     id: 'neutral',
-                    title: 'Neutral (Ausgewogen)',
-                    hint: 'Dir steht sowohl Gold als auch Silber; fast alle ruhigen Farben passen',
+                    title: 'Ausgewogen Neutral („Beides passt“)',
+                    jewelry: 'Gold- und Silberschmuck sehen gleich gut aus',
+                    hint: 'Du kannst sowohl Dunkelblau & Grau als auch Beige & Olivgrün problemlos tragen.',
                   },
                 ] as const
               ).map((u) => {
@@ -390,11 +424,12 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                     onClick={() => onUpdateProfile({ ...profile, undertone: u.id as Undertone })}
                     className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       active
-                        ? 'border-zinc-100 bg-zinc-900 text-zinc-100'
+                        ? 'border-amber-400 bg-amber-500/15 text-zinc-100 ring-1 ring-amber-400/30'
                         : 'border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
                     <p className="text-xs font-semibold text-zinc-100">{u.title}</p>
+                    <p className="text-[11px] text-amber-300 font-medium mt-0.5">{u.jewelry}</p>
                     <p className="text-[11px] text-zinc-400 mt-1 leading-snug">{u.hint}</p>
                   </button>
                 );
@@ -402,85 +437,83 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Contrast, Chroma, Value */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="profile-contrast" className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Unterschied Haut zu Haar
+          {/* 2. Contrast & 3. Chroma with plain explanations */}
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-2">
+              <label htmlFor="profile-contrast" className="block text-xs font-semibold text-zinc-200">
+                2. Wie stark ist der Unterschied zwischen deiner Haarfarbe und deiner Haut?
               </label>
+              <p className="text-[11px] text-zinc-400">
+                Bestimmt, ob dir eher ruhige Ton-in-Ton-Outfits oder starke Hell-Dunkel-Kombinationen (z. B. weißes T-Shirt unter dunkler Jacke) besser stehen.
+              </p>
               <select
                 id="profile-contrast"
                 value={profile.contrastLevel}
                 onChange={(e) =>
                   onUpdateProfile({ ...profile, contrastLevel: e.target.value as ContrastLevel })
                 }
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100"
+                className="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-xs text-zinc-100"
               >
-                <option value="low">Sanft (ähnlich hell/dunkel)</option>
-                <option value="medium">Mittel (normaler Kontrast)</option>
-                <option value="high">Stark (dunkles Haar, helle Haut)</option>
+                <option value="low">Sanft / Ähnlich (z. B. helle Haut &amp; blonde/hellbraune Haare)</option>
+                <option value="medium">Mittel / Normal (z. B. mittlere Haut &amp; braune/dunkelblonde Haare)</option>
+                <option value="high">Stark (z. B. sehr dunkle/schwarze Haare &amp; helle Haut)</option>
               </select>
             </div>
 
-            <div>
-              <label htmlFor="profile-chroma" className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Welche Farben magst du?
-              </label>
-              <select
-                id="profile-chroma"
-                value={profile.chromaLevel}
-                onChange={(e) =>
-                  onUpdateProfile({ ...profile, chromaLevel: e.target.value as ChromaLevel })
-                }
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100"
-              >
-                <option value="muted">Ruhige, gedeckte Naturtöne</option>
-                <option value="moderate">Ausgewogen / Normal</option>
-                <option value="bright">Kräftige, leuchtende Farben</option>
-              </select>
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-2">
+                <label htmlFor="profile-chroma" className="block text-xs font-semibold text-zinc-200">
+                  3. Welche Farben trägst du lieber?
+                </label>
+                <p className="text-[11px] text-zinc-400">
+                  Ruhige, dezente Naturtöne oder kräftige, leuchtende Farben?
+                </p>
+                <select
+                  id="profile-chroma"
+                  value={profile.chromaLevel}
+                  onChange={(e) =>
+                    onUpdateProfile({ ...profile, chromaLevel: e.target.value as ChromaLevel })
+                  }
+                  className="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-xs text-zinc-100"
+                >
+                  <option value="muted">Ruhige, sanfte Farben (Salbei, Beige, Navy, Grau)</option>
+                  <option value="moderate">Normale Alltagsfarben (Ausgewogen)</option>
+                  <option value="bright">Kräftige, leuchtende Farben (Klar)</option>
+                </select>
+              </div>
 
-            <div>
-              <label htmlFor="profile-value" className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Bevorzugte Helligkeit
-              </label>
-              <select
-                id="profile-value"
-                value={profile.valueLevel}
-                onChange={(e) =>
-                  onUpdateProfile({ ...profile, valueLevel: e.target.value as ValueLevel })
-                }
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100"
-              >
-                <option value="light">Eher helle Farben</option>
-                <option value="medium">Mittlere Helligkeit</option>
-                <option value="dark">Eher dunkle Farben</option>
-              </select>
+              <div className="p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-2">
+                <label htmlFor="profile-value" className="block text-xs font-semibold text-zinc-200">
+                  Bevorzugte Helligkeit
+                </label>
+                <p className="text-[11px] text-zinc-400">
+                  Trägst du lieber helle, mittlere oder dunkle Kleidung?
+                </p>
+                <select
+                  id="profile-value"
+                  value={profile.valueLevel}
+                  onChange={(e) =>
+                    onUpdateProfile({ ...profile, valueLevel: e.target.value as ValueLevel })
+                  }
+                  className="w-full rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-xs text-zinc-100"
+                >
+                  <option value="light">Eher helle Farben (Creme, Beige, Hellblau)</option>
+                  <option value="medium">Ausgewogen (Mittel)</option>
+                  <option value="dark">Eher dunkle Farben (Schwarz, Dunkelblau, Braun)</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* Eye Color Picker */}
+          {/* 4. Eye Color Picker */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-zinc-300">
-                Deine Augenfarbe
+            <div>
+              <label className="block text-xs font-semibold text-zinc-200">
+                4. Deine Augenfarbe (Warum fragen wir das?)
               </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  aria-label="Eigene Augenfarbe wählen"
-                  value={profile.eyeHex}
-                  onChange={(e) =>
-                    onUpdateProfile({
-                      ...profile,
-                      eyeHex: e.target.value.toUpperCase(),
-                      eyeColorName: 'Eigene Augenfarbe',
-                    })
-                  }
-                  className="w-6 h-6 rounded bg-transparent border border-zinc-700 cursor-pointer"
-                />
-                <span className="text-xs text-zinc-400">Eigene Farbe</span>
-              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Wenn ein Oberteil deine Augenfarbe leicht aufgreift (z. B. Olivgrün bei grün-braunen Augen oder Blaugrau bei blauen Augen), leuchten deine Augen automatisch mehr.
+              </p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {EYE_PRESETS.map((eye) => {
@@ -492,9 +525,9 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                     onClick={() =>
                       onUpdateProfile({ ...profile, eyeColorName: eye.name, eyeHex: eye.hex })
                     }
-                    className={`flex items-center gap-2 p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                    className={`flex items-center gap-2 p-2.5 min-h-[40px] rounded-lg border text-left text-xs transition-all cursor-pointer touch-manipulation active:scale-95 ${
                       active
-                        ? 'border-zinc-100 bg-zinc-900 text-zinc-100'
+                        ? 'border-amber-400 bg-amber-500/15 text-zinc-100 font-semibold'
                         : 'border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
@@ -502,7 +535,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                       className="w-4 h-4 rounded-full border border-white/20 shrink-0"
                       style={{ backgroundColor: eye.hex }}
                     />
-                    <span className="truncate">{eye.name.split(' (')[0]}</span>
+                    <span className="truncate">{eye.name}</span>
                   </button>
                 );
               })}
@@ -511,25 +544,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
 
           {/* Hair Color Picker */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-zinc-300">Deine Haarfarbe</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  aria-label="Eigene Haarfarbe wählen"
-                  value={profile.hairHex}
-                  onChange={(e) =>
-                    onUpdateProfile({
-                      ...profile,
-                      hairHex: e.target.value.toUpperCase(),
-                      hairColorName: 'Eigene Haarfarbe',
-                    })
-                  }
-                  className="w-6 h-6 rounded bg-transparent border border-zinc-700 cursor-pointer"
-                />
-                <span className="text-xs text-zinc-400">Eigene Farbe</span>
-              </div>
-            </div>
+            <label className="block text-xs font-semibold text-zinc-200">Deine Haarfarbe</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {HAIR_PRESETS.map((hair) => {
                 const active = profile.hairHex.toLowerCase() === hair.hex.toLowerCase();
@@ -540,9 +555,9 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                     onClick={() =>
                       onUpdateProfile({ ...profile, hairColorName: hair.name, hairHex: hair.hex })
                     }
-                    className={`flex items-center gap-2 p-2 rounded-lg border text-left text-xs transition-all cursor-pointer ${
+                    className={`flex items-center gap-2 p-2.5 min-h-[40px] rounded-lg border text-left text-xs transition-all cursor-pointer touch-manipulation active:scale-95 ${
                       active
-                        ? 'border-zinc-100 bg-zinc-900 text-zinc-100'
+                        ? 'border-amber-400 bg-amber-500/15 text-zinc-100 font-semibold'
                         : 'border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
@@ -557,11 +572,11 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Haircut Style & Facial Hair Matrix */}
+          {/* 5. Haircut Style & Facial Hair Matrix */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="profile-haircut" className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Deine Frisur / Haarlänge
+              <label htmlFor="profile-haircut" className="block text-xs font-semibold text-zinc-200 mb-1">
+                5. Deine Haarlänge (für passende Kragen)
               </label>
               <select
                 id="profile-haircut"
@@ -572,16 +587,18 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                 className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100"
               >
                 <option value="short_fade_structured_top">
-                  Kurze Seiten, oben etwas länger
+                  Kurze Haare (Seiten kürzer, oben etwas länger)
                 </option>
-                <option value="buzz_very_short">Sehr kurzes Haar</option>
-                <option value="medium_textured_flow">Mittellanges Haar (bis Kinn/Schulter)</option>
-                <option value="long_hair">Langes Haar</option>
+                <option value="medium_textured_flow">
+                  Mittellange Haare / Bob / Übergangslänge
+                </option>
+                <option value="long_hair">Lange Haare (über die Schultern)</option>
+                <option value="buzz_very_short">Sehr kurze Haare / Glatze</option>
               </select>
             </div>
 
             <div>
-              <label htmlFor="profile-beard" className="block text-xs font-medium text-zinc-300 mb-1.5">
+              <label htmlFor="profile-beard" className="block text-xs font-semibold text-zinc-200 mb-1">
                 Bart (optional)
               </label>
               <select
@@ -604,14 +621,16 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
         {/* Right Column: Generated Style Passport (6 cols) */}
         <section className="lg:col-span-6 rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 space-y-6">
           <div className="border-b border-zinc-800 pb-4">
-            <p className="text-xs font-medium text-amber-400">
-              Dein persönlicher Farb-Spickzettel (zum Einkaufen &amp; Kombinieren)
+            <p className="text-xs font-semibold text-amber-400">
+              Dein Ergebnis (automatisch für alle Outfit-Vorschläge aktiv)
             </p>
-            <h2 className="text-xl font-bold text-zinc-100 mt-1">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-100 mt-1">
               {seasonPalette.seasonName}
             </h2>
-            <p className="text-xs text-zinc-300 mt-0.5">{seasonPalette.seasonSubtitle}</p>
-            <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+            <p className="text-xs font-medium text-emerald-300 mt-1">
+              {seasonPalette.seasonSubtitle}
+            </p>
+            <p className="text-xs text-zinc-300 mt-2 leading-relaxed">
               {seasonPalette.description}
             </p>
           </div>
@@ -620,7 +639,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-zinc-200">
-                Deine besten Farben (Für Oberteile, Hoodies, Blusen & Jacken)
+                Deine besten Farben (Für Oberteile, Hoodies, Blusen, Pullover &amp; Jacken)
               </h3>
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -629,7 +648,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                   key={swatch.name}
                   type="button"
                   onClick={() => handleCopyHex(swatch.hex, swatch.name)}
-                  className="group p-2 rounded-xl bg-zinc-950 border border-zinc-800/90 hover:border-zinc-600 text-left transition-all cursor-pointer"
+                  className="group p-2 min-h-[60px] rounded-xl bg-zinc-950 border border-zinc-800/90 hover:border-zinc-600 text-left transition-all cursor-pointer touch-manipulation active:scale-95"
                 >
                   <div
                     className="w-full h-7 rounded-lg mb-1.5 border border-white/15 flex items-center justify-end p-1"
@@ -650,7 +669,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
           {/* 6 Core Neutrals */}
           <div className="space-y-2.5">
             <h3 className="text-xs font-semibold text-zinc-200">
-              Basis-Farben (Perfekt für Hosen, Jeans, Röcke, Mäntel & Schuhe)
+              Basis-Farben (Perfekt für Hosen, Jeans, Röcke, Mäntel &amp; Schuhe)
             </h3>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {seasonPalette.coreNeutrals.map((swatch) => (
@@ -658,7 +677,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                   key={swatch.name}
                   type="button"
                   onClick={() => handleCopyHex(swatch.hex, swatch.name)}
-                  className="p-2 rounded-xl bg-zinc-950 border border-zinc-800/90 hover:border-zinc-600 text-left transition-all cursor-pointer"
+                  className="p-2 min-h-[56px] rounded-xl bg-zinc-950 border border-zinc-800/90 hover:border-zinc-600 text-left transition-all cursor-pointer touch-manipulation active:scale-95"
                 >
                   <div
                     className="w-full h-6 rounded-md mb-1.5 border border-white/15"
@@ -673,7 +692,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
           {/* Top 3 Necklines/Collars based on Haircut */}
           <div className="space-y-2.5">
             <h3 className="text-xs font-semibold text-zinc-200">
-              Top 3 Kragenformen für deinen Haarschnitt
+              Welche Ausschnitte &amp; Kragen passen am besten zu deiner Haarlänge?
             </h3>
             <div className="space-y-2">
               {seasonPalette.recommendedNecklines.map((rec, i) => (
@@ -682,7 +701,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                   className="rounded-xl bg-zinc-950/80 border border-zinc-800/80 p-3"
                 >
                   <p className="text-xs font-semibold text-zinc-100">
-                    0{i + 1}. {rec.label}
+                    {i + 1}. {rec.label}
                   </p>
                   <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{rec.reason}</p>
                 </div>
@@ -693,7 +712,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
           {/* 6 Avoid Colors */}
           <div className="space-y-2.5">
             <h3 className="text-xs font-semibold text-rose-300">
-              Farben, die du direkt am Gesicht eher meiden solltest
+              Farben, die direkt am Gesicht eher unruhig wirken
             </h3>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {seasonPalette.avoidColors.map((swatch) => (

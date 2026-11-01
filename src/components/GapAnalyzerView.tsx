@@ -342,20 +342,20 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
         </div>
       </section>
 
-      {/* Small Closable Popup Modal for Orphan Explanation */}
+      {/* Small Closable Popup Modal for Orphan Explanation (Mobile-friendly Bottom-Sheet) */}
       {popupOrphan && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="orphan-popup-title"
           onClick={() => setPopupOrphan(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl p-5 space-y-4"
+            className="w-full sm:max-w-md max-h-[90vh] rounded-t-2xl sm:rounded-2xl bg-zinc-950 border-t sm:border border-zinc-800 shadow-2xl flex flex-col overflow-hidden pb-safe"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 pb-3">
+            <div className="shrink-0 flex items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4 bg-zinc-900/40">
               <div>
                 <h3 id="orphan-popup-title" className="text-sm font-semibold text-zinc-100">
                   {popupOrphan.garment.name}
@@ -368,13 +368,13 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                 type="button"
                 onClick={() => setPopupOrphan(null)}
                 aria-label="Popup schließen"
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors cursor-pointer touch-manipulation"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
               <p className="text-xs font-semibold text-zinc-300">
                 Warum lässt es sich schwer kombinieren?
               </p>
@@ -388,11 +388,11 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
               ))}
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-zinc-800/80">
+            <div className="shrink-0 flex justify-end p-4 border-t border-zinc-800/80 bg-zinc-900/40">
               <button
                 type="button"
                 onClick={() => setPopupOrphan(null)}
-                className="px-4 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 min-h-[42px] rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer touch-manipulation active:scale-95"
               >
                 Schließen
               </button>
@@ -401,20 +401,20 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
         </div>
       )}
 
-      {/* Small Closable Popup Modal for Recommendation Preview */}
+      {/* Small Closable Popup Modal for Recommendation Preview (Mobile-friendly) */}
       {popupRec && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="rec-popup-title"
           onClick={() => setPopupRec(null)}
         >
           <div
-            className="w-full max-w-lg rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+            className="w-full sm:max-w-lg max-h-[90vh] rounded-t-2xl sm:rounded-2xl bg-zinc-950 border-t sm:border border-zinc-800 shadow-2xl flex flex-col overflow-hidden pb-safe"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 pb-3">
+            <div className="shrink-0 flex items-start justify-between gap-3 border-b border-zinc-800/80 px-5 py-4 bg-zinc-900/40">
               <div>
                 <h3 id="rec-popup-title" className="text-sm font-semibold text-zinc-100">
                   {popupRec.virtualGarment.name}
@@ -427,66 +427,68 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                 type="button"
                 onClick={() => setPopupRec(null)}
                 aria-label="Popup schließen"
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors cursor-pointer touch-manipulation"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-zinc-300 leading-relaxed">{popupRec.rationale}</p>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <p className="text-xs text-zinc-300 leading-relaxed">{popupRec.rationale}</p>
 
-            {popupRec.unlockedCombinationsPreview.length > 0 && (
-              <div className="space-y-2.5">
-                <p className="text-xs font-semibold text-zinc-200">
-                  Beispiel-Outfits mit deinen vorhandenen Sachen:
-                </p>
-                {popupRec.unlockedCombinationsPreview.map((combo, cIdx) => (
-                  <div
-                    key={combo.id}
-                    className="rounded-xl bg-zinc-900/70 border border-zinc-800/80 p-3 space-y-2"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-300 font-medium">Beispiel-Outfit {cIdx + 1}</span>
-                      <span className="text-emerald-400 font-mono text-[11px]">
-                        {combo.totalScore}% Harmonie
-                      </span>
+              {popupRec.unlockedCombinationsPreview.length > 0 && (
+                <div className="space-y-2.5">
+                  <p className="text-xs font-semibold text-zinc-200">
+                    Beispiel-Outfits mit deinen vorhandenen Sachen:
+                  </p>
+                  {popupRec.unlockedCombinationsPreview.map((combo, cIdx) => (
+                    <div
+                      key={combo.id}
+                      className="rounded-xl bg-zinc-900/70 border border-zinc-800/80 p-3 space-y-2"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-300 font-medium">Beispiel-Outfit {cIdx + 1}</span>
+                        <span className="text-emerald-400 font-mono text-[11px]">
+                          {combo.totalScore}% Harmonie
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+                        {combo.items.map((item) => {
+                          const isVirtual = item.id === popupRec.virtualGarment.id;
+                          return (
+                            <div
+                              key={item.id}
+                              className={`flex flex-col items-center p-2 rounded-lg border min-w-[68px] ${
+                                isVirtual
+                                  ? 'border-amber-500/50 bg-amber-500/10'
+                                  : 'border-zinc-800 bg-zinc-950'
+                              }`}
+                            >
+                              <GarmentVector
+                                type={item.subcategory}
+                                colorHex={item.colorHex}
+                                texture={item.texture}
+                                neckline={item.neckline}
+                                className="w-9 h-9"
+                              />
+                              <span className="text-[10px] text-zinc-300 truncate max-w-[64px] mt-1">
+                                {item.name.split(' ')[0]}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 overflow-x-auto py-1">
-                      {combo.items.map((item) => {
-                        const isVirtual = item.id === popupRec.virtualGarment.id;
-                        return (
-                          <div
-                            key={item.id}
-                            className={`flex flex-col items-center p-2 rounded-lg border min-w-[68px] ${
-                              isVirtual
-                                ? 'border-amber-500/50 bg-amber-500/10'
-                                : 'border-zinc-800 bg-zinc-950'
-                            }`}
-                          >
-                            <GarmentVector
-                              type={item.subcategory}
-                              colorHex={item.colorHex}
-                              texture={item.texture}
-                              neckline={item.neckline}
-                              className="w-9 h-9"
-                            />
-                            <span className="text-[10px] text-zinc-300 truncate max-w-[64px] mt-1">
-                              {item.name.split(' ')[0]}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
 
-            <div className="flex justify-end pt-2 border-t border-zinc-800/80">
+            <div className="shrink-0 flex justify-end p-4 border-t border-zinc-800/80 bg-zinc-900/40">
               <button
                 type="button"
                 onClick={() => setPopupRec(null)}
-                className="px-4 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 min-h-[42px] rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer touch-manipulation active:scale-95"
               >
                 Schließen
               </button>

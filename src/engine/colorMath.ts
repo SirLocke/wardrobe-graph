@@ -180,10 +180,10 @@ export function deriveSeasonPalette(profile: BiometricProfile): SeasonPalette {
   if (undertone === 'olive' || undertone === 'warm') {
     if (chromaLevel === 'muted') {
       return {
-        seasonName: 'Soft Autumn (Gedämpfter Herbst)',
-        seasonSubtitle: 'Erdige, entsättigte Wärme & mittlere Kontrasttiefe',
+        seasonName: 'Warme & ruhige Naturfarben – Soft Autumn (Gedämpfter Herbst)',
+        seasonSubtitle: 'Einfach erklärt: Dir stehen warme, sanfte Erd- und Naturtöne am besten',
         description:
-          'Dein oliv-warmer Unterton mit gedämpfter Sättigung harmoniert am besten mit gebrochenen Erd-, Wald- und Gewürztönen. Zu grelle Neonfarben oder eisige Pastelltöne lassen den Teint unruhig wirken.',
+          'Das bedeutet für dich: Warme, unaufdringliche Farben wie Salbeigrün, Oliv, Beige, Dunkelbraun, Creme und Weinrot lassen dein Gesicht sofort frisch und erholt wirken. Sehr grelle Neonfarben oder eiskaltes Pink wirken dagegen schnell zu hart.',
         powerColors: [
           { name: 'Salbeigrün', hex: '#8F9779', categoryHint: 'T-Shirts & Knitwear' },
           { name: 'Dunkel-Oliv', hex: '#4B5320', categoryHint: 'Overshirts & Jacken' },
@@ -220,10 +220,10 @@ export function deriveSeasonPalette(profile: BiometricProfile): SeasonPalette {
 
     if (valueLevel === 'dark' || contrastLevel === 'high') {
       return {
-        seasonName: 'Dark Autumn (Tiefer Herbst)',
-        seasonSubtitle: 'Sattes Dunkel-Chroma & markanter Hell-Dunkel-Kontrast',
+        seasonName: 'Kräftige, warme dunkle Töne – Dark Autumn (Tiefer Herbst)',
+        seasonSubtitle: 'Einfach erklärt: Dir stehen dunkle, warme Farben und klare Hell-Dunkel-Outfits',
         description:
-          'Dein hoher Kontrast mit warmer Tiefe verlangt nach kraftvollen, dunklen Erdtönen wie Espresso, Tannengrün, Oxblood und warmem Anthrazit.',
+          'Das bedeutet für dich: Durch den Kontrast zwischen deinen Haaren und deiner Haut stehen dir satte, dunkle Naturfarben wie Dunkelbraun, Tannengrün, Weinrot, Oliv und Creme besonders gut – viel besser als blasse Pastellfarben.',
         powerColors: [
           { name: 'Oxblood / Burgunder', hex: '#5E2129', categoryHint: 'Strick & Blousons' },
           { name: 'Tannengrün', hex: '#1E3F2B', categoryHint: 'Overshirts & Mäntel' },
@@ -260,10 +260,10 @@ export function deriveSeasonPalette(profile: BiometricProfile): SeasonPalette {
 
     if (chromaLevel === 'bright') {
       return {
-        seasonName: 'Warm Spring (Klarer Frühling)',
-        seasonSubtitle: 'Klare, warme Farbkraft & lebendige Frische',
+        seasonName: 'Frische, warme Farben – Warm Spring (Klarer Frühling)',
+        seasonSubtitle: 'Einfach erklärt: Dir stehen freundliche, warme und leuchtende Farbtöne',
         description:
-          'Warme, klare Farbtöne mit leuchtender Sättigung unterstreichen deinen Teint ohne ihn zu beschweren.',
+          'Das bedeutet für dich: Warme, frische Farben wie Korallrot, Smaragdgrün, Kamel, Beige und warmes Blau lassen dich strahlen. Zu düstere, komplett schwarze Outfits direkt am Gesicht wirken dagegen oft zu streng.',
         powerColors: [
           { name: 'Warmes Korallrot', hex: '#D9534F', categoryHint: 'Polos & Tees' },
           { name: 'Smaragd-Grün', hex: '#2E7D5B', categoryHint: 'Strick & Hemden' },
@@ -299,10 +299,10 @@ export function deriveSeasonPalette(profile: BiometricProfile): SeasonPalette {
     }
 
     return {
-      seasonName: 'True Autumn (Wahrer Herbst)',
-      seasonSubtitle: 'Ausgewogene Erdtöne, goldene Wärme & natürliche Texturen',
+      seasonName: 'Klassische warme Erdtöne – True Autumn (Wahrer Herbst)',
+      seasonSubtitle: 'Einfach erklärt: Dir stehen warme Naturtöne wie Oliv, Kamel, Braun & Beige',
       description:
-        'Dein Profil blüht in satten, warmen Naturtönen auf: Oliv, Rost, Salbei, Kamel, Espresso und gebrochenes Weiß.',
+        'Das bedeutet für dich: Dein Typ sieht in warmen Naturfarben wie Olivgrün, Rostbraun, Salbei, Kamel, Dunkelbraun und Creme (statt hartem Reinweiß) besonders harmonisch aus.',
       powerColors: [
         { name: 'Dunkel-Oliv', hex: '#4B5320', categoryHint: 'Overshirts & Jacken' },
         { name: 'Salbeigrün', hex: '#8F9779', categoryHint: 'Tees & Hemden' },
@@ -340,10 +340,10 @@ export function deriveSeasonPalette(profile: BiometricProfile): SeasonPalette {
   if (undertone === 'cool') {
     if (contrastLevel === 'high' || chromaLevel === 'bright' || valueLevel === 'dark') {
       return {
-        seasonName: 'Clear / Dark Winter (Kühler Kontrast-Winter)',
-        seasonSubtitle: 'Präzise Kühle, tiefer Kontrast & klare Juwelentöne',
+        seasonName: 'Klare, kühle Kontrastfarben – Clear / Dark Winter (Winter-Typ)',
+        seasonSubtitle: 'Einfach erklärt: Dir stehen Schwarz, Weiß, Dunkelblau und kräftige kühle Farben',
         description:
-          'Dein kühler Unterton mit hohem Kontrast trägt tiefes Schwarz, Marineblau, Anthrazit, kühles Burgunder und Tannengrün mit maximaler Präsenz.',
+          'Das bedeutet für dich: Du gehörst zu den Typen, denen tiefes Schwarz, kühles Weiß, Marineblau, Dunkelgrau, Tannengrün und Weinrot ausgezeichnet stehen. Gelbliche oder rostbraune Töne solltest du eher meiden.',
         powerColors: [
           { name: 'Königsblau Gedeckt', hex: '#1F4591', categoryHint: 'Strick & Hemden' },
           { name: 'Kühles Burgunder', hex: '#54162B', categoryHint: 'Turtlenecks' },
@@ -379,10 +379,10 @@ export function deriveSeasonPalette(profile: BiometricProfile): SeasonPalette {
     }
 
     return {
-      seasonName: 'Soft / True Summer (Kühler Sommer)',
-      seasonSubtitle: 'Kühle, rauchige Eleganz & sanfte Blaugrau-Verläufe',
+      seasonName: 'Sanfte, kühle Farben – Soft / True Summer (Sommer-Typ)',
+      seasonSubtitle: 'Einfach erklärt: Dir stehen ruhige Blau-, Grau-, Beeren- und Grüntöne',
       description:
-        'Rauchige Blautöne, Salbei-Grau, kühles Burgunder und Schiefer unterstreichen deinen kühlen, sanft kontrastierten Teint.',
+        'Das bedeutet für dich: Sanfte, kühle Farben wie Blaugrau, Marineblau, Hellblau, kühles Salbeigrün, Grau und Weinrot passen perfekt zu deinem Hautton. Grelles Orange oder Senfgelb wirken dagegen unruhig.',
       powerColors: [
         { name: 'Taubenblau', hex: '#5B758E', categoryHint: 'Hemden & Strick' },
         { name: 'Kühles Salbei', hex: '#7C9082', categoryHint: 'T-Shirts' },
@@ -418,10 +418,10 @@ export function deriveSeasonPalette(profile: BiometricProfile): SeasonPalette {
   }
 
   return {
-    seasonName: 'Soft Neutral Studio (Ausgewogener Neutral-Typ)',
-    seasonSubtitle: 'Vielseitige Balance zwischen kühlen Marine- und warmen Erdtönen',
+    seasonName: 'Vielseitige Alltagsfarben – Soft Neutral Studio (Neutral-Typ)',
+    seasonSubtitle: 'Einfach erklärt: Dir stehen sowohl kühle Klassiker (Blau/Grau) als auch warme Naturtöne',
     description:
-      'Dein neutraler Hautunterton erlaubt sowohl ausgewählte kühle Klassiker (Navy, Anthrazit) als auch gedämpfte Naturtöne (Salbei, Sand, Espresso), solange die Sättigung kontrolliert bleibt.',
+      'Das bedeutet für dich: Weil dein Hautton ausgeglichen ist, kannst du sowohl Dunkelblau, Grau und Schwarz als auch Salbeigrün, Beige und Braun problemlos tragen – solange die Farben nicht neon-grell sind.',
     powerColors: [
       { name: 'Salbeigrün', hex: '#8F9779', categoryHint: 'T-Shirts & Strick' },
       { name: 'Burgunder', hex: '#5E2129', categoryHint: 'Sweater & Polos' },

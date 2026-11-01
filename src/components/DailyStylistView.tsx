@@ -245,13 +245,13 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               type="button"
               onClick={() => setShowAnchorPicker((prev) => !prev)}
               aria-expanded={showAnchorPicker}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2.5 min-h-[42px] w-full sm:w-auto rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                 lockedGarments.length > 0
                   ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
                   : 'bg-zinc-900 border-zinc-800 text-zinc-200 hover:border-zinc-700'
               }`}
             >
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
+              <Lock className="w-4 h-4 text-amber-400" />
               <span>
                 {isEn ? 'Pick a piece to wear today' : 'Ein bestimmtes Teil heute tragen'}{' '}
                 {lockedGarments.length > 0
@@ -275,7 +275,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onChangeContext({ ...context, lockedGarmentIds: [] })}
-                  className="text-xs text-amber-400 hover:underline cursor-pointer"
+                  className="text-xs text-amber-400 hover:underline cursor-pointer py-1 px-2"
                 >
                   {isEn ? 'Clear selection' : 'Auswahl aufheben'}
                 </button>
@@ -289,7 +289,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     key={g.id}
                     type="button"
                     onClick={() => toggleLockGarment(g.id)}
-                    className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                    className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-all cursor-pointer touch-manipulation active:scale-95 ${
                       isLocked
                         ? 'bg-amber-500/15 border-amber-500/50 text-zinc-100'
                         : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-300 hover:border-zinc-700'
@@ -317,7 +317,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         )}
 
         {/* Controls Grid: Temperature, Weather, Occasion */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
           {/* Temperature Presets + Slider (5 cols) */}
           <div className="lg:col-span-5 space-y-2.5">
             <div className="flex items-center justify-between">
@@ -341,7 +341,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     key={preset.temp}
                     type="button"
                     onClick={() => onChangeContext({ ...context, temperatureC: preset.temp })}
-                    className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                    className={`px-2.5 py-2 min-h-[40px] text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                       isActive
                         ? 'bg-zinc-100 text-zinc-950 font-semibold'
                         : 'text-zinc-400 hover:text-zinc-100'
@@ -362,7 +362,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               onChange={(e) =>
                 onChangeContext({ ...context, temperatureC: Number(e.target.value) })
               }
-              className="w-full accent-amber-400 cursor-pointer"
+              className="w-full accent-amber-400 cursor-pointer h-7"
             />
           </div>
 
@@ -385,7 +385,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     key={id}
                     type="button"
                     onClick={() => onChangeContext({ ...context, weather: id as WeatherCondition })}
-                    className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    className={`flex items-center justify-center gap-1.5 py-2 px-2 min-h-[40px] rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                       active
                         ? 'bg-zinc-100 text-zinc-950 font-semibold'
                         : 'text-zinc-400 hover:text-zinc-100'
@@ -399,12 +399,12 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             </div>
           </div>
 
-          {/* Occasion Selector (4 cols) */}
+          {/* Occasion Selector (4 cols) - Smooth Touch Swipe on Mobile */}
           <div className="lg:col-span-4 space-y-2.5">
             <span className="block text-xs font-medium text-zinc-300">
               {isEn ? 'Occasion' : 'Was hast du heute vor?'}
             </span>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800/80">
+            <div className="flex items-center gap-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800/80 overflow-x-auto scrollbar-none flex-nowrap sm:grid sm:grid-cols-5">
               {(Object.keys(OCCASION_LABELS) as OccasionType[]).map((occ) => {
                 const active = context.occasion === occ;
                 const occText = isEn ? OCCASION_LABELS_EN[occ] : OCCASION_LABELS[occ];
@@ -413,7 +413,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     key={occ}
                     type="button"
                     onClick={() => onChangeContext({ ...context, occasion: occ })}
-                    className={`py-2 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap text-center truncate ${
+                    className={`py-2 px-3 sm:px-2 min-h-[40px] rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap text-center shrink-0 sm:shrink truncate touch-manipulation active:scale-95 ${
                       active
                         ? 'bg-zinc-100 text-zinc-950 font-semibold'
                         : 'text-zinc-400 hover:text-zinc-100'
@@ -583,13 +583,13 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
                     <button
                       type="button"
                       onClick={() => setPopupOutfit(outfit)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap"
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
                     >
-                      <Info className="w-3.5 h-3.5 text-amber-400" />
+                      <Info className="w-4 h-4 text-amber-400" />
                       <span>{isEn ? 'Why it works' : 'Warum passt’s?'}</span>
                     </button>
 
@@ -603,13 +603,13 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             .map((i) => i.id)
                         )
                       }
-                      className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                         isWornJustNow
                           ? 'bg-emerald-500 text-zinc-950 font-semibold'
                           : 'bg-zinc-100 text-zinc-950 hover:bg-white font-semibold'
                       }`}
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <CheckCircle2 className="w-4 h-4" />
                       <span>
                         {isWornJustNow
                           ? isEn
@@ -717,7 +717,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                   : 'Dieses Teil festhalten und andere Teile dazu kombinieren'
                               }
                               aria-label={`${item.name} ${isLocked ? 'lösen' : 'festhalten'}`}
-                              className="p-2 rounded-lg text-zinc-500 hover:text-amber-400 hover:bg-zinc-900 transition-colors cursor-pointer shrink-0"
+                              className="min-w-[42px] min-h-[42px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-zinc-900 transition-colors cursor-pointer shrink-0 touch-manipulation active:scale-95"
                             >
                               {isLocked ? (
                                 <Lock className="w-4 h-4 text-amber-400" />
@@ -810,20 +810,20 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         </div>
       )}
 
-      {/* Small Closable Explanation Popup Modal */}
+      {/* Small Closable Explanation Popup Modal (Mobile Bottom-Sheet on small screens) */}
       {popupOutfit && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="outfit-explanation-popup-title"
           onClick={() => setPopupOutfit(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-md max-h-[90vh] rounded-t-2xl sm:rounded-2xl bg-zinc-950 border-t sm:border border-zinc-800 shadow-2xl flex flex-col overflow-hidden pb-safe"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-zinc-900/40">
+            <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-zinc-900/40">
               <div>
                 <h3
                   id="outfit-explanation-popup-title"
@@ -839,13 +839,13 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 type="button"
                 onClick={() => setPopupOutfit(null)}
                 aria-label={isEn ? 'Close popup' : 'Popup schließen'}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 cursor-pointer touch-manipulation"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs font-mono tabular-nums">
                 <span className="text-zinc-300 font-sans font-medium">
                   {isEn ? 'Overall Harmony:' : 'Gesamt-Harmonie:'}
@@ -892,11 +892,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               </div>
             </div>
 
-            <div className="px-5 py-3 bg-zinc-900/50 border-t border-zinc-800 flex justify-end">
+            <div className="shrink-0 px-5 py-3 bg-zinc-900/50 border-t border-zinc-800 flex justify-end">
               <button
                 type="button"
                 onClick={() => setPopupOutfit(null)}
-                className="px-4 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 min-h-[42px] rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold cursor-pointer touch-manipulation active:scale-95"
               >
                 {isEn ? 'Close' : 'Schließen'}
               </button>

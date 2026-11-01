@@ -359,19 +359,19 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto sm:overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-garment-title"
     >
-      <div className="w-full max-w-3xl rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl my-8 overflow-hidden">
+      <div className="w-full h-full sm:h-auto sm:max-h-[90vh] max-w-3xl rounded-none sm:rounded-2xl bg-zinc-950 border-0 sm:border sm:border-zinc-800 shadow-2xl my-0 sm:my-8 overflow-hidden flex flex-col">
         {/* Top Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80">
+        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
           <div>
-            <h2 id="modal-garment-title" className="text-lg font-semibold text-zinc-100">
+            <h2 id="modal-garment-title" className="text-base sm:text-lg font-semibold text-zinc-100">
               {initialGarment ? 'Kleidungsstück anpassen' : 'Kleidungsstück einfach hinzufügen'}
             </h2>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
               1. Schnitt antippen · 2. Farbe wählen · 3. Optional Marke &amp; Größe · Fertig!
             </p>
           </div>
@@ -379,26 +379,26 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Modal schließen"
-            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors touch-manipulation cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {duplicateNotice && (
-          <div className="mx-6 mt-4 px-4 py-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-300 flex items-center justify-between">
+          <div className="mx-4 sm:mx-6 mt-3 px-4 py-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-300 flex items-center justify-between">
             <span>{duplicateNotice}</span>
             <button
               type="button"
               onClick={() => setDuplicateNotice(null)}
-              className="text-emerald-400 hover:text-emerald-200 ml-3"
+              className="text-emerald-400 hover:text-emerald-200 ml-3 py-1 px-2"
             >
               OK
             </button>
           </div>
         )}
 
-        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {/* Top Preview Row */}
           <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
             <div className="w-24 h-24 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-center shrink-0">
@@ -867,35 +867,35 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="px-6 py-4 bg-zinc-900/60 border-t border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+        {/* Modal Sticky Bottom Action Bar (Thumb Zone) */}
+        <div className="shrink-0 sticky bottom-0 z-10 px-4 sm:px-6 py-3.5 sm:py-4 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="px-4 py-2.5 min-h-[42px] rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors text-center cursor-pointer touch-manipulation"
           >
             Abbrechen
           </button>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             {!initialGarment && (
               <button
                 type="button"
                 onClick={() => submitForm(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-zinc-200 hover:border-amber-500/60 hover:text-amber-300 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 min-h-[42px] rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-zinc-200 hover:border-amber-500/60 hover:text-amber-300 transition-colors cursor-pointer touch-manipulation active:scale-95"
               >
                 <CopyPlus className="w-3.5 h-3.5 text-amber-400" />
-                Speichern &amp; noch eine Farbe anlegen
+                <span>Speichern &amp; noch eine Farbe</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={() => submitForm(false)}
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-zinc-100 text-zinc-950 text-xs font-semibold hover:bg-white transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 min-h-[42px] rounded-lg bg-zinc-100 text-zinc-950 text-xs font-semibold hover:bg-white transition-colors cursor-pointer touch-manipulation active:scale-95"
             >
               <Check className="w-4 h-4" />
-              {initialGarment ? 'Änderungen speichern' : 'In den Kleiderschrank legen'}
+              <span>{initialGarment ? 'Änderungen speichern' : 'In den Kleiderschrank legen'}</span>
             </button>
           </div>
         </div>

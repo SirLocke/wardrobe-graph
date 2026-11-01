@@ -301,28 +301,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto sm:overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-modal-title"
     >
-      <div className="w-full max-w-3xl rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl my-8 overflow-hidden">
+      <div className="w-full h-full sm:h-auto sm:max-h-[90vh] max-w-3xl rounded-none sm:rounded-2xl bg-zinc-950 border-0 sm:border sm:border-zinc-800 shadow-2xl my-0 sm:my-8 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-zinc-900/40">
+        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
               <Settings2 className="w-4 h-4" />
             </div>
             <div>
-              <h2 id="settings-modal-title" className="text-base font-semibold text-zinc-100">
+              <h2 id="settings-modal-title" className="text-sm sm:text-base font-semibold text-zinc-100">
                 {isEn
-                  ? 'Settings, Sizes, Brands & Quick Closet Builder'
-                  : 'Einstellungen, Größen, Marken & Schnell-Baukasten'}
+                  ? 'Settings & Quick Closet Builder'
+                  : 'Einstellungen & Schnell-Baukasten'}
               </h2>
-              <p className="text-xs text-zinc-400">
+              <p className="text-[11px] sm:text-xs text-zinc-400">
                 {isEn
-                  ? 'Choose Women / Men / Unisex, save brand sizes ("Nike = L") & add clothes with 1 click'
-                  : 'Wähle Frauen / Männer / Unisex, speichere Marken-Größen („Bei Nike immer L“) & lege Kleidung an'}
+                  ? 'Scope, brand sizes ("Nike = L") & add clothes'
+                  : 'Bereich, Marken-Größen & Kleidung per Klick anlegen'}
               </p>
             </div>
           </div>
@@ -330,14 +330,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label={isEn ? 'Close settings' : 'Einstellungen schließen'}
-            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors touch-manipulation cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {feedbackToast && (
-          <div className="mx-6 mt-4 px-4 py-2.5 rounded-xl bg-emerald-950/50 border border-emerald-500/40 text-xs text-emerald-200 flex items-center justify-between">
+          <div className="mx-4 sm:mx-6 mt-3 px-4 py-2.5 rounded-xl bg-emerald-950/50 border border-emerald-500/40 text-xs text-emerald-200 flex items-center justify-between shrink-0">
             <span className="flex items-center gap-2">
               <Check className="w-4 h-4 text-emerald-400 shrink-0" />
               {feedbackToast}
@@ -345,7 +345,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         )}
 
-        <div className="p-6 space-y-7 max-h-[78vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-7">
           {/* SECTION 1: Frauen / Männer / Unisex / Beides */}
           <section className="space-y-3">
             <div>
@@ -836,11 +836,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </section>
         </div>
 
-        <div className="px-6 py-4 bg-zinc-900/60 border-t border-zinc-800 flex items-center justify-end">
+        {/* Sticky bottom action bar (Thumb Zone) */}
+        <div className="shrink-0 sticky bottom-0 z-10 px-4 sm:px-6 py-3.5 sm:py-4 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800 flex items-center justify-end pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-950 text-xs font-semibold hover:bg-white transition-colors"
+            className="w-full sm:w-auto px-6 py-2.5 min-h-[42px] rounded-lg bg-zinc-100 text-zinc-950 text-xs font-semibold hover:bg-white transition-colors cursor-pointer touch-manipulation active:scale-95"
           >
             {isEn ? 'Done' : 'Fertig'}
           </button>

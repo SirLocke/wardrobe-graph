@@ -297,6 +297,7 @@ export const DEFAULT_BIOMETRIC_PROFILE: BiometricProfile = {
     { brand: "Levi's", size: 'W32/L32', categoryGroup: 'bottom' },
     { brand: 'Zara', size: 'L', categoryGroup: 'top' },
   ],
+  isDemoMode: true,
 };
 
 function makeSeedGarment(

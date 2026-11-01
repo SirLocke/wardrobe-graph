@@ -113,7 +113,8 @@ export async function pullStateFromServer(): Promise<{
 }
 
 /**
- * Initializes IndexedDB (and syncs from /api/wardrobe if available) with seed profile and 14-item starter wardrobe.
+ * Initializes IndexedDB (and syncs from /api/wardrobe if available) with seed profile and starter wardrobe.
+ * Respects isDemoMode === false so a user's own wardrobe (even if temporarily empty) is never overwritten by demo items.
  */
 export async function loadOrSeedWardrobeData(): Promise<{
   profile: BiometricProfile;
@@ -121,7 +122,10 @@ export async function loadOrSeedWardrobeData(): Promise<{
 }> {
   // First check if the local MCP server store has data
   const serverState = await pullStateFromServer();
-  if (serverState && serverState.garments.length > 0) {
+  if (
+    serverState &&
+    (serverState.garments.length > 0 || serverState.profile.isDemoMode === false)
+  ) {
     return serverState;
   }
 
@@ -131,16 +135,19 @@ export async function loadOrSeedWardrobeData(): Promise<{
 
     if (profileCount === 0) {
       await db.profiles.put(DEFAULT_BIOMETRIC_PROFILE);
-    }
-    if (garmentCount === 0) {
-      await db.garments.bulkPut(SEED_WARDROBE_GARMENTS);
+      if (garmentCount === 0) {
+        await db.garments.bulkPut(SEED_WARDROBE_GARMENTS);
+      }
     }
 
     const rawProfile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
     const rawGarments = await db.garments.toArray();
+    const shouldUseSeedFallback =
+      rawGarments.length === 0 && rawProfile.isDemoMode !== false;
+
     const result = backfillProfileAndGarments(
       rawProfile,
-      rawGarments.length > 0 ? rawGarments : SEED_WARDROBE_GARMENTS
+      shouldUseSeedFallback ? SEED_WARDROBE_GARMENTS : rawGarments
     );
     void syncStateToServer(result.profile, result.garments);
     return result;
