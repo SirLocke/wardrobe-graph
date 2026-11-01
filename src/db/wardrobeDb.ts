@@ -1,7 +1,45 @@
 import Dexie, { type Table } from 'dexie';
-import { DEFAULT_BIOMETRIC_PROFILE, SEED_WARDROBE_GARMENTS } from '../data/seedData';
+import {
+  DEFAULT_BIOMETRIC_PROFILE,
+  SEED_WARDROBE_GARMENTS,
+  WARDROBE_PRESETS,
+} from '../data/seedData';
 import { classifyColorTemp, hexToHsl } from '../engine/colorMath';
 import { BiometricProfile, Garment } from '../types/wardrobe';
+
+const SEED_META_BY_ID = new Map(
+  WARDROBE_PRESETS.combined_atelier.garments.map((g) => [g.id, { brand: g.brand, size: g.size }])
+);
+
+function backfillProfileAndGarments(
+  rawProfile: BiometricProfile,
+  rawGarments: Garment[]
+): { profile: BiometricProfile; garments: Garment[] } {
+  const profile: BiometricProfile = {
+    ...DEFAULT_BIOMETRIC_PROFILE,
+    ...rawProfile,
+    defaultSizes: rawProfile.defaultSizes || DEFAULT_BIOMETRIC_PROFILE.defaultSizes,
+    brandSizeRules:
+      rawProfile.brandSizeRules && rawProfile.brandSizeRules.length > 0
+        ? rawProfile.brandSizeRules
+        : DEFAULT_BIOMETRIC_PROFILE.brandSizeRules,
+  };
+
+  const garments: Garment[] = rawGarments.map((g) => {
+    const hsl = hexToHsl(g.colorHex || '#8F9779');
+    const colorTemp = classifyColorTemp(hsl);
+    const seedMeta = SEED_META_BY_ID.get(g.id);
+    return {
+      ...g,
+      hsl,
+      colorTemp,
+      brand: g.brand ?? seedMeta?.brand,
+      size: g.size ?? seedMeta?.size,
+    };
+  });
+
+  return { profile, garments };
+}
 
 export class WardrobeDatabase extends Dexie {
   garments!: Table<Garment, string>;
@@ -51,17 +89,14 @@ export async function pullStateFromServer(): Promise<{
     const data = await res.json();
     if (!data || !data.profile || !Array.isArray(data.garments)) return null;
 
-    const normalizedGarments: Garment[] = data.garments.map((g: Garment) => {
-      const hsl = hexToHsl(g.colorHex || '#8F9779');
-      const colorTemp = classifyColorTemp(hsl);
-      return { ...g, hsl, colorTemp };
-    });
+    const { profile: enrichedProfile, garments: normalizedGarments } =
+      backfillProfileAndGarments(data.profile, data.garments);
 
     try {
       await db.transaction('rw', db.garments, db.profiles, async () => {
         await db.garments.clear();
         await db.profiles.clear();
-        await db.profiles.put(data.profile);
+        await db.profiles.put(enrichedProfile);
         await db.garments.bulkPut(normalizedGarments);
       });
     } catch {
@@ -69,7 +104,7 @@ export async function pullStateFromServer(): Promise<{
     }
 
     return {
-      profile: data.profile,
+      profile: enrichedProfile,
       garments: normalizedGarments,
     };
   } catch {
@@ -101,12 +136,12 @@ export async function loadOrSeedWardrobeData(): Promise<{
       await db.garments.bulkPut(SEED_WARDROBE_GARMENTS);
     }
 
-    const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-    const garments = await db.garments.toArray();
-    const result = {
-      profile,
-      garments: garments.length > 0 ? garments : SEED_WARDROBE_GARMENTS,
-    };
+    const rawProfile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
+    const rawGarments = await db.garments.toArray();
+    const result = backfillProfileAndGarments(
+      rawProfile,
+      rawGarments.length > 0 ? rawGarments : SEED_WARDROBE_GARMENTS
+    );
     void syncStateToServer(result.profile, result.garments);
     return result;
   } catch {

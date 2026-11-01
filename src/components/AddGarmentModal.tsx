@@ -1,5 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronUp, CopyPlus, Palette, Plus, SlidersHorizontal, Upload, X } from 'lucide-react';
+import {
+  BookmarkCheck,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  CopyPlus,
+  Palette,
+  Plus,
+  Ruler,
+  SlidersHorizontal,
+  Tag,
+  Upload,
+  X,
+} from 'lucide-react';
 import {
   CATEGORY_LABELS,
   FIT_LABELS,
@@ -14,6 +27,13 @@ import {
   TextileColorPreset,
   TEXTURE_LABELS,
 } from '../data/seedData';
+import {
+  COMMON_SIZE_SUGGESTIONS,
+  getCategorySizeGroup,
+  POPULAR_BRANDS,
+  suggestSizeForGarment,
+  upsertBrandSizeRule,
+} from '../engine/brandSizeMatcher';
 import { classifyColorTemp, hexToHsl, scoreGarmentBiometrics } from '../engine/colorMath';
 import {
   BiometricProfile,
@@ -31,6 +51,7 @@ interface AddGarmentModalProps {
   onClose: () => void;
   profile: BiometricProfile;
   onSaveGarment: (garment: Garment, keepOpenForDuplicate: boolean) => Promise<void>;
+  onUpdateProfile?: (nextProfile: BiometricProfile) => Promise<void>;
   initialGarment?: Garment | null;
 }
 
@@ -39,6 +60,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   onClose,
   profile,
   onSaveGarment,
+  onUpdateProfile,
   initialGarment,
 }) => {
   const [name, setName] = useState('Hoodie Salbeigrün');
@@ -46,6 +68,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [subcategory, setSubcategory] = useState<GarmentSubcategory>('hoodie');
   const [colorName, setColorName] = useState('Salbeigrün');
   const [colorHex, setColorHex] = useState('#8F9779');
+  const [brand, setBrand] = useState('');
+  const [size, setSize] = useState('');
   const [fit, setFit] = useState<FitType>('relaxed');
   const [neckline, setNeckline] = useState<NecklineType>('hooded');
   const [texture, setTexture] = useState<TextureType>('heavy_jersey');
@@ -57,6 +81,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+  const [ruleSavedNotice, setRuleSavedNotice] = useState<string | null>(null);
 
   // Easy custom color creator without hex jargon
   const [colorPresets, setColorPresets] = useState<TextileColorPreset[]>(() => getAllColorPresets());
@@ -71,6 +96,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     if (!isOpen) return;
     setColorPresets(getAllColorPresets());
     setDuplicateNotice(null);
+    setRuleSavedNotice(null);
     setNameError(null);
     setShowNewColorCreator(false);
     setShowAdvancedDetails(Boolean(initialGarment));
@@ -81,6 +107,12 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setSubcategory(initialGarment.subcategory);
       setColorName(initialGarment.colorName);
       setColorHex(initialGarment.colorHex);
+      setBrand(initialGarment.brand || '');
+      setSize(
+        initialGarment.size ||
+          suggestSizeForGarment(initialGarment.category, initialGarment.brand, profile)
+            .suggestedSize
+      );
       setFit(initialGarment.fit);
       setNeckline(initialGarment.neckline);
       setTexture(initialGarment.texture);
@@ -96,6 +128,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setSubcategory(defaultSub);
       setColorName('Salbeigrün');
       setColorHex('#8F9779');
+      setBrand('');
+      setSize(suggestSizeForGarment(defaults.category, '', profile).suggestedSize);
       setFit(defaults.fit);
       setNeckline(defaults.neckline);
       setTexture(defaults.texture);
@@ -106,7 +140,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setImageDataUrl(undefined);
       setName('T-Shirt Salbeigrün');
     }
-  }, [isOpen, initialGarment]);
+  }, [isOpen, initialGarment, profile]);
 
   useEffect(() => {
     if (!imageDataUrl || !canvasRef.current) return;
@@ -135,6 +169,10 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     setThermalRating(defaults.thermalRating);
     setFormality(defaults.formality);
     setWaterResistant(defaults.waterResistant);
+    const suggestion = suggestSizeForGarment(defaults.category, brand, profile);
+    if (suggestion.suggestedSize) {
+      setSize(suggestion.suggestedSize);
+    }
     const baseSubLabel = SUBCATEGORY_LABELS[newSub].split(' (')[0];
     setName(`${baseSubLabel} ${currentColorName}`);
   };
@@ -150,6 +188,29 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
   const handleSubcategoryChange = (newSub: GarmentSubcategory) => {
     applySubcategoryDefaults(newSub, colorName);
+  };
+
+  const handleBrandChange = (nextBrand: string) => {
+    setBrand(nextBrand);
+    setRuleSavedNotice(null);
+    const suggestion = suggestSizeForGarment(category, nextBrand, profile);
+    if (suggestion.suggestedSize) {
+      setSize(suggestion.suggestedSize);
+    }
+  };
+
+  const handleRememberBrandSizeRule = async () => {
+    if (!brand.trim() || !size.trim() || !onUpdateProfile) return;
+    const nextRules = upsertBrandSizeRule(profile.brandSizeRules, {
+      brand: brand.trim(),
+      size: size.trim(),
+      categoryGroup: 'all',
+    });
+    await onUpdateProfile({
+      ...profile,
+      brandSizeRules: nextRules,
+    });
+    setRuleSavedNotice(`Gemerkte Regel: Bei ${brand.trim()} immer Größe ${size.trim()}`);
   };
 
   const handleSelectColorPreset = (presetName: string, presetHex: string) => {
@@ -225,6 +286,10 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     return { hsl, colorTemp, bio };
   }, [category, colorName, colorHex, neckline, texture, profile]);
 
+  const sizeSuggestionInfo = useMemo(() => {
+    return suggestSizeForGarment(category, brand, profile);
+  }, [category, brand, profile]);
+
   const availableSubcategories = useMemo(() => {
     const filtered = SUBCATEGORIES_BY_CATEGORY[category].filter((sub) =>
       isSubcategoryAllowedForScope(sub, activeScope)
@@ -261,6 +326,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       waterResistant,
       isClean,
       imageDataUrl,
+      brand: brand.trim() || undefined,
+      size: size.trim() || undefined,
     };
 
     await onSaveGarment(newGarment, keepOpenForDuplicate);
@@ -288,6 +355,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       ? 'text-amber-300 border-amber-500/30 bg-amber-950/20'
       : 'text-rose-400 border-rose-500/30 bg-rose-950/20';
 
+  const sizePills = COMMON_SIZE_SUGGESTIONS[getCategorySizeGroup(category)];
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
@@ -303,7 +372,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               {initialGarment ? 'Kleidungsstück anpassen' : 'Kleidungsstück einfach hinzufügen'}
             </h2>
             <p className="text-xs text-zinc-400 mt-0.5">
-              1. Schnitt antippen · 2. Farbe wählen · Fertig! (Alle Werte werden automatisch eingestellt)
+              1. Schnitt antippen · 2. Farbe wählen · 3. Optional Marke &amp; Größe · Fertig!
             </p>
           </div>
           <button
@@ -353,7 +422,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="z.B. Kuschel-Hoodie Salbeigrün"
+                placeholder="z.B. Hoodie Salbeigrün"
                 className="w-full px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
               />
               {nameError && <p className="text-xs text-rose-400">{nameError}</p>}
@@ -368,7 +437,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                 1. Was möchtest du hinzufügen?
               </label>
               <span className="text-[11px] text-zinc-500">
-                Wärme, Stoff & Anlass werden automatisch passend vorbelegt
+                Wärme, Stoff &amp; Anlass werden automatisch passend vorbelegt
               </span>
             </div>
 
@@ -379,7 +448,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                   key={cat}
                   type="button"
                   onClick={() => handleCategoryChange(cat)}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     category === cat
                       ? 'bg-zinc-100 text-zinc-950 font-semibold'
                       : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200'
@@ -400,7 +469,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                     key={sub}
                     type="button"
                     onClick={() => handleSubcategoryChange(sub)}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-amber-500/10 border-amber-500/50 text-zinc-100 ring-1 ring-amber-500/30'
                         : 'bg-zinc-900/50 border-zinc-800/80 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
@@ -432,7 +501,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowNewColorCreator((v) => !v)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-amber-300 hover:border-amber-500/50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-amber-300 hover:border-amber-500/50 transition-colors cursor-pointer"
               >
                 <Palette className="w-3.5 h-3.5" />
                 {showNewColorCreator ? 'Schließen' : '+ Eigene Farbe mischen'}
@@ -464,10 +533,10 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddCustomColor}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Farbe speichern & wählen
+                    Farbe speichern &amp; wählen
                   </button>
                 </div>
               </div>
@@ -481,7 +550,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                     key={`${preset.name}_${preset.hex}`}
                     type="button"
                     onClick={() => handleSelectColorPreset(preset.name, preset.hex)}
-                    className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all ${
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-zinc-800 border-amber-400 text-zinc-100 ring-1 ring-amber-400/40'
                         : 'bg-zinc-900/50 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
@@ -500,16 +569,123 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             </div>
           </div>
 
-          {/* STEP 3 (OPTIONAL): Erweiterte Details (Schnitt, Stoff, Dicke, Foto) */}
+          {/* STEP 3: Marke & Größe (Optional – mit automatischem Größen-Vorschlag) */}
+          <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-amber-400" />
+                3. Marke &amp; Größe (Optional)
+              </label>
+              {sizeSuggestionInfo.reasonDe && (
+                <span className="text-[11px] text-amber-300 font-medium">
+                  {sizeSuggestionInfo.reasonDe}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Brand Selection */}
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-zinc-400">
+                  Marke (z.B. Nike, Adidas, Levi&apos;s, Zara)
+                </label>
+                <input
+                  type="text"
+                  value={brand}
+                  onChange={(e) => handleBrandChange(e.target.value)}
+                  placeholder="Marke eingeben oder unten antippen..."
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {POPULAR_BRANDS.slice(0, 9).map((b) => {
+                    const active = brand.toLowerCase() === b.toLowerCase();
+                    return (
+                      <button
+                        key={b}
+                        type="button"
+                        onClick={() => handleBrandChange(active ? '' : b)}
+                        className={`px-2 py-1 rounded-md border text-[11px] font-medium transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {b}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Size Selection */}
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-zinc-400 flex items-center gap-1">
+                  <Ruler className="w-3.5 h-3.5 text-zinc-500" />
+                  Größe (wird automatisch vorgeschlagen)
+                </label>
+                <input
+                  type="text"
+                  value={size}
+                  onChange={(e) => {
+                    setSize(e.target.value);
+                    setRuleSavedNotice(null);
+                  }}
+                  placeholder="z.B. M, L, 38, 42, W32/L32..."
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {sizePills.map((s) => {
+                    const active = size.toUpperCase() === s.toUpperCase();
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setSize(s)}
+                        className={`px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {brand.trim() && size.trim() && onUpdateProfile && (
+              <div className="pt-2 border-t border-zinc-800/70 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={handleRememberBrandSizeRule}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-300 hover:text-amber-200 cursor-pointer"
+                >
+                  <BookmarkCheck className="w-3.5 h-3.5" />
+                  <span>
+                    Merken: „Bei {brand.trim()} habe ich immer Größe {size.trim()}“
+                  </span>
+                </button>
+                {ruleSavedNotice && (
+                  <span className="text-[11px] text-emerald-400 font-medium">
+                    ✓ {ruleSavedNotice}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* STEP 4 (OPTIONAL): Erweiterte Details (Schnitt, Stoff, Dicke, Foto) */}
           <div className="border-t border-zinc-800/80 pt-4">
             <button
               type="button"
               onClick={() => setShowAdvancedDetails((v) => !v)}
-              className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition-colors"
+              className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 transition-colors cursor-pointer"
             >
               <span className="inline-flex items-center gap-2">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                Details feinjustieren (Passform, Stoff, Wetter & Foto) – Optional
+                Details feinjustieren (Passform, Stoff, Wetter &amp; Foto) – Optional
               </span>
               {showAdvancedDetails ? (
                 <ChevronUp className="w-4 h-4 text-zinc-400" />
@@ -706,17 +882,17 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <button
                 type="button"
                 onClick={() => submitForm(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-zinc-200 hover:border-amber-500/60 hover:text-amber-300 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-zinc-200 hover:border-amber-500/60 hover:text-amber-300 transition-colors cursor-pointer"
               >
                 <CopyPlus className="w-3.5 h-3.5 text-amber-400" />
-                Speichern & noch eine Farbe anlegen
+                Speichern &amp; noch eine Farbe anlegen
               </button>
             )}
 
             <button
               type="button"
               onClick={() => submitForm(false)}
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-zinc-100 text-zinc-950 text-xs font-semibold hover:bg-white transition-colors"
+              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-zinc-100 text-zinc-950 text-xs font-semibold hover:bg-white transition-colors cursor-pointer"
             >
               <Check className="w-4 h-4" />
               {initialGarment ? 'Änderungen speichern' : 'In den Kleiderschrank legen'}

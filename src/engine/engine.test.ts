@@ -21,6 +21,12 @@ import {
   createDefaultWardrobeState,
   handleMcpJsonRpcRequest,
 } from '../mcp/mcpHandler';
+import {
+  getShortOutfitTitle,
+  matchesGarmentSearch,
+  normalizeBrandKey,
+  suggestSizeForGarment,
+} from './brandSizeMatcher';
 
 test('colorMath: hexToHsl and classifyColorTemp classify warm, cool, and neutral accurately', () => {
   const sage = hexToHsl('#8F9779');
@@ -285,5 +291,34 @@ test('womenswear & styleVibe: generates Womenswear outfits across style vibes an
   assert.ok(orphanIds.includes('fem_orphan_2'), 'Should detect Suede-Bikerjacke Waldkiefer as orphan piece');
 });
 
+test('brandSizeMatcher: normalizes typos like "addidas", suggests brand sizes ("Nike = L"), searches by brand/size, and builds concise outfit titles', () => {
+  assert.equal(normalizeBrandKey('addidas'), 'adidas');
+  assert.equal(normalizeBrandKey('Adidas'), 'adidas');
+  assert.equal(normalizeBrandKey('NIKE'), 'nike');
 
+  const nikeSug = suggestSizeForGarment('mid_layer', 'nike', DEFAULT_BIOMETRIC_PROFILE);
+  assert.equal(nikeSug.suggestedSize, 'L');
+  assert.equal(nikeSug.source, 'brand_rule');
+
+  const adidasTypoSug = suggestSizeForGarment('base_top', 'addidas', DEFAULT_BIOMETRIC_PROFILE);
+  assert.equal(adidasTypoSug.suggestedSize, 'M');
+  assert.equal(adidasTypoSug.source, 'brand_rule');
+
+  const shoeSug = suggestSizeForGarment('footwear', '', DEFAULT_BIOMETRIC_PROFILE);
+  assert.equal(shoeSug.suggestedSize, '42');
+  assert.equal(shoeSug.source, 'category_default');
+
+  // Search matching with "addidas" typo against an "Adidas" garment
+  const adidasItem = SEED_WARDROBE_GARMENTS.find((g) => g.brand === 'Adidas');
+  assert.ok(adidasItem, 'Seed should contain an Adidas garment');
+  assert.equal(matchesGarmentSearch(adidasItem!, 'addidas'), true);
+  assert.equal(matchesGarmentSearch(adidasItem!, 'nike'), false);
+
+  // Concise outfit title without verbose concatenations
+  const sampleTop = SEED_WARDROBE_GARMENTS.find((g) => g.category === 'mid_layer')!;
+  const sampleBottom = SEED_WARDROBE_GARMENTS.find((g) => g.category === 'bottom')!;
+  const title = getShortOutfitTitle([sampleTop, sampleBottom]);
+  assert.ok(title.includes('&'), `Expected concise title with '&', got "${title}"`);
+  assert.ok(title.length < 40, `Expected short outfit title < 40 chars, got "${title}"`);
+});
 

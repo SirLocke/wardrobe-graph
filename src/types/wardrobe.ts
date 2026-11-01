@@ -15,6 +15,18 @@ export type HaircutStyle =
 
 export type FacialHair = 'clean_shaven' | 'stubble' | 'short_beard' | 'full_beard';
 
+export interface DefaultSizes {
+  top?: string;
+  bottom?: string;
+  shoes?: string;
+}
+
+export interface BrandSizeRule {
+  brand: string;
+  size: string;
+  categoryGroup?: 'all' | 'top' | 'bottom' | 'shoes';
+}
+
 export interface BiometricProfile {
   id: string;
   undertone: Undertone;
@@ -30,6 +42,8 @@ export interface BiometricProfile {
   facialHair: FacialHair;
   preferredFit: 'slim_tapered' | 'regular_tailored' | 'relaxed_boxy';
   wardrobeScope?: WardrobeScope;
+  defaultSizes?: DefaultSizes;
+  brandSizeRules?: BrandSizeRule[];
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear';
@@ -72,6 +86,8 @@ export interface Garment {
   formality: 1 | 2 | 3 | 4 | 5;     // 1 = Lounge/Sport, 2 = Casual, 3 = Smart Casual, 4 = Business/Chic, 5 = Formal
   waterResistant: boolean;
   isClean: boolean;
+  brand?: string;                   // Optional brand tag (e.g. "Nike", "Adidas", "Levi's", "Zara")
+  size?: string;                    // Optional garment size (e.g. "M", "L", "38", "W32/L32", "42")
   isWishlistSandbox?: boolean;      // For testing hypothetical purchases
   imageDataUrl?: string;            // Optional user photo
 }

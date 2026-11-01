@@ -564,6 +564,7 @@ export default function App() {
         }}
         profile={profile}
         onSaveGarment={handleSaveGarment}
+        onUpdateProfile={handleUpdateProfile}
         initialGarment={editingGarment}
       />
 

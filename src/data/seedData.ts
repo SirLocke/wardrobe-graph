@@ -286,6 +286,17 @@ export const DEFAULT_BIOMETRIC_PROFILE: BiometricProfile = {
   haircutStyle: 'short_fade_structured_top',
   facialHair: 'stubble',
   preferredFit: 'regular_tailored',
+  defaultSizes: {
+    top: 'M',
+    bottom: 'M',
+    shoes: '42',
+  },
+  brandSizeRules: [
+    { brand: 'Nike', size: 'L', categoryGroup: 'all' },
+    { brand: 'Adidas', size: 'M', categoryGroup: 'all' },
+    { brand: "Levi's", size: 'W32/L32', categoryGroup: 'bottom' },
+    { brand: 'Zara', size: 'L', categoryGroup: 'top' },
+  ],
 };
 
 function makeSeedGarment(
@@ -319,6 +330,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'Uniqlo',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'seed_top_2',
@@ -334,6 +347,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Nike',
+    size: 'L',
   }),
   makeSeedGarment({
     id: 'seed_top_3',
@@ -349,6 +364,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'Adidas',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'seed_top_4',
@@ -364,6 +381,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'COS',
+    size: 'M',
   }),
 
   // --- MID-LAYERS (4, including Orphan #1) ---
@@ -381,6 +400,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Carhartt',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'seed_mid_2',
@@ -396,6 +417,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Zara',
+    size: 'L',
   }),
   makeSeedGarment({
     id: 'seed_mid_3',
@@ -411,6 +434,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Uniqlo',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'seed_orphan_1',
@@ -426,6 +451,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 4,
     waterResistant: false,
     isClean: true,
+    brand: 'COS',
+    size: 'M',
   }),
 
   // --- OUTERWEAR (2, including Orphan #2) ---
@@ -443,6 +470,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: true,
     isClean: true,
+    brand: 'Carhartt',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'seed_orphan_2',
@@ -458,6 +487,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 4,
     waterResistant: false,
     isClean: true,
+    brand: 'Zara',
+    size: 'L',
   }),
 
   // --- BOTTOMS (2) ---
@@ -475,6 +506,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Uniqlo',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'seed_bot_2',
@@ -490,6 +523,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: "Levi's",
+    size: 'W32/L32',
   }),
 
   // --- FOOTWEAR (2) ---
@@ -507,6 +542,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: true,
     isClean: true,
+    brand: 'Adidas',
+    size: '42',
   }),
   makeSeedGarment({
     id: 'seed_shoe_2',
@@ -522,6 +559,8 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Birkenstock',
+    size: '42',
   }),
 ];
 
@@ -544,6 +583,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Zara',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'fem_top_2',
@@ -559,6 +600,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'H&M',
+    size: 'S',
   }),
   makeSeedGarment({
     id: 'fem_top_3',
@@ -574,6 +617,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'COS',
+    size: 'S',
   }),
   makeSeedGarment({
     id: 'fem_top_4',
@@ -589,6 +634,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'Adidas',
+    size: 'S',
   }),
   makeSeedGarment({
     id: 'fem_top_5',
@@ -604,6 +651,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'Uniqlo',
+    size: 'S',
   }),
 
   // --- MID-LAYERS (6, including Hoodie, Cardigan, Pullover, Blazer & Orphan #1) ---
@@ -621,6 +670,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Mango',
+    size: '38',
   }),
   makeSeedGarment({
     id: 'fem_mid_2',
@@ -636,6 +687,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'H&M',
+    size: 'S',
   }),
   makeSeedGarment({
     id: 'fem_mid_3',
@@ -651,6 +704,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'COS',
+    size: 'S',
   }),
   makeSeedGarment({
     id: 'fem_mid_4',
@@ -666,6 +721,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'Nike',
+    size: 'M',
   }),
   makeSeedGarment({
     id: 'fem_mid_5',
@@ -681,6 +738,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'Adidas',
+    size: 'S',
   }),
   makeSeedGarment({
     id: 'fem_orphan_1',
@@ -696,6 +755,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 5,
     waterResistant: false,
     isClean: true,
+    brand: 'Zara',
+    size: 'M',
   }),
 
   // --- OUTERWEAR (2, including Orphan #2) ---
@@ -713,6 +774,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: true,
     isClean: true,
+    brand: 'Mango',
+    size: '38',
   }),
   makeSeedGarment({
     id: 'fem_orphan_2',
@@ -728,6 +791,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 4,
     waterResistant: false,
     isClean: true,
+    brand: 'Zara',
+    size: 'M',
   }),
 
   // --- BOTTOMS & SKIRTS (3) ---
@@ -745,6 +810,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Zara',
+    size: '38',
   }),
   makeSeedGarment({
     id: 'fem_bot_2',
@@ -760,6 +827,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'COS',
+    size: '38',
   }),
   makeSeedGarment({
     id: 'fem_bot_3',
@@ -775,6 +844,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: "Levi's",
+    size: 'W28/L30',
   }),
 
   // --- FOOTWEAR (3) ---
@@ -792,6 +863,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: true,
     isClean: true,
+    brand: 'Zara',
+    size: '39',
   }),
   makeSeedGarment({
     id: 'fem_shoe_2',
@@ -807,6 +880,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'COS',
+    size: '39',
   }),
   makeSeedGarment({
     id: 'fem_shoe_3',
@@ -822,6 +897,8 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: true,
     isClean: true,
+    brand: 'Adidas',
+    size: '39',
   }),
 ];
 
@@ -844,6 +921,8 @@ export const SEED_UNISEX_GARMENTS: Garment[] = [
     formality: 2,
     waterResistant: false,
     isClean: true,
+    brand: 'Nike',
+    size: 'L',
   }),
   makeSeedGarment({
     id: 'uni_bot_wide',
@@ -859,6 +938,8 @@ export const SEED_UNISEX_GARMENTS: Garment[] = [
     formality: 3,
     waterResistant: false,
     isClean: true,
+    brand: 'Uniqlo',
+    size: 'M',
   }),
 ];
 

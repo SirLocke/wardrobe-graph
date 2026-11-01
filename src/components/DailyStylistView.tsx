@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import {
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Cloud,
   CloudRain,
+  Edit3,
   Info,
   Layers,
   LayoutGrid,
@@ -15,6 +14,7 @@ import {
   Sun,
   Unlock,
   Wand2,
+  X,
 } from 'lucide-react';
 import {
   CATEGORY_LABELS,
@@ -25,12 +25,14 @@ import {
   SUBCATEGORY_LABELS,
   TEXTURE_LABELS,
 } from '../data/seedData';
+import { getShortOutfitTitle } from '../engine/brandSizeMatcher';
 import { generateOutfitsForContext } from '../engine/outfitGenerator';
 import {
   AppLocale,
   BiometricProfile,
   Garment,
   GarmentCategory,
+  GeneratedOutfit,
   OccasionType,
   OutfitContext,
   StyleVibe,
@@ -67,6 +69,18 @@ const ANATOMICAL_CATEGORY_ORDER: Record<GarmentCategory, number> = {
   footwear: 5,
 };
 
+const CUSTOM_OUTFIT_NAMES_KEY = 'atelier_custom_outfit_names_v1';
+
+function loadCustomOutfitNames(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CUSTOM_OUTFIT_NAMES_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
 export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   garments,
   profile,
@@ -83,7 +97,12 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   const [showAnchorPicker, setShowAnchorPicker] = useState(false);
   const [wornFeedbackId, setWornFeedbackId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'stacked' | 'grid'>('stacked');
-  const [expandedDetailsIds, setExpandedDetailsIds] = useState<Record<string, boolean>>({});
+  const [popupOutfit, setPopupOutfit] = useState<GeneratedOutfit | null>(null);
+  const [customOutfitNames, setCustomOutfitNames] = useState<Record<string, string>>(() =>
+    loadCustomOutfitNames()
+  );
+  const [editingOutfitId, setEditingOutfitId] = useState<string | null>(null);
+  const [editingOutfitNameDraft, setEditingOutfitNameDraft] = useState('');
 
   const activeVibe: StyleVibe = context.styleVibe || 'balanced';
 
@@ -115,11 +134,21 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     });
   };
 
-  const toggleOutfitDetails = (outfitId: string) => {
-    setExpandedDetailsIds((prev) => ({
-      ...prev,
-      [outfitId]: !prev[outfitId],
-    }));
+  const handleSaveCustomOutfitName = (outfitId: string) => {
+    const trimmed = editingOutfitNameDraft.trim();
+    const next = { ...customOutfitNames };
+    if (trimmed) {
+      next[outfitId] = trimmed;
+    } else {
+      delete next[outfitId];
+    }
+    setCustomOutfitNames(next);
+    try {
+      localStorage.setItem(CUSTOM_OUTFIT_NAMES_KEY, JSON.stringify(next));
+    } catch {
+      // Ignore storage quota errors
+    }
+    setEditingOutfitId(null);
   };
 
   const handleMarkWorn = async (outfitId: string, itemIds: string[]) => {
@@ -130,18 +159,6 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     }, 2500);
   };
 
-  const layeringArchitectureLabel = isEn
-    ? context.temperatureC >= 21
-      ? 'Light Summer Look (Top + Bottom + Shoes)'
-      : context.temperatureC >= 14
-      ? 'Everyday Look with Sweater / Jacket (Top + Sweater/Cardigan + Bottom + Shoes)'
-      : 'Warm Weatherproof Look (Top + Sweater + Coat/Jacket + Bottom + Shoes)'
-    : context.temperatureC >= 21
-    ? 'Leichter Sommer-Look (Shirt/Bluse + Hose/Rock + Schuhe)'
-    : context.temperatureC >= 14
-    ? 'Alltags-Look mit Pullover oder Strickjacke (Shirt + Pullover/Blazer + Hose + Schuhe)'
-    : 'Warmer Zwiebel-Look mit Jacke/Mantel (Shirt + Pullover + Jacke/Mantel + Hose + Schuhe)';
-
   return (
     <div className="space-y-8">
       {/* Context Control Panel */}
@@ -150,17 +167,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-5"
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-              {isEn ? 'What should I wear today?' : 'Was ziehe ich heute an?'}
-            </h1>
-            <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              {layeringArchitectureLabel} · {outfits.length}{' '}
-              {isEn
-                ? 'matching outfit ideas from your closet'
-                : 'passende Outfit-Ideen aus deinem Kleiderschrank'}
-            </p>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
+            {isEn ? 'What should I wear today?' : 'Was ziehe ich heute an?'}
+          </h1>
 
           <div className="flex flex-wrap items-center gap-2.5">
             {onOpenSetupWizard && (
@@ -181,7 +190,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-600 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isEn ? 'Settings & Colors' : 'Einstellungen & Farben'}</span>
+                <span>{isEn ? 'Settings & Sizes' : 'Einstellungen & Größen'}</span>
               </button>
             )}
 
@@ -296,6 +305,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium truncate">{g.name}</p>
                       <p className="text-[10px] text-zinc-500 truncate">
+                        {g.brand ? `${g.brand} · ` : ''}
                         {SUBCATEGORY_LABELS[g.subcategory]}
                       </p>
                     </div>
@@ -422,7 +432,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-xs font-medium text-zinc-300">
-              {isEn ? 'Style Mood:' : 'Worauf hast du heute Lust? (Stil):'}
+              {isEn ? 'Style:' : 'Stil:'}
             </span>
           </div>
 
@@ -489,7 +499,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               <button
                 type="button"
                 onClick={() => onChangeContext({ ...context, lockedGarmentIds: [] })}
-                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-100 cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer"
               >
                 {isEn ? 'Clear selected item' : 'Ausgewähltes Einzelteil lösen'}
               </button>
@@ -505,70 +515,82 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         </div>
       ) : (
         <div className="space-y-5">
-          {outfits.map((outfit, idx) => {
+          {outfits.map((outfit) => {
             const isWornJustNow = wornFeedbackId === outfit.id;
             const hasSandboxItem = outfit.items.some((i) => i.isWishlistSandbox);
-            const isDetailsExpanded = Boolean(expandedDetailsIds[outfit.id]);
             const sortedAnatomicalItems = [...outfit.items].sort(
               (a, b) =>
                 ANATOMICAL_CATEGORY_ORDER[a.category] -
                 ANATOMICAL_CATEGORY_ORDER[b.category]
             );
+            const outfitTitle =
+              customOutfitNames[outfit.id] || getShortOutfitTitle(outfit.items);
+            const isEditingTitle = editingOutfitId === outfit.id;
 
             return (
               <article
                 key={outfit.id}
-                className="rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 transition-colors hover:border-zinc-700/80 space-y-5"
+                className="rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 transition-colors hover:border-zinc-700/80 space-y-4"
               >
-                {/* Clean Top Row without overwhelming math/scores */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800/80">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2.5 text-xs text-zinc-400">
-                      <span className="text-sm font-bold text-zinc-100">
-                        {idx + 1}. {isEn ? 'Outfit Idea' : 'Outfit-Vorschlag'}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span className="text-amber-300/90 font-medium">
-                        {isEn
-                          ? STYLE_VIBE_META[activeVibe].labelEn
-                          : STYLE_VIBE_META[activeVibe].labelDe}
-                      </span>
-                      {hasSandboxItem && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="text-sky-300 font-medium">
-                            {isEn ? 'Includes Test Item' : 'Mit Wunschlisten-Testteil'}
+                {/* Minimal, Non-Verbose Card Header */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-800/70">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isEditingTitle ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={editingOutfitNameDraft}
+                          onChange={(e) => setEditingOutfitNameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveCustomOutfitName(outfit.id);
+                            if (e.key === 'Escape') setEditingOutfitId(null);
+                          }}
+                          placeholder="Look-Name (z.B. Büro, Liebling...)"
+                          className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-amber-400/60 text-xs text-zinc-100 focus:outline-none"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveCustomOutfitName(outfit.id)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-400 text-zinc-950 text-xs font-semibold cursor-pointer"
+                        >
+                          OK
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-semibold text-zinc-100 truncate">
+                          {outfitTitle}
+                        </h2>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingOutfitId(outfit.id);
+                            setEditingOutfitNameDraft(customOutfitNames[outfit.id] || outfitTitle);
+                          }}
+                          title={isEn ? 'Rename outfit' : 'Eigenen Namen vergeben'}
+                          aria-label={isEn ? 'Rename outfit' : 'Outfit umbenennen'}
+                          className="p-1 text-zinc-500 hover:text-zinc-300 rounded cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        {hasSandboxItem && (
+                          <span className="text-xs text-sky-300 font-medium">
+                            · {isEn ? 'Test Item' : 'Mit Test-Stück'}
                           </span>
-                        </>
-                      )}
-                    </div>
-                    <p className="text-xs text-zinc-400">
-                      {sortedAnatomicalItems.map((it) => it.name).join(' + ')}
-                    </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => toggleOutfitDetails(outfit.id)}
-                      aria-expanded={isDetailsExpanded}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap"
+                      onClick={() => setPopupOutfit(outfit)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap"
                     >
                       <Info className="w-3.5 h-3.5 text-amber-400" />
-                      <span>
-                        {isDetailsExpanded
-                          ? isEn
-                            ? 'Hide explanation & score'
-                            : 'Erklärung & Punkte ausblenden'
-                          : isEn
-                          ? 'Why does this match? (Show score)'
-                          : 'Warum passt das zusammen? (Erklärung)'}
-                      </span>
-                      {isDetailsExpanded ? (
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      )}
+                      <span>{isEn ? 'Why it works' : 'Warum passt’s?'}</span>
                     </button>
 
                     <button
@@ -581,7 +603,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             .map((i) => i.id)
                         )
                       }
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                         isWornJustNow
                           ? 'bg-emerald-500 text-zinc-950 font-semibold'
                           : 'bg-zinc-100 text-zinc-950 hover:bg-white font-semibold'
@@ -592,7 +614,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                         {isWornJustNow
                           ? isEn
                             ? 'Marked as worn'
-                            : 'Als getragen markiert'
+                            : 'Getragen'
                           : isEn
                           ? 'Wear Today'
                           : 'Heute anziehen'}
@@ -649,13 +671,23 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             {/* Item Details */}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-                                <span>
-                                  {SUBCATEGORY_LABELS[item.subcategory]}
-                                </span>
+                                <span>{SUBCATEGORY_LABELS[item.subcategory]}</span>
+                                {item.brand && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="text-zinc-300 font-medium">{item.brand}</span>
+                                  </>
+                                )}
+                                {item.size && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span>Gr. {item.size}</span>
+                                  </>
+                                )}
                                 {item.isWishlistSandbox && (
                                   <>
                                     <span aria-hidden="true">·</span>
-                                    <span className="text-sky-300">Wunschlisten-Testteil</span>
+                                    <span className="text-sky-300">Test-Stück</span>
                                   </>
                                 )}
                               </div>
@@ -763,7 +795,8 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                               <span className="truncate">{item.colorName}</span>
                             </div>
                             <p className="text-[10px] text-zinc-500 truncate">
-                              {SUBCATEGORY_LABELS[item.subcategory]}
+                              {item.brand ? `${item.brand}` : SUBCATEGORY_LABELS[item.subcategory]}
+                              {item.size ? ` · Gr. ${item.size}` : ''}
                             </p>
                           </div>
                         </div>
@@ -771,85 +804,104 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     })}
                   </div>
                 )}
-
-                {/* Collapsible Details & Score Breakdown (Hidden by default, opens on click) */}
-                {isDetailsExpanded && (
-                  <div className="rounded-xl bg-zinc-950/80 border border-zinc-800/90 p-4 space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-2.5">
-                      <h3 className="text-xs font-semibold text-zinc-200">
-                        {isEn
-                          ? 'Why this outfit works for you (Details & Score)'
-                          : 'Warum dieses Outfit gut zu dir passt (Herleitung & Bewertung)'}
-                      </h3>
-                      <div className="flex items-center gap-3 text-xs font-mono tabular-nums">
-                        <span className="text-emerald-400 font-semibold">
-                          {outfit.totalScore} / 100 {isEn ? 'Points' : 'Punkte'}
-                        </span>
-                        <span className="text-zinc-500">·</span>
-                        <span className="text-zinc-400">
-                          {isEn ? 'Light-Dark Contrast:' : 'Hell-Dunkel-Kontrast:'}{' '}
-                          {outfit.breakdown.lightnessDelta}%
-                        </span>
-                      </div>
-                    </div>
-
-                    <ul className="space-y-2 text-xs text-zinc-300 leading-relaxed">
-                      {outfit.traces.map((trace, tIdx) => (
-                        <li key={tIdx} className="flex items-start gap-2">
-                          <span className="text-amber-400 font-mono select-none">→</span>
-                          <span>{trace}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    {/* 5-Pillar Breakdown in plain German */}
-                    <div className="pt-3 border-t border-zinc-800/80 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center font-mono tabular-nums">
-                      <div className="p-2 rounded-lg bg-zinc-900/60">
-                        <p className="text-[10px] text-zinc-400">
-                          {isEn ? 'Your Colors & Type' : 'Typ & Hautton'}
-                        </p>
-                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
-                          {outfit.breakdown.biometricBase} / 35
-                        </p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-zinc-900/60">
-                        <p className="text-[10px] text-zinc-400">
-                          {isEn ? 'Contrast' : 'Hell-Dunkel-Kontrast'}
-                        </p>
-                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
-                          {outfit.breakdown.contrastCalibration} / 20
-                        </p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-zinc-900/60">
-                        <p className="text-[10px] text-zinc-400">
-                          {isEn ? 'Color Harmony' : 'Farbharmonie'}
-                        </p>
-                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
-                          {outfit.breakdown.colorHarmony} / 20
-                        </p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-zinc-900/60">
-                        <p className="text-[10px] text-zinc-400">
-                          {isEn ? 'Cut & Proportions' : 'Schnitt & Passform'}
-                        </p>
-                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
-                          {outfit.breakdown.silhouetteBalance} / 15
-                        </p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-zinc-900/60">
-                        <p className="text-[10px] text-zinc-400">
-                          {isEn ? 'Fabric Mix' : 'Stoff-Kombination'}
-                        </p>
-                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
-                          {outfit.breakdown.textureContrast} / 10
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </article>
             );
           })}
+        </div>
+      )}
+
+      {/* Small Closable Explanation Popup Modal */}
+      {popupOutfit && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="outfit-explanation-popup-title"
+          onClick={() => setPopupOutfit(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-zinc-900/40">
+              <div>
+                <h3
+                  id="outfit-explanation-popup-title"
+                  className="text-sm font-semibold text-zinc-100"
+                >
+                  {isEn ? 'Why this outfit works' : 'Warum dieses Outfit zusammenpasst'}
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {customOutfitNames[popupOutfit.id] || getShortOutfitTitle(popupOutfit.items)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPopupOutfit(null)}
+                aria-label={isEn ? 'Close popup' : 'Popup schließen'}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs font-mono tabular-nums">
+                <span className="text-zinc-300 font-sans font-medium">
+                  {isEn ? 'Overall Harmony:' : 'Gesamt-Harmonie:'}
+                </span>
+                <span className="text-emerald-400 font-semibold">
+                  {popupOutfit.totalScore} / 100 {isEn ? 'Points' : 'Punkte'}
+                </span>
+              </div>
+
+              <ul className="space-y-2.5 text-xs text-zinc-300 leading-relaxed">
+                {popupOutfit.traces.map((trace, tIdx) => (
+                  <li key={tIdx} className="flex items-start gap-2">
+                    <span className="text-amber-400 font-mono select-none">→</span>
+                    <span>{trace}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="pt-3 border-t border-zinc-800/80 grid grid-cols-3 gap-2 text-center font-mono tabular-nums">
+                <div className="p-2 rounded-lg bg-zinc-900/60">
+                  <p className="text-[10px] text-zinc-400 font-sans">
+                    {isEn ? 'Colors & Type' : 'Typ & Farben'}
+                  </p>
+                  <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                    {popupOutfit.breakdown.biometricBase}/35
+                  </p>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-900/60">
+                  <p className="text-[10px] text-zinc-400 font-sans">
+                    {isEn ? 'Color Match' : 'Farbharmonie'}
+                  </p>
+                  <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                    {popupOutfit.breakdown.colorHarmony}/20
+                  </p>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-900/60">
+                  <p className="text-[10px] text-zinc-400 font-sans">
+                    {isEn ? 'Cut & Fabric' : 'Schnitt & Stoff'}
+                  </p>
+                  <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                    {popupOutfit.breakdown.silhouetteBalance + popupOutfit.breakdown.textureContrast}/25
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3 bg-zinc-900/50 border-t border-zinc-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPopupOutfit(null)}
+                className="px-4 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold cursor-pointer"
+              >
+                {isEn ? 'Close' : 'Schließen'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

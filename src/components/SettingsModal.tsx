@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Palette, Plus, Settings2, Sparkles, Trash2, X } from 'lucide-react';
+import { Check, Palette, Plus, Ruler, Settings2, Sparkles, Tag, Trash2, X } from 'lucide-react';
 import {
   getAllColorPresets,
   loadCustomColors,
@@ -11,6 +11,12 @@ import {
   WARDROBE_SCOPE_META,
   WardrobePresetKey,
 } from '../data/seedData';
+import {
+  POPULAR_BRANDS,
+  removeBrandSizeRule,
+  suggestSizeForGarment,
+  upsertBrandSizeRule,
+} from '../engine/brandSizeMatcher';
 import { classifyColorTemp, hexToHsl, scoreGarmentBiometrics } from '../engine/colorMath';
 import {
   AppLocale,
@@ -109,8 +115,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newColorName, setNewColorName] = useState('');
   const [newColorHex, setNewColorHex] = useState('#6B8E78');
 
-  // Selected color for 1-click quick add
+  // Standard sizes & brand-specific size rule states
+  const [defaultTopSize, setDefaultTopSize] = useState(profile.defaultSizes?.top || 'M');
+  const [defaultBottomSize, setDefaultBottomSize] = useState(profile.defaultSizes?.bottom || 'M');
+  const [defaultShoeSize, setDefaultShoeSize] = useState(profile.defaultSizes?.shoes || '42');
+  const [ruleBrandInput, setRuleBrandInput] = useState('Nike');
+  const [ruleSizeInput, setRuleSizeInput] = useState('L');
+
+  // Selected color & optional brand for 1-click quick add
   const [quickColor, setQuickColor] = useState<TextileColorPreset>(() => getAllColorPresets()[0]);
+  const [quickBrand, setQuickBrand] = useState<string>('');
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,8 +134,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const all = getAllColorPresets();
     setAllColors(all);
     setQuickColor(all[0]);
+    setDefaultTopSize(profile.defaultSizes?.top || 'M');
+    setDefaultBottomSize(profile.defaultSizes?.bottom || 'M');
+    setDefaultShoeSize(profile.defaultSizes?.shoes || '42');
     setFeedbackToast(null);
-  }, [isOpen]);
+  }, [isOpen, profile.defaultSizes]);
 
   if (!isOpen) return null;
 
@@ -152,6 +169,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           : `Kleidungs-Ausrichtung auf „${WARDROBE_SCOPE_META[newScope].shortDe}“ gesetzt.`
       );
     }
+  };
+
+  const handleSaveDefaultSizes = async (nextTop: string, nextBottom: string, nextShoes: string) => {
+    setDefaultTopSize(nextTop);
+    setDefaultBottomSize(nextBottom);
+    setDefaultShoeSize(nextShoes);
+    await onSaveProfile({
+      ...profile,
+      defaultSizes: {
+        top: nextTop.trim() || undefined,
+        bottom: nextBottom.trim() || undefined,
+        shoes: nextShoes.trim() || undefined,
+      },
+    });
+    showToast(isEn ? 'Standard sizes saved!' : 'Standard-Größen gespeichert!');
+  };
+
+  const handleAddBrandSizeRule = async () => {
+    const cleanBrand = ruleBrandInput.trim();
+    const cleanSize = ruleSizeInput.trim();
+    if (!cleanBrand || !cleanSize) return;
+
+    const nextRules = upsertBrandSizeRule(profile.brandSizeRules, {
+      brand: cleanBrand,
+      size: cleanSize,
+      categoryGroup: 'all',
+    });
+
+    await onSaveProfile({
+      ...profile,
+      brandSizeRules: nextRules,
+    });
+
+    showToast(
+      isEn
+        ? `Saved rule: Always size "${cleanSize}" for ${cleanBrand}!`
+        : `Gespeichert: „Bei ${cleanBrand} habe ich immer Größe ${cleanSize}“!`
+    );
+  };
+
+  const handleDeleteBrandSizeRule = async (brand: string) => {
+    const nextRules = removeBrandSizeRule(profile.brandSizeRules, brand, 'all');
+    await onSaveProfile({
+      ...profile,
+      brandSizeRules: nextRules,
+    });
   };
 
   const handleCreateCustomColor = () => {
@@ -188,6 +251,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const colorTemp = classifyColorTemp(hsl);
     const cleanSubLabel = SUBCATEGORY_LABELS[subcategory].split(' (')[0];
     const cleanColor = quickColor.name.replace(' (Test)', '');
+    const sizeSuggestion = suggestSizeForGarment(defaults.category, quickBrand, profile);
 
     const garment: Garment = {
       id: `quick_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -205,13 +269,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       formality: defaults.formality,
       waterResistant: defaults.waterResistant,
       isClean: true,
+      brand: quickBrand.trim() || undefined,
+      size: sizeSuggestion.suggestedSize || undefined,
     };
 
     await onQuickAddGarment(garment);
+    const brandNote = garment.brand ? ` (${garment.brand}${garment.size ? `, Gr. ${garment.size}` : ''})` : garment.size ? ` (Gr. ${garment.size})` : '';
     showToast(
       isEn
-        ? `Added "${garment.name}" to your closet!`
-        : `„${garment.name}“ wurde deinem Schrank hinzugefügt!`
+        ? `Added "${garment.name}"${brandNote} to your closet!`
+        : `„${garment.name}“${brandNote} wurde deinem Schrank hinzugefügt!`
     );
   };
 
@@ -230,6 +297,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   );
 
   const quickItems = QUICK_ADD_ITEMS_BY_SCOPE[activeScope];
+  const savedBrandRules = profile.brandSizeRules || [];
 
   return (
     <div
@@ -248,13 +316,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div>
               <h2 id="settings-modal-title" className="text-base font-semibold text-zinc-100">
                 {isEn
-                  ? 'Settings, Style Focus & Quick Closet Builder'
-                  : 'Einstellungen, Kleidungs-Wahl & Schnell-Baukasten'}
+                  ? 'Settings, Sizes, Brands & Quick Closet Builder'
+                  : 'Einstellungen, Größen, Marken & Schnell-Baukasten'}
               </h2>
               <p className="text-xs text-zinc-400">
                 {isEn
-                  ? 'Choose Women / Men / Unisex / Both, create custom colors & add clothes with 1 click'
-                  : 'Wähle Frauen / Männer / Unisex / Beides, lege eigene Farben an & füge Kleidung mit 1 Klick hinzu'}
+                  ? 'Choose Women / Men / Unisex, save brand sizes ("Nike = L") & add clothes with 1 click'
+                  : 'Wähle Frauen / Männer / Unisex, speichere Marken-Größen („Bei Nike immer L“) & lege Kleidung an'}
               </p>
             </div>
           </div>
@@ -357,54 +425,253 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 2: 1-Klick Schnell-Baukasten (Kleidung sofort anlegen) */}
+          {/* SECTION 2: Größen & Marken-Größen ("Bei Nike habe ich immer Größe X") */}
+          <section className="space-y-3.5 pt-4 border-t border-zinc-800/80">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+                <Ruler className="w-4 h-4 text-amber-400" />
+                {isEn
+                  ? '2. My Sizes & Brand Size Memory ("For Nike I always wear L")'
+                  : '2. Meine Größen & Marken-Größen („Bei Nike habe ich immer Größe …“)'}
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {isEn
+                  ? 'Optional: Save your usual sizes and brand-specific sizes so the app automatically suggests the right size when adding clothes.'
+                  : 'Optional: Hinterlege deine normalen Größen oder Marken-Größen – beim Anlegen neuer Kleidung wird die passende Größe automatisch vorgeschlagen.'}
+              </p>
+            </div>
+
+            {/* Standard Sizes Row */}
+            <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3">
+              <p className="text-xs font-medium text-zinc-300">
+                {isEn ? 'Your usual standard sizes (optional):' : 'Deine normalen Standard-Größen (optional):'}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">
+                    {isEn ? 'Tops / Jackets (e.g. S, M, L, 38)' : 'Oberteile & Jacken (z.B. S, M, L, 38)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={defaultTopSize}
+                    onChange={(e) =>
+                      handleSaveDefaultSizes(e.target.value, defaultBottomSize, defaultShoeSize)
+                    }
+                    placeholder="z.B. M oder 38"
+                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">
+                    {isEn ? 'Trousers / Jeans (e.g. M, 38, W32)' : 'Hosen & Röcke (z.B. M, 38, W32/L32)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={defaultBottomSize}
+                    onChange={(e) =>
+                      handleSaveDefaultSizes(defaultTopSize, e.target.value, defaultShoeSize)
+                    }
+                    placeholder="z.B. M, 38 oder W32"
+                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">
+                    {isEn ? 'Shoes (e.g. 39, 42, 43)' : 'Schuhe (z.B. 39, 41, 42, 44)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={defaultShoeSize}
+                    onChange={(e) =>
+                      handleSaveDefaultSizes(defaultTopSize, defaultBottomSize, e.target.value)
+                    }
+                    placeholder="z.B. 39 oder 42"
+                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Brand-specific size memory */}
+            <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                  {isEn
+                    ? 'Brand-Specific Size Rules ("For Nike I always wear size X"):'
+                    : 'Marken-Größen merken (z.B. „Bei Nike habe ich immer Größe L“):'}
+                </p>
+              </div>
+
+              {/* Popular brand quick buttons */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {POPULAR_BRANDS.slice(0, 10).map((b) => {
+                  const isSelected = ruleBrandInput.toLowerCase() === b.toLowerCase();
+                  return (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setRuleBrandInput(b)}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-amber-500/15 border-amber-400 text-amber-200'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-xs text-zinc-400 whitespace-nowrap">
+                    {isEn ? 'For brand' : 'Bei Marke'}
+                  </span>
+                  <input
+                    type="text"
+                    value={ruleBrandInput}
+                    onChange={(e) => setRuleBrandInput(e.target.value)}
+                    placeholder="z.B. Nike, Adidas, Zara..."
+                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 sm:w-48">
+                  <span className="text-xs text-zinc-400 whitespace-nowrap">
+                    {isEn ? 'always size' : 'immer Größe'}
+                  </span>
+                  <input
+                    type="text"
+                    value={ruleSizeInput}
+                    onChange={(e) => setRuleSizeInput(e.target.value)}
+                    placeholder="z.B. L, M, 42, W32..."
+                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddBrandSizeRule}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {isEn ? 'Save Brand Size' : 'Marken-Größe merken'}
+                </button>
+              </div>
+
+              {savedBrandRules.length > 0 && (
+                <div className="pt-2 border-t border-zinc-800/70 space-y-1.5">
+                  <p className="text-[11px] text-zinc-400">
+                    {isEn ? 'Saved brand sizes (auto-suggested when adding clothes):' : 'Gespeicherte Marken-Größen (werden beim Anlegen automatisch vorgeschlagen):'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {savedBrandRules.map((rule) => (
+                      <div
+                        key={`${rule.brand}_${rule.categoryGroup || 'all'}`}
+                        className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200"
+                      >
+                        <span className="font-semibold text-amber-300">{rule.brand}</span>
+                        <span className="text-zinc-500">→</span>
+                        <span>Gr. {rule.size}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBrandSizeRule(rule.brand)}
+                          className="text-zinc-500 hover:text-rose-400 cursor-pointer"
+                          title={isEn ? 'Remove brand size' : 'Marken-Größe löschen'}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* SECTION 3: 1-Klick Schnell-Baukasten (Kleidung sofort anlegen) */}
           <section className="space-y-3 pt-4 border-t border-zinc-800/80">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-amber-400" />
                   {isEn
-                    ? '2. Add Clothes with 1 Click'
-                    : '2. Eigene Kleidungsstücke mit 1 Klick hinzufügen'}
+                    ? '3. Add Clothes with 1 Click'
+                    : '3. Eigene Kleidungsstücke mit 1 Klick hinzufügen'}
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
                   {isEn
-                    ? 'Pick a color below, then tap any garment icon to add it to your closet immediately.'
-                    : 'Wähle erst eine Farbe aus und tippe dann einfach auf ein Kleidungsstück, um es sofort anzulegen.'}
+                    ? 'Pick a color (and optional brand), then tap any garment icon to add it with your matching size.'
+                    : 'Wähle Farbe (und optional eine Marke) und tippe auf ein Kleidungsstück, um es inklusive passender Größe sofort anzulegen.'}
                 </p>
               </div>
             </div>
 
-            {/* Color selector bar for Quick-Add */}
-            <div className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-2">
-              <div className="text-xs font-medium text-zinc-300">
-                {isEn ? 'Selected color for Quick-Add:' : 'Gewählte Farbe für Schnell-Anlegen:'}{' '}
-                <span className="text-amber-400 font-semibold">
-                  {quickColor.name.replace(' (Test)', '')}
-                </span>
+            {/* Color & Optional Brand selector bar for Quick-Add */}
+            <div className="p-3 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3">
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium text-zinc-300">
+                  {isEn ? 'Selected color for Quick-Add:' : 'Gewählte Farbe für Schnell-Anlegen:'}{' '}
+                  <span className="text-amber-400 font-semibold">
+                    {quickColor.name.replace(' (Test)', '')}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {allColors.slice(0, 14).map((c) => {
+                    const active = c.hex.toUpperCase() === quickColor.hex.toUpperCase();
+                    return (
+                      <button
+                        key={`${c.name}_${c.hex}`}
+                        type="button"
+                        onClick={() => setQuickColor(c)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all cursor-pointer ${
+                          active
+                            ? 'bg-zinc-800 border-amber-400 text-zinc-100 ring-1 ring-amber-400/40'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-white/20"
+                          style={{ backgroundColor: c.hex }}
+                        />
+                        <span>{c.name.replace(' (Test)', '')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {allColors.slice(0, 16).map((c) => {
-                  const active = c.hex.toUpperCase() === quickColor.hex.toUpperCase();
-                  return (
-                    <button
-                      key={`${c.name}_${c.hex}`}
-                      type="button"
-                      onClick={() => setQuickColor(c)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${
-                        active
-                          ? 'bg-zinc-800 border-amber-400 text-zinc-100 ring-1 ring-amber-400/40'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span
-                        className="w-3.5 h-3.5 rounded-full border border-white/20"
-                        style={{ backgroundColor: c.hex }}
-                      />
-                      <span>{c.name.replace(' (Test)', '')}</span>
-                    </button>
-                  );
-                })}
+
+              <div className="pt-2 border-t border-zinc-800/60 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-zinc-400 mr-1">
+                  {isEn ? 'Optional brand tag:' : 'Optional Marke vergeben:'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setQuickBrand('')}
+                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium cursor-pointer ${
+                    quickBrand === ''
+                      ? 'bg-zinc-100 text-zinc-950 border-zinc-100 font-semibold'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {isEn ? 'No brand' : 'Ohne Marke'}
+                </button>
+                {['Nike', 'Adidas', "Levi's", 'Zara', 'H&M', 'Uniqlo', 'COS', 'Carhartt'].map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setQuickBrand(b)}
+                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium cursor-pointer ${
+                      quickBrand === b
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {b}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -412,18 +679,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {quickItems.map((sub) => {
                 const cleanLabel = SUBCATEGORY_LABELS[sub].split(' (')[0];
+                const defaults = SMART_SUBCATEGORY_DEFAULTS[sub];
+                const autoSize = suggestSizeForGarment(defaults.category, quickBrand, profile).suggestedSize;
                 return (
                   <button
                     key={sub}
                     type="button"
                     onClick={() => handleInstantAdd(sub)}
-                    className="group flex items-center gap-2.5 p-2.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition-all text-left"
+                    className="group flex items-center gap-2.5 p-2.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition-all text-left cursor-pointer"
                   >
                     <div className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800/80 flex items-center justify-center shrink-0">
                       <GarmentVector
                         type={sub}
                         colorHex={quickColor.hex}
-                        texture={SMART_SUBCATEGORY_DEFAULTS[sub].texture}
+                        texture={defaults.texture}
                         className="w-8 h-8"
                       />
                     </div>
@@ -432,7 +701,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         + {cleanLabel}
                       </p>
                       <p className="text-[10px] text-zinc-500 truncate">
-                        {quickColor.name.replace(' (Test)', '')}
+                        {quickBrand ? `${quickBrand} · ` : ''}
+                        {autoSize ? `Gr. ${autoSize}` : quickColor.name.replace(' (Test)', '')}
                       </p>
                     </div>
                   </button>
@@ -441,14 +711,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 3: Eigene Farben einfach anlegen */}
+          {/* SECTION 4: Eigene Farben einfach anlegen */}
           <section className="space-y-3 pt-4 border-t border-zinc-800/80">
             <div>
               <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 <Palette className="w-4 h-4 text-amber-400" />
                 {isEn
-                  ? '3. Create Your Own Colors (No Hex Codes Needed)'
-                  : '3. Eigene Lieblingsfarben anlegen (ohne Hex-Codes)'}
+                  ? '4. Create Your Own Colors (No Hex Codes Needed)'
+                  : '4. Eigene Lieblingsfarben anlegen (ohne Hex-Codes)'}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isEn
@@ -486,7 +756,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={handleCreateCustomColor}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   {isEn ? 'Save Color' : 'Farbe anlegen'}
@@ -533,11 +803,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 4: Sprache */}
+          {/* SECTION 5: Sprache */}
           <section className="flex items-center justify-between pt-4 border-t border-zinc-800/80">
             <div>
               <h3 className="text-sm font-semibold text-zinc-100">
-                {isEn ? '4. App Language' : '4. Sprache der App'}
+                {isEn ? '5. App Language' : '5. Sprache der App'}
               </h3>
               <p className="text-xs text-zinc-400">
                 {isEn ? 'Switch between German and English' : 'Zwischen Deutsch und Englisch wechseln'}
