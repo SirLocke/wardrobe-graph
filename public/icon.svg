@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#09090b"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" stroke="#27272a" stroke-width="8"/>
+  <!-- Stylized Hanger & Color Prism Vector -->
+  <path d="M256 128C273.673 128 288 142.327 288 160C288 174.458 278.414 186.678 265.249 190.648L256 193.438V220L396 302C408.374 309.247 416 322.517 416 336.854C416 359.578 397.578 378 374.854 378H137.146C114.422 378 96 359.578 96 336.854C96 322.517 103.626 309.247 116 302L256 220" stroke="#f4f4f5" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="176" cy="330" r="18" fill="#8F9779"/>
+  <circle cx="230" cy="330" r="18" fill="#D5C7B8"/>
+  <circle cx="284" cy="330" r="18" fill="#5E2129"/>
+  <circle cx="338" cy="330" r="18" fill="#1B263B"/>
+</svg>

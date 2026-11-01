@@ -1,0 +1,6 @@
+{
+  "name": "ATELIER // BIOMETRIC — Deterministic Wardrobe & Gap-Analyzer",
+  "description": "100% deterministische, regelbasierte Biometrie-Garderobe, täglicher Outfit-Generator und kombinatorischer Gap-Analyzer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

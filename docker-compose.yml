@@ -1,0 +1,15 @@
+services:
+  atelier-biometric:
+    container_name: atelier-biometric
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - WARDROBE_DATA_FILE=/app/data/wardrobe-store.json
+    restart: unless-stopped

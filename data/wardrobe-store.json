@@ -1,0 +1,315 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-01T16:49:08.355Z",
+  "profile": {
+    "id": "default_profile",
+    "undertone": "olive",
+    "contrastLevel": "medium",
+    "chromaLevel": "muted",
+    "valueLevel": "medium",
+    "skinHex": "#C8A98E",
+    "eyeColorName": "Grün-Haselnuss (Green-Hazel)",
+    "eyeHex": "#6E7D4E",
+    "hairColorName": "Dunkelblond / Aschbraun",
+    "hairHex": "#5A4D41",
+    "haircutStyle": "short_fade_structured_top",
+    "facialHair": "stubble",
+    "preferredFit": "regular_tailored"
+  },
+  "garments": [
+    {
+      "id": "seed_top_1",
+      "name": "Heavyweight Tee Salbeigrün",
+      "category": "base_top",
+      "subcategory": "heavyweight_tee",
+      "colorName": "Salbeigrün",
+      "colorHex": "#8F9779",
+      "fit": "relaxed",
+      "neckline": "heavy_crewneck",
+      "texture": "heavy_jersey",
+      "thermalRating": 2,
+      "formality": 2,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 76,
+        "s": 13,
+        "l": 53
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "seed_top_2",
+      "name": "Heavyweight Tee Off-White",
+      "category": "base_top",
+      "subcategory": "heavyweight_tee",
+      "colorName": "Off-White",
+      "colorHex": "#F4F1EA",
+      "fit": "regular",
+      "neckline": "heavy_crewneck",
+      "texture": "heavy_jersey",
+      "thermalRating": 2,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 42,
+        "s": 31,
+        "l": 94
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "seed_top_3",
+      "name": "Supima T-Shirt Anthrazit",
+      "category": "base_top",
+      "subcategory": "t_shirt",
+      "colorName": "Anthrazit",
+      "colorHex": "#2B2D42",
+      "fit": "regular",
+      "neckline": "crewneck",
+      "texture": "smooth_cotton",
+      "thermalRating": 1,
+      "formality": 2,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 235,
+        "s": 21,
+        "l": 21
+      },
+      "colorTemp": "cool"
+    },
+    {
+      "id": "seed_top_4",
+      "name": "Struktur-Longsleeve Espresso",
+      "category": "base_top",
+      "subcategory": "longsleeve",
+      "colorName": "Espresso",
+      "colorHex": "#3B2F2F",
+      "fit": "regular",
+      "neckline": "heavy_crewneck",
+      "texture": "heavy_jersey",
+      "thermalRating": 3,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 0,
+        "s": 11,
+        "l": 21
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "seed_mid_1",
+      "name": "Twill Overshirt Dunkel-Oliv",
+      "category": "mid_layer",
+      "subcategory": "overshirt",
+      "colorName": "Dunkel-Oliv",
+      "colorHex": "#4B5320",
+      "fit": "relaxed",
+      "neckline": "stand_collar",
+      "texture": "twill_chino",
+      "thermalRating": 3,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 69,
+        "s": 44,
+        "l": 23
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "seed_mid_2",
+      "name": "Oxford Hemd Sand-Beige",
+      "category": "mid_layer",
+      "subcategory": "button_down_shirt",
+      "colorName": "Sand / Beige",
+      "colorHex": "#D5C7B8",
+      "fit": "regular",
+      "neckline": "shirt_collar",
+      "texture": "smooth_cotton",
+      "thermalRating": 2,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 31,
+        "s": 26,
+        "l": 78
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "seed_mid_3",
+      "name": "Waffelstrick Crewneck Navy",
+      "category": "mid_layer",
+      "subcategory": "knit_sweater",
+      "colorName": "Navy",
+      "colorHex": "#1B263B",
+      "fit": "relaxed",
+      "neckline": "heavy_crewneck",
+      "texture": "chunky_knit",
+      "thermalRating": 3,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 219,
+        "s": 37,
+        "l": 17
+      },
+      "colorTemp": "cool"
+    },
+    {
+      "id": "seed_orphan_1",
+      "name": "Feinstrick Rollkragen Burgunder",
+      "category": "mid_layer",
+      "subcategory": "turtleneck",
+      "colorName": "Burgunder",
+      "colorHex": "#5E2129",
+      "fit": "slim",
+      "neckline": "turtleneck",
+      "texture": "fine_knit",
+      "thermalRating": 4,
+      "formality": 4,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 352,
+        "s": 48,
+        "l": 25
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "seed_out_1",
+      "name": "3-Lagen Tech-Parka Dunkel-Oliv",
+      "category": "outerwear",
+      "subcategory": "parka",
+      "colorName": "Dunkel-Oliv",
+      "colorHex": "#4B5320",
+      "fit": "relaxed",
+      "neckline": "stand_collar",
+      "texture": "tech_waterproof",
+      "thermalRating": 4,
+      "formality": 3,
+      "waterResistant": true,
+      "isClean": true,
+      "hsl": {
+        "h": 69,
+        "s": 44,
+        "l": 23
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "seed_orphan_2",
+      "name": "Suede-Leder Blouson Waldkiefer",
+      "category": "outerwear",
+      "subcategory": "blouson",
+      "colorName": "Waldkiefer",
+      "colorHex": "#2D4A3E",
+      "fit": "regular",
+      "neckline": "stand_collar",
+      "texture": "leather_suede",
+      "thermalRating": 3,
+      "formality": 4,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 155,
+        "s": 24,
+        "l": 23
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "seed_bot_1",
+      "name": "Tapered Chino Sand-Beige",
+      "category": "bottom",
+      "subcategory": "chino",
+      "colorName": "Sand / Beige",
+      "colorHex": "#D5C7B8",
+      "fit": "regular",
+      "neckline": "none",
+      "texture": "twill_chino",
+      "thermalRating": 2,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 31,
+        "s": 26,
+        "l": 78
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "seed_bot_2",
+      "name": "Selvedge Denim Raw Indigo",
+      "category": "bottom",
+      "subcategory": "denim",
+      "colorName": "Raw Indigo",
+      "colorHex": "#24344D",
+      "fit": "regular",
+      "neckline": "none",
+      "texture": "denim",
+      "thermalRating": 3,
+      "formality": 2,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 217,
+        "s": 36,
+        "l": 22
+      },
+      "colorTemp": "cool"
+    },
+    {
+      "id": "seed_shoe_1",
+      "name": "Minimalistischer Leder-Sneaker Off-White",
+      "category": "footwear",
+      "subcategory": "sneaker_clean",
+      "colorName": "Off-White",
+      "colorHex": "#F4F1EA",
+      "fit": "regular",
+      "neckline": "none",
+      "texture": "leather_suede",
+      "thermalRating": 2,
+      "formality": 3,
+      "waterResistant": true,
+      "isClean": true,
+      "hsl": {
+        "h": 42,
+        "s": 31,
+        "l": 94
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "seed_shoe_2",
+      "name": "Suede Desert-Boot Espresso",
+      "category": "footwear",
+      "subcategory": "boots",
+      "colorName": "Espresso",
+      "colorHex": "#3B2F2F",
+      "fit": "regular",
+      "neckline": "none",
+      "texture": "leather_suede",
+      "thermalRating": 3,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 0,
+        "s": 11,
+        "l": 21
+      },
+      "colorTemp": "neutral"
+    }
+  ]
+}
