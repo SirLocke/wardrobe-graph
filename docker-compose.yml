@@ -1,6 +1,7 @@
 services:
-  atelier-biometric:
-    container_name: atelier-biometric
+  thread-graph:
+    image: ghcr.io/thread-graph/thread-graph:latest
+    container_name: thread-graph
     build:
       context: .
       dockerfile: Dockerfile

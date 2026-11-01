@@ -1,8 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Edit3,
   FileCode2,
+  HelpCircle,
   Plus,
   Search,
   Sparkles,
@@ -14,9 +17,12 @@ import {
   NECKLINE_LABELS,
   SUBCATEGORY_LABELS,
   TEXTURE_LABELS,
+  WARDROBE_PRESETS,
+  WardrobePresetKey,
 } from '../data/seedData';
 import { scoreGarmentBiometrics } from '../engine/colorMath';
 import {
+  AppLocale,
   BiometricProfile,
   Garment,
   GarmentCategory,
@@ -26,9 +32,12 @@ import { GarmentVector } from './GarmentVector';
 interface SmartClosetViewProps {
   garments: Garment[];
   profile: BiometricProfile;
+  locale?: AppLocale;
   outfitCountsByGarmentId: Record<string, number>;
   onOpenAddModal: () => void;
   onOpenImportExportModal: () => void;
+  onOpenSetupWizard?: () => void;
+  onLoadCollectionPreset?: (presetKey: WardrobePresetKey) => Promise<void>;
   onEditGarment: (garment: Garment) => void;
   onDeleteGarment: (id: string) => Promise<void>;
   onToggleClean: (id: string, nextClean: boolean) => Promise<void>;
@@ -42,19 +51,27 @@ type SortMode = 'biometric_desc' | 'biometric_asc' | 'outfits_desc' | 'name_asc'
 export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
   garments,
   profile,
+  locale = 'de',
   outfitCountsByGarmentId,
   onOpenAddModal,
   onOpenImportExportModal,
+  onLoadCollectionPreset,
   onEditGarment,
   onDeleteGarment,
   onToggleClean,
   onLockAndStyle,
 }) => {
+  const isEn = locale === 'en';
   const [categoryFilter, setCategoryFilter] = useState<GarmentCategory | 'all'>('all');
   const [cleanFilter, setCleanFilter] = useState<CleanFilter>('all');
   const [seasonFilter, setSeasonFilter] = useState<SeasonFilter>('all');
-  const [sortMode, setSortMode] = useState<SortMode>('biometric_desc');
+  const [sortMode, setSortMode] = useState<SortMode>('outfits_desc');
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedCardIds, setExpandedCardIds] = useState<Record<string, boolean>>({});
+
+  const toggleCardDetails = (id: string) => {
+    setExpandedCardIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const enrichedGarments = useMemo(() => {
     return garments.map((g) => ({
@@ -96,12 +113,6 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
       });
   }, [enrichedGarments, categoryFilter, cleanFilter, seasonFilter, sortMode, searchQuery]);
 
-  const avgBiometricScore = useMemo(() => {
-    if (enrichedGarments.length === 0) return 0;
-    const total = enrichedGarments.reduce((acc, item) => acc + item.bio.score, 0);
-    return Math.round(total / enrichedGarments.length);
-  }, [enrichedGarments]);
-
   return (
     <div className="space-y-6">
       {/* Header & Summary Strip */}
@@ -109,11 +120,12 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-              Smart Closet & Inventar
+              {isEn ? 'My Wardrobe' : 'Mein Kleiderschrank'}
             </h1>
-            <p className="text-xs sm:text-sm text-zinc-400 mt-1 font-mono tabular-nums">
-              {garments.length} Teile gesamt · Ø {avgBiometricScore}% Biometrie-Kompatibilität ·{' '}
-              {garments.filter((g) => g.isClean).length} frisch gewaschen
+            <p className="text-xs sm:text-sm text-zinc-400 mt-1">
+              {garments.length} {isEn ? 'items in wardrobe' : 'Kleidungsstücke im Schrank'} ·{' '}
+              {garments.filter((g) => g.isClean).length}{' '}
+              {isEn ? 'clean & ready to wear' : 'frisch gewaschen & tragbar'}
             </p>
           </div>
 
@@ -124,7 +136,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap"
             >
               <FileCode2 className="w-4 h-4 text-amber-400" />
-              <span>Import / Export & LLM-Schema</span>
+              <span>{isEn ? 'Backup / Import' : 'Backup & Import'}</span>
             </button>
 
             <button
@@ -133,10 +145,43 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-100 hover:bg-white text-xs font-semibold text-zinc-950 transition-colors cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Kleidungsstück</span>
+              <span>{isEn ? '+ Add Garment' : '+ Neues Kleidungsstück'}</span>
             </button>
           </div>
         </div>
+
+        {/* Starter Collection Switcher */}
+        {onLoadCollectionPreset && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-zinc-800/70">
+            <span className="text-xs font-medium text-zinc-400">
+              {isEn
+                ? 'Load example wardrobe:'
+                : 'Beispiel-Kleiderschrank laden (zum Ausprobieren):'}
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  'womenswear_capsule',
+                  'menswear_unisex',
+                  'unisex_essentials',
+                  'combined_atelier',
+                ] as WardrobePresetKey[]
+              ).map((presetKey) => {
+                const preset = WARDROBE_PRESETS[presetKey];
+                return (
+                  <button
+                    key={presetKey}
+                    type="button"
+                    onClick={() => onLoadCollectionPreset(presetKey)}
+                    className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-amber-400/60 text-xs text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    {isEn ? preset.labelEn : preset.labelDe}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Filter Controls */}
         <div className="space-y-4">
@@ -151,7 +196,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                   : 'text-zinc-400 hover:text-zinc-100'
               }`}
             >
-              Alle Kategorien ({garments.length})
+              Alle ({garments.length})
             </button>
             {(Object.keys(CATEGORY_LABELS) as GarmentCategory[]).map((cat) => {
               const count = garments.filter((g) => g.category === cat).length;
@@ -181,7 +226,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                 aria-label="Kleiderschrank durchsuchen"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Suche nach Name, Farbe, Schnitt..."
+                placeholder="Suche nach T-Shirt, Jeans, Farbe..."
                 className="w-full rounded-lg bg-zinc-950 border border-zinc-800 pl-9 pr-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
               />
             </div>
@@ -192,10 +237,10 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               onChange={(e) => setCleanFilter(e.target.value as CleanFilter)}
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-200"
             >
-              <option value="all">Status: Alle anzeigen</option>
-              <option value="clean">Status: Nur frisch gewaschen</option>
-              <option value="dirty">Status: Im Wäschekorb</option>
-              <option value="sandbox">Status: Nur Sandbox-Testteile</option>
+              <option value="all">Wäsche-Status: Alle</option>
+              <option value="clean">Nur frisch gewaschen</option>
+              <option value="dirty">Im Wäschekorb</option>
+              <option value="sandbox">Nur Test-Stücke</option>
             </select>
 
             <select
@@ -204,10 +249,10 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               onChange={(e) => setSeasonFilter(e.target.value as SeasonFilter)}
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-200"
             >
-              <option value="all">Saison: Alle Temperaturstufen</option>
-              <option value="warm_weather">Sommer & Mild (&gt;18°C)</option>
-              <option value="transition">Übergang (10–20°C)</option>
-              <option value="cold_weather">Herbst & Winter (&lt;14°C)</option>
+              <option value="all">Wetter: Für jedes Wetter</option>
+              <option value="warm_weather">Für warme Tage (&gt;18°C)</option>
+              <option value="transition">Für Übergangswetter (10–20°C)</option>
+              <option value="cold_weather">Für kalte Tage (&lt;14°C)</option>
             </select>
 
             <select
@@ -216,9 +261,8 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               onChange={(e) => setSortMode(e.target.value as SortMode)}
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-200"
             >
-              <option value="biometric_desc">Sortierung: Biometrie-Match (Hoch → Niedrig)</option>
-              <option value="biometric_asc">Sortierung: Biometrie-Match (Niedrig → Hoch)</option>
-              <option value="outfits_desc">Sortierung: Outfit-Einbindung (Vielseitig → Isoliert)</option>
+              <option value="outfits_desc">Sortierung: Vielseitig kombinierbar</option>
+              <option value="biometric_desc">Sortierung: Beste Farben für mich</option>
               <option value="name_asc">Sortierung: Alphabetisch (A–Z)</option>
             </select>
           </div>
@@ -248,6 +292,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(({ garment, bio, validOutfits }) => {
             const isOrphan = bio.score >= 70 && validOutfits <= 2;
+            const isExpanded = Boolean(expandedCardIds[garment.id]);
 
             return (
               <article
@@ -255,32 +300,22 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                 className="rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 flex flex-col justify-between hover:border-zinc-700 transition-colors"
               >
                 <div>
-                  {/* Top Metadata Line (Clean unboxed typography) */}
-                  <div className="flex items-center justify-between gap-2 text-xs font-mono tabular-nums text-zinc-400 pb-3 border-b border-zinc-800/80">
+                  {/* Top Metadata Line */}
+                  <div className="flex items-center justify-between gap-2 text-xs text-zinc-400 pb-3 border-b border-zinc-800/80">
                     <div className="flex items-center gap-1.5 truncate">
-                      <span
-                        className={
-                          bio.score >= 82
-                            ? 'text-emerald-400 font-semibold'
-                            : bio.score >= 68
-                            ? 'text-amber-300 font-semibold'
-                            : 'text-rose-400 font-semibold'
-                        }
-                      >
-                        {bio.score}% Match
+                      <span className="font-medium text-zinc-300">
+                        Passt in {validOutfits} {validOutfits === 1 ? 'Outfit' : 'Outfits'}
                       </span>
-                      <span aria-hidden="true">·</span>
-                      <span>{validOutfits} Outfits</span>
                       {isOrphan && (
                         <>
                           <span aria-hidden="true">·</span>
-                          <span className="text-amber-400">Schrankleiche</span>
+                          <span className="text-amber-400">Einzelstück (wenig Kombi-Partner)</span>
                         </>
                       )}
                       {garment.isWishlistSandbox && (
                         <>
                           <span aria-hidden="true">·</span>
-                          <span className="text-sky-400">Sandbox</span>
+                          <span className="text-sky-400">Test-Stück</span>
                         </>
                       )}
                     </div>
@@ -331,29 +366,67 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                         {garment.name}
                       </h2>
                       <p className="text-xs text-zinc-400 truncate">
-                        {SUBCATEGORY_LABELS[garment.subcategory]} · {FIT_LABELS[garment.fit].split(' / ')[0]}
+                        {SUBCATEGORY_LABELS[garment.subcategory]} · {FIT_LABELS[garment.fit].split(' (')[0]}
                       </p>
-                      <div className="flex items-center gap-2 text-xs text-zinc-300 font-mono tabular-nums">
+                      <div className="flex items-center gap-2 text-xs text-zinc-300">
                         <span
                           className="w-3 h-3 rounded-full border border-white/20 shrink-0"
                           style={{ backgroundColor: garment.colorHex }}
                         />
                         <span className="truncate">{garment.colorName}</span>
-                        <span className="text-zinc-500">{garment.colorHex}</span>
                       </div>
                       <p className="text-[11px] text-zinc-500 truncate">
-                        {TEXTURE_LABELS[garment.texture].split(' / ')[0]} ·{' '}
+                        {TEXTURE_LABELS[garment.texture].split(' (')[0]}
                         {garment.neckline !== 'none'
-                          ? NECKLINE_LABELS[garment.neckline].split(' (')[0]
-                          : `Formalität ${garment.formality}/5`}
+                          ? ` · ${NECKLINE_LABELS[garment.neckline].split(' (')[0]}`
+                          : ''}
                       </p>
                     </div>
                   </div>
 
-                  {/* Biometric Trace */}
-                  <p className="text-xs text-zinc-400 bg-zinc-950/60 border border-zinc-800/60 rounded-lg p-2.5 leading-relaxed">
-                    {bio.reasons[0]}
-                  </p>
+                  {/* Collapsible Color & Fit Check */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleCardDetails(garment.id)}
+                      aria-expanded={isExpanded}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-zinc-950/60 hover:bg-zinc-950 border border-zinc-800/70 text-xs text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <HelpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>
+                          {isEn
+                            ? 'Why does this color suit me? (Details)'
+                            : 'Passt diese Farbe zu meinem Typ? (Erklärung)'}
+                        </span>
+                      </span>
+                      {isExpanded ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                      )}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-2 rounded-lg bg-zinc-950/90 border border-zinc-800/80 p-3 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between font-mono text-[11px]">
+                          <span className="text-zinc-400">Typ- & Farb-Harmonie:</span>
+                          <span
+                            className={
+                              bio.score >= 82
+                                ? 'text-emerald-400 font-semibold'
+                                : bio.score >= 68
+                                ? 'text-amber-300 font-semibold'
+                                : 'text-rose-400 font-semibold'
+                            }
+                          >
+                            {bio.score}% Passung
+                          </span>
+                        </div>
+                        <p className="text-zinc-300 leading-relaxed">{bio.reasons[0]}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Card Bottom Actions */}
@@ -366,7 +439,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                     }`}
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>{garment.isClean ? 'Frisch im Schrank' : 'Im Wäschekorb (Klick = Waschen)'}</span>
+                    <span>{garment.isClean ? 'Frisch im Schrank' : 'Im Wäschekorb (Waschen)'}</span>
                   </button>
 
                   <button
@@ -375,7 +448,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>Outfit kombinieren</span>
+                    <span>Outfit darum bauen</span>
                   </button>
                 </div>
               </article>

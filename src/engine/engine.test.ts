@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_BIOMETRIC_PROFILE,
   SEED_WARDROBE_GARMENTS,
+  SEED_WOMENSWEAR_GARMENTS,
 } from '../data/seedData';
 import {
   createDefaultWardrobeState,
@@ -89,6 +90,17 @@ test('outfitGenerator: generates top outfits with German rule traces across cont
   assert.ok(mildOutfits.length > 0, 'Should generate outfits for Mild Casual 18°C');
   assert.ok(mildOutfits[0].totalScore >= 80, `Top outfit score should be >= 80, got ${mildOutfits[0].totalScore}`);
   assert.ok(mildOutfits[0].traces.length >= 2, 'Should include German rule traces');
+
+  // Verify MMR diversity: Top 3 outfits must use 3 different mid-layers, Top 4 must use 4 different base-tops
+  const top3MidIds = new Set(
+    mildOutfits.slice(0, 3).map((o) => o.items.find((i) => i.category === 'mid_layer')?.id)
+  );
+  assert.equal(top3MidIds.size, 3, 'Top 3 outfits must showcase 3 distinct mid-layers');
+
+  const top4BaseIds = new Set(
+    mildOutfits.slice(0, 4).map((o) => o.items.find((i) => i.category === 'base_top')?.id)
+  );
+  assert.equal(top4BaseIds.size, 4, 'Top 4 outfits must showcase 4 distinct base-tops');
 
   // Rain filter excludes non-water-resistant footwear
   const rainOutfits = generateOutfitsForContext(
@@ -232,5 +244,46 @@ test('mcpHandler: executes initialize, tools/list, and tools/call (add_garment +
   assert.equal(parsedPayload.totalWardrobeCount, 15);
   assert.ok(parsedPayload.biometricScore >= 80);
 });
+
+test('womenswear & styleVibe: generates Womenswear outfits across style vibes and detects Womenswear orphans', () => {
+  const chicOutfits = generateOutfitsForContext(
+    SEED_WOMENSWEAR_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 16,
+      weather: 'sunny_dry',
+      occasion: 'smart_casual_office',
+      styleVibe: 'tailored_chic',
+      lockedGarmentIds: [],
+    },
+    5
+  );
+  assert.ok(chicOutfits.length > 0, 'Should generate Womenswear outfits for Tailored Chic 16°C');
+  assert.ok(chicOutfits[0].totalScore >= 85, `Expected high Tailored Chic score, got ${chicOutfits[0].totalScore}`);
+
+  const capsuleOutfits = generateOutfitsForContext(
+    SEED_WOMENSWEAR_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 16,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      styleVibe: 'minimal_capsule',
+      lockedGarmentIds: [],
+    },
+    5
+  );
+  assert.ok(capsuleOutfits.length > 0, 'Should generate Minimal Capsule outfits');
+  assert.ok(
+    capsuleOutfits[0].traces.some((t) => t.includes('Capsule')),
+    'Should include Capsule trace when minimal_capsule is active'
+  );
+
+  const womenGapReport = analyzeWardrobeGaps(SEED_WOMENSWEAR_GARMENTS, DEFAULT_BIOMETRIC_PROFILE);
+  const orphanIds = womenGapReport.orphanPieces.map((o) => o.garment.id);
+  assert.ok(orphanIds.includes('fem_orphan_1'), 'Should detect Feinstrick Rollkragen Burgunder as orphan piece');
+  assert.ok(orphanIds.includes('fem_orphan_2'), 'Should detect Suede-Bikerjacke Waldkiefer as orphan piece');
+});
+
 
 

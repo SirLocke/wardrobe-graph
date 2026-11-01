@@ -1,29 +1,39 @@
 import React, { useMemo, useState } from 'react';
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Cloud,
   CloudRain,
+  Info,
   Layers,
   LayoutGrid,
   Lock,
   RotateCcw,
   SlidersHorizontal,
+  Sparkles,
   Sun,
   Unlock,
+  Wand2,
 } from 'lucide-react';
 import {
   CATEGORY_LABELS,
+  CATEGORY_LABELS_EN,
   OCCASION_LABELS,
+  OCCASION_LABELS_EN,
+  STYLE_VIBE_META,
   SUBCATEGORY_LABELS,
   TEXTURE_LABELS,
 } from '../data/seedData';
 import { generateOutfitsForContext } from '../engine/outfitGenerator';
 import {
+  AppLocale,
   BiometricProfile,
   Garment,
   GarmentCategory,
   OccasionType,
   OutfitContext,
+  StyleVibe,
   WeatherCondition,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
@@ -33,20 +43,22 @@ interface DailyStylistViewProps {
   garments: Garment[];
   profile: BiometricProfile;
   context: OutfitContext;
+  locale?: AppLocale;
   onChangeContext: (next: OutfitContext) => void;
   onMarkOutfitWorn: (garmentIds: string[]) => Promise<void>;
   onWashAllGarments: () => Promise<void>;
   onOpenAddModal: () => void;
+  onOpenSetupWizard?: () => void;
+  onOpenSettings?: () => void;
 }
 
 const TEMP_PRESETS = [
-  { label: 'Kalt (<8°C)', temp: 5 },
-  { label: 'Übergang (9–15°C)', temp: 12 },
-  { label: 'Mild (16–21°C)', temp: 18 },
-  { label: 'Warm (>22°C)', temp: 24 },
+  { labelDe: 'Kalt (<8°C)', labelEn: 'Cold (<8°C)', temp: 5 },
+  { labelDe: 'Kühl (9–15°C)', labelEn: 'Cool (9–15°C)', temp: 12 },
+  { labelDe: 'Mild (16–21°C)', labelEn: 'Mild (16–21°C)', temp: 18 },
+  { labelDe: 'Warm (>22°C)', labelEn: 'Warm (>22°C)', temp: 24 },
 ];
 
-// Anatomical head-to-toe order for vertical layer list ("von oben nach unten / außen nach innen")
 const ANATOMICAL_CATEGORY_ORDER: Record<GarmentCategory, number> = {
   outerwear: 1,
   mid_layer: 2,
@@ -59,14 +71,21 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   garments,
   profile,
   context,
+  locale = 'de',
   onChangeContext,
   onMarkOutfitWorn,
   onWashAllGarments,
   onOpenAddModal,
+  onOpenSetupWizard,
+  onOpenSettings,
 }) => {
+  const isEn = locale === 'en';
   const [showAnchorPicker, setShowAnchorPicker] = useState(false);
   const [wornFeedbackId, setWornFeedbackId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'stacked' | 'grid'>('stacked');
+  const [expandedDetailsIds, setExpandedDetailsIds] = useState<Record<string, boolean>>({});
+
+  const activeVibe: StyleVibe = context.styleVibe || 'balanced';
 
   const outfits = useMemo(() => {
     return generateOutfitsForContext(garments, profile, context, 5);
@@ -88,13 +107,19 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     if (exists) {
       nextIds = context.lockedGarmentIds.filter((item) => item !== id);
     } else {
-      // Allow up to 2 anchor pieces
       nextIds = [...context.lockedGarmentIds.slice(-1), id];
     }
     onChangeContext({
       ...context,
       lockedGarmentIds: nextIds,
     });
+  };
+
+  const toggleOutfitDetails = (outfitId: string) => {
+    setExpandedDetailsIds((prev) => ({
+      ...prev,
+      [outfitId]: !prev[outfitId],
+    }));
   };
 
   const handleMarkWorn = async (outfitId: string, itemIds: string[]) => {
@@ -105,32 +130,62 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     }, 2500);
   };
 
-  const layeringArchitectureLabel =
-    context.temperatureC >= 21
-      ? 'Sommer-Architektur (Base-Top + Bottom + Footwear)'
+  const layeringArchitectureLabel = isEn
+    ? context.temperatureC >= 21
+      ? 'Light Summer Look (Top + Bottom + Shoes)'
       : context.temperatureC >= 14
-      ? '2-Schichten-Architektur (Base-Top + Mid-Layer + Bottom + Footwear)'
-      : '3-Schichten-Wetterarchitektur (Base-Top + Mid-Layer + Outerwear + Bottom + Footwear)';
+      ? 'Everyday Look with Sweater / Jacket (Top + Sweater/Cardigan + Bottom + Shoes)'
+      : 'Warm Weatherproof Look (Top + Sweater + Coat/Jacket + Bottom + Shoes)'
+    : context.temperatureC >= 21
+    ? 'Leichter Sommer-Look (Shirt/Bluse + Hose/Rock + Schuhe)'
+    : context.temperatureC >= 14
+    ? 'Alltags-Look mit Pullover oder Strickjacke (Shirt + Pullover/Blazer + Hose + Schuhe)'
+    : 'Warmer Zwiebel-Look mit Jacke/Mantel (Shirt + Pullover + Jacke/Mantel + Hose + Schuhe)';
 
   return (
     <div className="space-y-8">
       {/* Context Control Panel */}
       <section
-        aria-label="Kontext-Steuerung für den täglichen Outfit-Generator"
+        aria-label="Wetter- und Anlass-Auswahl für deine Outfits"
         className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-5"
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-              Täglicher Biometrie-Stylist
+              {isEn ? 'What should I wear today?' : 'Was ziehe ich heute an?'}
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              {layeringArchitectureLabel} · {outfits.length} deterministische Top-Kombinationen berechnet
+              {layeringArchitectureLabel} · {outfits.length}{' '}
+              {isEn
+                ? 'matching outfit ideas from your closet'
+                : 'passende Outfit-Ideen aus deinem Kleiderschrank'}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Outfit Presentation Toggle: Übereinander (Stacked) vs. Kacheln */}
+            {onOpenSetupWizard && (
+              <button
+                type="button"
+                onClick={onOpenSetupWizard}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-xs font-medium text-amber-200 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isEn ? 'Start Wizard' : 'Start-Assistent'}</span>
+              </button>
+            )}
+
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-600 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isEn ? 'Settings & Colors' : 'Einstellungen & Farben'}</span>
+              </button>
+            )}
+
+            {/* Outfit Presentation Toggle: Übereinander (Stacked) vs. Einzelteile */}
             <div
               className="inline-flex items-center p-0.5 rounded-lg bg-zinc-950 border border-zinc-800"
               role="group"
@@ -146,7 +201,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Übereinander (Look-Stack)</span>
+                <span>{isEn ? 'Stacked Look' : 'Übereinander'}</span>
               </button>
               <button
                 type="button"
@@ -158,7 +213,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Einzelteile</span>
+                <span>{isEn ? 'Single Items' : 'Einzelteile'}</span>
               </button>
             </div>
 
@@ -169,7 +224,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Wäschekorb leeren ({dirtyCount} getragen)</span>
+                <span>
+                  {isEn
+                    ? `Wash Laundry (${dirtyCount} worn)`
+                    : `Wäsche waschen (${dirtyCount} getragen)`}
+                </span>
               </button>
             )}
 
@@ -185,8 +244,10 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             >
               <Lock className="w-3.5 h-3.5 text-amber-400" />
               <span>
-                Heute will ich X tragen{' '}
-                {lockedGarments.length > 0 ? `(${lockedGarments.length} fixiert)` : ''}
+                {isEn ? 'Pick a piece to wear today' : 'Ein bestimmtes Teil heute tragen'}{' '}
+                {lockedGarments.length > 0
+                  ? `(${lockedGarments.length} ${isEn ? 'selected' : 'ausgewählt'})`
+                  : ''}
               </span>
             </button>
           </div>
@@ -197,7 +258,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           <div className="rounded-xl bg-zinc-950 border border-zinc-800 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-zinc-300">
-                Wähle 1–2 Anker-Teile aus deinem Schrank, um alle Outfits darum herum zu berechnen:
+                {isEn
+                  ? 'Tap 1–2 clothes from your closet that you definitely want to wear today:'
+                  : 'Tippe auf 1–2 Kleidungsstücke aus deinem Schrank, die im Outfit auf jeden Fall dabei sein sollen:'}
               </p>
               {lockedGarments.length > 0 && (
                 <button
@@ -205,7 +268,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                   onClick={() => onChangeContext({ ...context, lockedGarmentIds: [] })}
                   className="text-xs text-amber-400 hover:underline cursor-pointer"
                 >
-                  Auswahl aufheben
+                  {isEn ? 'Clear selection' : 'Auswahl aufheben'}
                 </button>
               )}
             </div>
@@ -233,7 +296,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium truncate">{g.name}</p>
                       <p className="text-[10px] text-zinc-500 truncate">
-                        {CATEGORY_LABELS[g.category].split(' ')[0]}
+                        {SUBCATEGORY_LABELS[g.subcategory]}
                       </p>
                     </div>
                   </button>
@@ -249,7 +312,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           <div className="lg:col-span-5 space-y-2.5">
             <div className="flex items-center justify-between">
               <label htmlFor="temp-slider" className="text-xs font-medium text-zinc-300">
-                Außentemperatur
+                {isEn ? 'Outside Temperature' : 'Wie warm ist es draußen?'}
               </label>
               <span className="text-sm font-mono font-semibold text-amber-400 tabular-nums">
                 {context.temperatureC}°C
@@ -265,7 +328,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                   (preset.temp === 24 && context.temperatureC >= 22);
                 return (
                   <button
-                    key={preset.label}
+                    key={preset.temp}
                     type="button"
                     onClick={() => onChangeContext({ ...context, temperatureC: preset.temp })}
                     className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
@@ -274,7 +337,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                         : 'text-zinc-400 hover:text-zinc-100'
                     }`}
                   >
-                    {preset.label}
+                    {isEn ? preset.labelEn : preset.labelDe}
                   </button>
                 );
               })}
@@ -295,15 +358,17 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
           {/* Weather Toggle (3 cols) */}
           <div className="lg:col-span-3 space-y-2.5">
-            <span className="block text-xs font-medium text-zinc-300">Witterung</span>
+            <span className="block text-xs font-medium text-zinc-300">
+              {isEn ? 'Weather' : 'Wetter'}
+            </span>
             <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800/80">
               {(
                 [
-                  { id: 'sunny_dry', label: 'Trocken', icon: Sun },
-                  { id: 'cloudy_windy', label: 'Windig', icon: Cloud },
-                  { id: 'rain_wet', label: 'Regen', icon: CloudRain },
+                  { id: 'sunny_dry', labelDe: 'Trocken', labelEn: 'Dry', icon: Sun },
+                  { id: 'cloudy_windy', labelDe: 'Windig', labelEn: 'Windy', icon: Cloud },
+                  { id: 'rain_wet', labelDe: 'Regen', labelEn: 'Rain', icon: CloudRain },
                 ] as const
-              ).map(({ id, label, icon: Icon }) => {
+              ).map(({ id, labelDe, labelEn, icon: Icon }) => {
                 const active = context.weather === id;
                 return (
                   <button
@@ -317,7 +382,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5 shrink-0" />
-                    <span>{label}</span>
+                    <span>{isEn ? labelEn : labelDe}</span>
                   </button>
                 );
               })}
@@ -326,10 +391,13 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
           {/* Occasion Selector (4 cols) */}
           <div className="lg:col-span-4 space-y-2.5">
-            <span className="block text-xs font-medium text-zinc-300">Anlass & Dresscode</span>
+            <span className="block text-xs font-medium text-zinc-300">
+              {isEn ? 'Occasion' : 'Was hast du heute vor?'}
+            </span>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800/80">
               {(Object.keys(OCCASION_LABELS) as OccasionType[]).map((occ) => {
                 const active = context.occasion === occ;
+                const occText = isEn ? OCCASION_LABELS_EN[occ] : OCCASION_LABELS[occ];
                 return (
                   <button
                     key={occ}
@@ -341,11 +409,48 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                         : 'text-zinc-400 hover:text-zinc-100'
                     }`}
                   >
-                    {OCCASION_LABELS[occ].split(' / ')[0]}
+                    {occText.split(' & ')[0]}
                   </button>
                 );
               })}
             </div>
+          </div>
+        </div>
+
+        {/* Style Direction / Aesthetic Vibe Selector Bar */}
+        <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-medium text-zinc-300">
+              {isEn ? 'Style Mood:' : 'Worauf hast du heute Lust? (Stil):'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 flex-1 sm:justify-end">
+            {(Object.keys(STYLE_VIBE_META) as StyleVibe[]).map((vibeKey) => {
+              const meta = STYLE_VIBE_META[vibeKey];
+              const isSelected = activeVibe === vibeKey;
+              return (
+                <button
+                  key={vibeKey}
+                  type="button"
+                  onClick={() =>
+                    onChangeContext({
+                      ...context,
+                      styleVibe: vibeKey,
+                    })
+                  }
+                  title={isEn ? meta.subtitleEn : meta.subtitleDe}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                    isSelected
+                      ? 'bg-amber-400/20 border-amber-400/60 text-amber-200 font-semibold'
+                      : 'bg-zinc-950 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                  }`}
+                >
+                  {isEn ? meta.labelEn : meta.labelDe}
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -356,12 +461,16 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           <SlidersHorizontal className="w-8 h-8 text-amber-400 mx-auto" />
           <div className="max-w-md mx-auto space-y-1.5">
             <h2 className="text-base font-semibold text-zinc-100">
-              Keine vollständige Kombination für diesen Filter-Kontext verfügbar
+              {isEn
+                ? 'No complete outfit found for this weather & occasion'
+                : 'Für dieses Wetter & diesen Anlass fehlt gerade ein passendes Teil'}
             </h2>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Für {OCCASION_LABELS[context.occasion]} bei {context.temperatureC}°C (
-              {context.weather === 'rain_wet' ? 'Regenfestigkeit erforderlich' : 'Trocken'}) fehlt
-              aktuell ein passendes Kleidungsstück oder alle passenden Teile sind im Wäschekorb.
+              {isEn
+                ? `For ${OCCASION_LABELS_EN[context.occasion]} at ${context.temperatureC}°C, a matching garment is missing or currently in the laundry.`
+                : `Für „${OCCASION_LABELS[context.occasion]}“ bei ${context.temperatureC}°C (${
+                    context.weather === 'rain_wet' ? 'Regenfest' : 'Trocken'
+                  }) fehlt ein passendes Kleidungsstück oder deine passenden Teile sind gerade in der Wäsche.`}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -371,16 +480,18 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 onClick={onWashAllGarments}
                 className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer"
               >
-                Getragene Kleidung als gewaschen markieren
+                {isEn
+                  ? 'Mark worn clothes as washed'
+                  : 'Getragene Kleidung als gewaschen markieren'}
               </button>
             )}
             {context.lockedGarmentIds.length > 0 && (
               <button
                 type="button"
                 onClick={() => onChangeContext({ ...context, lockedGarmentIds: [] })}
-                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-100 cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-100 cursor-pointer"
               >
-                Fixierte Anker-Teile lösen
+                {isEn ? 'Clear selected item' : 'Ausgewähltes Einzelteil lösen'}
               </button>
             )}
             <button
@@ -388,7 +499,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               onClick={onOpenAddModal}
               className="px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-xs font-semibold text-zinc-950 cursor-pointer"
             >
-              + Fehlendes Teil erfassen
+              {isEn ? '+ Add Garment' : '+ Neues Kleidungsstück anlegen'}
             </button>
           </div>
         </div>
@@ -397,6 +508,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           {outfits.map((outfit, idx) => {
             const isWornJustNow = wornFeedbackId === outfit.id;
             const hasSandboxItem = outfit.items.some((i) => i.isWishlistSandbox);
+            const isDetailsExpanded = Boolean(expandedDetailsIds[outfit.id]);
             const sortedAnatomicalItems = [...outfit.items].sort(
               (a, b) =>
                 ANATOMICAL_CATEGORY_ORDER[a.category] -
@@ -406,41 +518,59 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             return (
               <article
                 key={outfit.id}
-                className="rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 transition-colors hover:border-zinc-700/80"
+                className="rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 transition-colors hover:border-zinc-700/80 space-y-5"
               >
-                {/* Outfit Top Metadata Row (Unboxed clean typography per Zero-Pill rule) */}
+                {/* Clean Top Row without overwhelming math/scores */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800/80">
                   <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-mono tabular-nums">
-                      <span className="text-zinc-200 font-semibold">
-                        0{idx + 1}. Outfit-Empfehlung
+                    <div className="flex flex-wrap items-center gap-2.5 text-xs text-zinc-400">
+                      <span className="text-sm font-bold text-zinc-100">
+                        {idx + 1}. {isEn ? 'Outfit Idea' : 'Outfit-Vorschlag'}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <span
-                        className={
-                          outfit.totalScore >= 85
-                            ? 'text-emerald-400 font-semibold'
-                            : outfit.totalScore >= 76
-                            ? 'text-amber-300 font-semibold'
-                            : 'text-zinc-300'
-                        }
-                      >
-                        {outfit.totalScore}% Gesamt-Match
+                      <span className="text-amber-300/90 font-medium">
+                        {isEn
+                          ? STYLE_VIBE_META[activeVibe].labelEn
+                          : STYLE_VIBE_META[activeVibe].labelDe}
                       </span>
-                      <span aria-hidden="true">·</span>
-                      <span>Hell-Dunkel-Kontrast {outfit.breakdown.lightnessDelta}%</span>
-                      <span aria-hidden="true">·</span>
-                      <span>Biometrie-Schnitt {outfit.breakdown.rawBiometricAvg}%</span>
                       {hasSandboxItem && (
                         <>
                           <span aria-hidden="true">·</span>
-                          <span className="text-amber-300">Enthält Sandbox-Testteil</span>
+                          <span className="text-sky-300 font-medium">
+                            {isEn ? 'Includes Test Item' : 'Mit Wunschlisten-Testteil'}
+                          </span>
                         </>
                       )}
                     </div>
+                    <p className="text-xs text-zinc-400">
+                      {sortedAnatomicalItems.map((it) => it.name).join(' + ')}
+                    </p>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleOutfitDetails(outfit.id)}
+                      aria-expanded={isDetailsExpanded}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <Info className="w-3.5 h-3.5 text-amber-400" />
+                      <span>
+                        {isDetailsExpanded
+                          ? isEn
+                            ? 'Hide explanation & score'
+                            : 'Erklärung & Punkte ausblenden'
+                          : isEn
+                          ? 'Why does this match? (Show score)'
+                          : 'Warum passt das zusammen? (Erklärung)'}
+                      </span>
+                      {isDetailsExpanded ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() =>
@@ -459,152 +589,48 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>
-                        {isWornJustNow ? 'Als getragen markiert' : 'Heute getragen'}
+                        {isWornJustNow
+                          ? isEn
+                            ? 'Marked as worn'
+                            : 'Als getragen markiert'
+                          : isEn
+                          ? 'Wear Today'
+                          : 'Heute anziehen'}
                       </span>
                     </button>
                   </div>
                 </div>
 
-                {/* Main Content Split: Garment Stack/Grid (7 cols) + Rule Traces (5 cols) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5 items-start">
-                  {/* Left: Garments in Outfit (7 cols) */}
-                  {displayMode === 'stacked' ? (
-                    <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-12 gap-4 items-stretch">
-                      {/* Visual Vertical Outfit Stack ("Übereinander") */}
-                      <div className="sm:col-span-5">
-                        <OutfitLayerStack
-                          items={outfit.items}
-                          profile={profile}
-                          lockedGarmentIds={context.lockedGarmentIds}
-                          onToggleLock={toggleLockGarment}
-                        />
-                      </div>
-
-                      {/* Head-to-Toe Vertical Layer Breakdown ("Von Kopf bis Fuß") */}
-                      <div className="sm:col-span-7 flex flex-col justify-between gap-2">
-                        {sortedAnatomicalItems.map((item, layerIdx) => {
-                          const isLocked = context.lockedGarmentIds.includes(item.id);
-                          return (
-                            <div
-                              key={item.id}
-                              className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 hover:border-zinc-700/90 p-2.5 flex items-center gap-3 transition-colors"
-                            >
-                              {/* Layer index + Miniature Garment Vector */}
-                              <div className="relative flex items-center justify-center w-12 h-12 rounded-lg bg-zinc-900/70 border border-zinc-800/60 shrink-0">
-                                {item.imageDataUrl ? (
-                                  <img
-                                    src={item.imageDataUrl}
-                                    alt={item.name}
-                                    referrerPolicy="no-referrer"
-                                    className="w-10 h-10 object-cover rounded"
-                                  />
-                                ) : (
-                                  <GarmentVector
-                                    type={item.subcategory}
-                                    colorHex={item.colorHex}
-                                    texture={item.texture}
-                                    neckline={item.neckline}
-                                    className="w-10 h-10"
-                                  />
-                                )}
-                                <span className="absolute -top-1 -left-1 w-4 h-4 rounded bg-zinc-900 border border-zinc-700 text-[9px] font-mono text-zinc-400 flex items-center justify-center">
-                                  {layerIdx + 1}
-                                </span>
-                              </div>
-
-                              {/* Item Details */}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-400">
-                                  <span>{CATEGORY_LABELS[item.category].split(' ')[0]}</span>
-                                  <span aria-hidden="true">·</span>
-                                  <span className="truncate">
-                                    {SUBCATEGORY_LABELS[item.subcategory]}
-                                  </span>
-                                  {item.isWishlistSandbox && (
-                                    <>
-                                      <span aria-hidden="true">·</span>
-                                      <span className="text-amber-300">Sandbox</span>
-                                    </>
-                                  )}
-                                </div>
-                                <p className="text-xs font-semibold text-zinc-100 truncate mt-0.5">
-                                  {item.name}
-                                </p>
-                                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 mt-0.5">
-                                  <span
-                                    className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
-                                    style={{ backgroundColor: item.colorHex }}
-                                  />
-                                  <span className="truncate">{item.colorName}</span>
-                                  <span aria-hidden="true">·</span>
-                                  <span className="truncate">
-                                    {TEXTURE_LABELS[item.texture].split(' ')[0]}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Lock Anchor Action */}
-                              <button
-                                type="button"
-                                onClick={() => toggleLockGarment(item.id)}
-                                title={
-                                  isLocked
-                                    ? 'Fixierung aufheben'
-                                    : 'Dieses Teil als Anker fixieren'
-                                }
-                                aria-label={`${item.name} ${isLocked ? 'lösen' : 'fixieren'}`}
-                                className="p-2 rounded-lg text-zinc-500 hover:text-amber-400 hover:bg-zinc-900 transition-colors cursor-pointer shrink-0"
-                              >
-                                {isLocked ? (
-                                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                                ) : (
-                                  <Unlock className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
-                                )}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
+                {/* Main Outfit Display: Stacked ("Übereinander") or Grid */}
+                {displayMode === 'stacked' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
+                    {/* Visual Vertical Outfit Stack ("Übereinander") */}
+                    <div className="md:col-span-5">
+                      <OutfitLayerStack
+                        items={outfit.items}
+                        profile={profile}
+                        lockedGarmentIds={context.lockedGarmentIds}
+                        onToggleLock={toggleLockGarment}
+                      />
                     </div>
-                  ) : (
-                    <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {outfit.items.map((item) => {
+
+                    {/* Head-to-Toe Vertical Layer Breakdown ("Von Kopf bis Fuß") */}
+                    <div className="md:col-span-7 flex flex-col justify-between gap-2.5">
+                      {sortedAnatomicalItems.map((item, layerIdx) => {
                         const isLocked = context.lockedGarmentIds.includes(item.id);
                         return (
                           <div
                             key={item.id}
-                            className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 p-3 flex flex-col justify-between"
+                            className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 hover:border-zinc-700/90 p-3 flex items-center gap-3.5 transition-colors"
                           >
-                            <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-2">
-                              <span className="truncate">
-                                {CATEGORY_LABELS[item.category].split(' ')[0]}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => toggleLockGarment(item.id)}
-                                title={
-                                  isLocked
-                                    ? 'Fixierung aufheben'
-                                    : 'Dieses Teil als Anker fixieren'
-                                }
-                                aria-label={`${item.name} ${isLocked ? 'lösen' : 'fixieren'}`}
-                                className="text-zinc-500 hover:text-amber-400 transition-colors cursor-pointer"
-                              >
-                                {isLocked ? (
-                                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                                ) : (
-                                  <Unlock className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
-                                )}
-                              </button>
-                            </div>
-
-                            <div className="my-2 flex items-center justify-center h-20">
+                            {/* Layer index + Miniature Garment Vector */}
+                            <div className="relative flex items-center justify-center w-12 h-12 rounded-lg bg-zinc-900/70 border border-zinc-800/60 shrink-0">
                               {item.imageDataUrl ? (
                                 <img
                                   src={item.imageDataUrl}
                                   alt={item.name}
                                   referrerPolicy="no-referrer"
-                                  className="h-20 w-20 object-cover rounded-lg"
+                                  className="w-10 h-10 object-cover rounded"
                                 />
                               ) : (
                                 <GarmentVector
@@ -612,16 +638,31 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                   colorHex={item.colorHex}
                                   texture={item.texture}
                                   neckline={item.neckline}
-                                  className="w-16 h-16"
+                                  className="w-10 h-10"
                                 />
                               )}
+                              <span className="absolute -top-1 -left-1 w-4 h-4 rounded bg-zinc-900 border border-zinc-700 text-[9px] font-mono text-zinc-400 flex items-center justify-center">
+                                {layerIdx + 1}
+                              </span>
                             </div>
 
-                            <div className="mt-2 pt-2 border-t border-zinc-900 space-y-1">
-                              <p className="text-xs font-medium text-zinc-100 line-clamp-2 min-h-[2rem] leading-snug">
+                            {/* Item Details */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                                <span>
+                                  {SUBCATEGORY_LABELS[item.subcategory]}
+                                </span>
+                                {item.isWishlistSandbox && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="text-sky-300">Wunschlisten-Testteil</span>
+                                  </>
+                                )}
+                              </div>
+                              <p className="text-sm font-semibold text-zinc-100 truncate mt-0.5">
                                 {item.name}
                               </p>
-                              <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                              <div className="flex items-center gap-1.5 text-xs text-zinc-400 mt-0.5">
                                 <span
                                   className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
                                   style={{ backgroundColor: item.colorHex }}
@@ -629,29 +670,127 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                 <span className="truncate">{item.colorName}</span>
                                 <span aria-hidden="true">·</span>
                                 <span className="truncate">
-                                  {TEXTURE_LABELS[item.texture].split(' ')[0]}
+                                  {TEXTURE_LABELS[item.texture]}
                                 </span>
                               </div>
-                              <p className="text-[10px] text-zinc-500 truncate">
-                                {SUBCATEGORY_LABELS[item.subcategory]}
-                                {item.isWishlistSandbox ? ' · Sandbox' : ''}
-                              </p>
                             </div>
+
+                            {/* Lock Anchor Action */}
+                            <button
+                              type="button"
+                              onClick={() => toggleLockGarment(item.id)}
+                              title={
+                                isLocked
+                                  ? 'Auswahl aufheben'
+                                  : 'Dieses Teil festhalten und andere Teile dazu kombinieren'
+                              }
+                              aria-label={`${item.name} ${isLocked ? 'lösen' : 'festhalten'}`}
+                              className="p-2 rounded-lg text-zinc-500 hover:text-amber-400 hover:bg-zinc-900 transition-colors cursor-pointer shrink-0"
+                            >
+                              {isLocked ? (
+                                <Lock className="w-4 h-4 text-amber-400" />
+                              ) : (
+                                <Unlock className="w-4 h-4 opacity-60 group-hover:opacity-100" />
+                              )}
+                            </button>
                           </div>
                         );
                       })}
                     </div>
-                  )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {outfit.items.map((item) => {
+                      const isLocked = context.lockedGarmentIds.includes(item.id);
+                      return (
+                        <div
+                          key={item.id}
+                          className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 p-3 flex flex-col justify-between"
+                        >
+                          <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-2">
+                            <span className="truncate">
+                              {(isEn ? CATEGORY_LABELS_EN : CATEGORY_LABELS)[
+                                item.category
+                              ].split(',')[0]}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleLockGarment(item.id)}
+                              title={
+                                isLocked
+                                  ? 'Auswahl aufheben'
+                                  : 'Dieses Teil festhalten'
+                              }
+                              aria-label={`${item.name} ${isLocked ? 'lösen' : 'festhalten'}`}
+                              className="text-zinc-500 hover:text-amber-400 transition-colors cursor-pointer"
+                            >
+                              {isLocked ? (
+                                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                              ) : (
+                                <Unlock className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
+                              )}
+                            </button>
+                          </div>
 
-                  {/* Right: Deterministic Rule Traces & Score Breakdown (5 cols) */}
-                  <div className="lg:col-span-5 space-y-4 bg-zinc-950/60 border border-zinc-800/70 rounded-xl p-4">
-                    <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
+                          <div className="my-2 flex items-center justify-center h-20">
+                            {item.imageDataUrl ? (
+                              <img
+                                src={item.imageDataUrl}
+                                alt={item.name}
+                                referrerPolicy="no-referrer"
+                                className="h-20 w-20 object-cover rounded-lg"
+                              />
+                            ) : (
+                              <GarmentVector
+                                type={item.subcategory}
+                                colorHex={item.colorHex}
+                                texture={item.texture}
+                                neckline={item.neckline}
+                                className="w-16 h-16"
+                              />
+                            )}
+                          </div>
+
+                          <div className="mt-2 pt-2 border-t border-zinc-900 space-y-1">
+                            <p className="text-xs font-medium text-zinc-100 line-clamp-2 min-h-[2rem] leading-snug">
+                              {item.name}
+                            </p>
+                            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
+                                style={{ backgroundColor: item.colorHex }}
+                              />
+                              <span className="truncate">{item.colorName}</span>
+                            </div>
+                            <p className="text-[10px] text-zinc-500 truncate">
+                              {SUBCATEGORY_LABELS[item.subcategory]}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Collapsible Details & Score Breakdown (Hidden by default, opens on click) */}
+                {isDetailsExpanded && (
+                  <div className="rounded-xl bg-zinc-950/80 border border-zinc-800/90 p-4 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-2.5">
                       <h3 className="text-xs font-semibold text-zinc-200">
-                        Deterministische Regel-Begründung (Rule Traces)
+                        {isEn
+                          ? 'Why this outfit works for you (Details & Score)'
+                          : 'Warum dieses Outfit gut zu dir passt (Herleitung & Bewertung)'}
                       </h3>
-                      <span className="text-xs font-mono text-zinc-400 tabular-nums">
-                        Score {outfit.totalScore}/100
-                      </span>
+                      <div className="flex items-center gap-3 text-xs font-mono tabular-nums">
+                        <span className="text-emerald-400 font-semibold">
+                          {outfit.totalScore} / 100 {isEn ? 'Points' : 'Punkte'}
+                        </span>
+                        <span className="text-zinc-500">·</span>
+                        <span className="text-zinc-400">
+                          {isEn ? 'Light-Dark Contrast:' : 'Hell-Dunkel-Kontrast:'}{' '}
+                          {outfit.breakdown.lightnessDelta}%
+                        </span>
+                      </div>
                     </div>
 
                     <ul className="space-y-2 text-xs text-zinc-300 leading-relaxed">
@@ -663,41 +802,51 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       ))}
                     </ul>
 
-                    {/* 5-Pillar Mathematical Breakdown */}
-                    <div className="pt-3 border-t border-zinc-800/80 grid grid-cols-5 gap-1.5 text-center font-mono tabular-nums">
-                      <div>
-                        <p className="text-[10px] text-zinc-500">Biometrie</p>
-                        <p className="text-xs text-zinc-200 font-medium">
-                          {outfit.breakdown.biometricBase}/35
+                    {/* 5-Pillar Breakdown in plain German */}
+                    <div className="pt-3 border-t border-zinc-800/80 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center font-mono tabular-nums">
+                      <div className="p-2 rounded-lg bg-zinc-900/60">
+                        <p className="text-[10px] text-zinc-400">
+                          {isEn ? 'Your Colors & Type' : 'Typ & Hautton'}
+                        </p>
+                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                          {outfit.breakdown.biometricBase} / 35
                         </p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-zinc-500">Kontrast</p>
-                        <p className="text-xs text-zinc-200 font-medium">
-                          {outfit.breakdown.contrastCalibration}/20
+                      <div className="p-2 rounded-lg bg-zinc-900/60">
+                        <p className="text-[10px] text-zinc-400">
+                          {isEn ? 'Contrast' : 'Hell-Dunkel-Kontrast'}
+                        </p>
+                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                          {outfit.breakdown.contrastCalibration} / 20
                         </p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-zinc-500">Harmonie</p>
-                        <p className="text-xs text-zinc-200 font-medium">
-                          {outfit.breakdown.colorHarmony}/20
+                      <div className="p-2 rounded-lg bg-zinc-900/60">
+                        <p className="text-[10px] text-zinc-400">
+                          {isEn ? 'Color Harmony' : 'Farbharmonie'}
+                        </p>
+                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                          {outfit.breakdown.colorHarmony} / 20
                         </p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-zinc-500">Silhouette</p>
-                        <p className="text-xs text-zinc-200 font-medium">
-                          {outfit.breakdown.silhouetteBalance}/15
+                      <div className="p-2 rounded-lg bg-zinc-900/60">
+                        <p className="text-[10px] text-zinc-400">
+                          {isEn ? 'Cut & Proportions' : 'Schnitt & Passform'}
+                        </p>
+                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                          {outfit.breakdown.silhouetteBalance} / 15
                         </p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-zinc-500">Textur</p>
-                        <p className="text-xs text-zinc-200 font-medium">
-                          {outfit.breakdown.textureContrast}/10
+                      <div className="p-2 rounded-lg bg-zinc-900/60">
+                        <p className="text-[10px] text-zinc-400">
+                          {isEn ? 'Fabric Mix' : 'Stoff-Kombination'}
+                        </p>
+                        <p className="text-xs text-zinc-100 font-semibold mt-0.5">
+                          {outfit.breakdown.textureContrast} / 10
                         </p>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
               </article>
             );
           })}
@@ -706,3 +855,4 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     </div>
   );
 };
+

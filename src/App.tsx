@@ -8,8 +8,10 @@ import {
   Compass,
   Grid,
   Plus,
+  Settings2,
   Shirt,
   UserCheck,
+  Wand2,
 } from 'lucide-react';
 import { AddGarmentModal } from './components/AddGarmentModal';
 import { BiometricProfileView } from './components/BiometricProfileView';
@@ -19,11 +21,15 @@ import {
   OfflineConnectivityBanner,
   PWAInstallButton,
 } from './components/PWAInstallControl';
+import { SettingsModal } from './components/SettingsModal';
+import { SetupWizardModal } from './components/SetupWizardModal';
 import { SmartClosetView } from './components/SmartClosetView';
 import { WardrobeImportExportModal } from './components/WardrobeImportExportModal';
 import {
   DEFAULT_BIOMETRIC_PROFILE,
   SEED_WARDROBE_GARMENTS,
+  WARDROBE_PRESETS,
+  WardrobePresetKey,
 } from './data/seedData';
 import {
   bulkUpsertGarmentsToDb,
@@ -40,16 +46,19 @@ import {
 import { analyzeWardrobeGaps } from './engine/gapAnalyzer';
 import { parseAndNormalizeWardrobeImport } from './engine/wardrobeFormatter';
 import {
+  AppLocale,
   BiometricProfile,
   ContextBottleneck,
   Garment,
   OutfitContext,
+  StyleVibe,
 } from './types/wardrobe';
 
 export type ActiveTab = 'stylist' | 'closet' | 'gaps' | 'profile';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('stylist');
+  const [locale, setLocale] = useState<AppLocale>('de');
   const [profile, setProfile] = useState<BiometricProfile>(DEFAULT_BIOMETRIC_PROFILE);
   const [garments, setGarments] = useState<Garment[]>(SEED_WARDROBE_GARMENTS);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -58,12 +67,17 @@ export default function App() {
     temperatureC: 18,
     weather: 'sunny_dry',
     occasion: 'casual',
+    styleVibe: 'balanced',
     lockedGarmentIds: [],
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGarment, setEditingGarment] = useState<Garment | null>(null);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const isEn = locale === 'en';
 
   // Scroll to top when switching primary tabs
   useEffect(() => {
@@ -167,12 +181,13 @@ export default function App() {
   };
 
   const handleJumpToContext = (bucket: ContextBottleneck) => {
-    setContext({
+    setContext((prev) => ({
+      ...prev,
       temperatureC: bucket.temperatureC,
       weather: bucket.weather,
       occasion: bucket.occasion,
       lockedGarmentIds: [],
-    });
+    }));
     setActiveTab('stylist');
   };
 
@@ -209,7 +224,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `atelier-biometric-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `thread-graph-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -246,6 +261,34 @@ export default function App() {
     }
   };
 
+  const handleLoadCollectionPreset = async (presetKey: WardrobePresetKey) => {
+    const preset = WARDROBE_PRESETS[presetKey];
+    if (!preset) return;
+    const nextProfile: BiometricProfile = {
+      ...profile,
+      wardrobeScope: preset.scope,
+    };
+    await handleStructuredImport(preset.garments, 'replace', nextProfile);
+    setContext((prev) => ({ ...prev, lockedGarmentIds: [] }));
+  };
+
+  const handleCompleteSetupWizard = async (payload: {
+    profile: BiometricProfile;
+    styleVibe: StyleVibe;
+    garmentsToLoad: Garment[] | null;
+  }) => {
+    await handleUpdateProfile(payload.profile);
+    if (payload.garmentsToLoad) {
+      await handleStructuredImport(payload.garmentsToLoad, 'replace', payload.profile);
+    }
+    setContext((prev) => ({
+      ...prev,
+      styleVibe: payload.styleVibe,
+      lockedGarmentIds: [],
+    }));
+    setActiveTab('stylist');
+  };
+
   const handleImportBackupFile = async (file: File) => {
     try {
       const text = await file.text();
@@ -266,6 +309,7 @@ export default function App() {
       temperatureC: 18,
       weather: 'sunny_dry',
       occasion: 'casual',
+      styleVibe: 'balanced',
       lockedGarmentIds: [],
     });
   };
@@ -304,13 +348,26 @@ export default function App() {
           >
             {(
               [
-                { id: 'stylist', label: 'Tages-Stylist' },
-                { id: 'closet', label: `Smart Closet (${garments.length})` },
+                {
+                  id: 'stylist',
+                  label: isEn ? "Today's Outfits" : 'Outfits für heute',
+                },
+                {
+                  id: 'closet',
+                  label: isEn
+                    ? `My Closet (${garments.length})`
+                    : `Mein Kleiderschrank (${garments.length})`,
+                },
                 {
                   id: 'gaps',
-                  label: `Gap-Analyzer (${gapReport.orphanPieces.length})`,
+                  label: isEn
+                    ? `What's Missing? (${gapReport.orphanPieces.length})`
+                    : `Was fehlt mir? (${gapReport.orphanPieces.length})`,
                 },
-                { id: 'profile', label: 'Biometrie-Profil' },
+                {
+                  id: 'profile',
+                  label: isEn ? 'My Colors & Style' : 'Mein Typ & Farben',
+                },
               ] as const
             ).map((nav) => {
               const isActive = activeTab === nav.id;
@@ -331,15 +388,34 @@ export default function App() {
             })}
           </nav>
 
-          {/* Zone 3: 1 primary action */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          {/* Zone 3: Settings, Language Switcher + Primary Action */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              title={isEn ? 'Settings, Clothing Choice & Colors' : 'Einstellungen, Kleidungs-Auswahl & Farben'}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 cursor-pointer"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">{isEn ? 'Settings' : 'Einstellungen'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLocale((prev) => (prev === 'de' ? 'en' : 'de'))}
+              title={isEn ? 'Switch to German (DE)' : 'Auf Englisch umschalten (EN)'}
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs font-mono text-zinc-300 cursor-pointer"
+            >
+              {isEn ? 'EN · DE' : 'DE · EN'}
+            </button>
+
             <button
               type="button"
               onClick={openAddNewGarment}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-zinc-950 bg-zinc-100 rounded-lg hover:bg-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>+ Kleidungsstück</span>
+              <span>{isEn ? '+ Add Garment' : '+ Kleidungsstück'}</span>
             </button>
           </div>
         </div>
@@ -359,10 +435,13 @@ export default function App() {
                 garments={garments}
                 profile={profile}
                 context={context}
+                locale={locale}
                 onChangeContext={setContext}
                 onMarkOutfitWorn={handleMarkOutfitWorn}
                 onWashAllGarments={handleWashAllGarments}
                 onOpenAddModal={openAddNewGarment}
+                onOpenSetupWizard={() => setIsSetupWizardOpen(true)}
+                onOpenSettings={() => setIsSettingsOpen(true)}
               />
             )}
 
@@ -370,9 +449,12 @@ export default function App() {
               <SmartClosetView
                 garments={garments}
                 profile={profile}
+                locale={locale}
                 outfitCountsByGarmentId={gapReport.outfitCountsByGarmentId}
                 onOpenAddModal={openAddNewGarment}
                 onOpenImportExportModal={() => setIsImportExportOpen(true)}
+                onOpenSetupWizard={() => setIsSetupWizardOpen(true)}
+                onLoadCollectionPreset={handleLoadCollectionPreset}
                 onEditGarment={openEditGarment}
                 onDeleteGarment={handleDeleteGarment}
                 onToggleClean={handleToggleClean}
@@ -405,12 +487,40 @@ export default function App() {
         )}
       </main>
 
-      {/* Quiet Footer with PWA Install Action */}
-      <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 mt-12 pt-6 border-t border-zinc-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
-        <p>
-          ATELIER BIOMETRIC · 100% Deterministische Regel-Engine · Lokale IndexedDB-Speicherung
-        </p>
-        <div className="flex items-center gap-3">
+      {/* Quiet Footer with Non-Commercial Open-Source License & Quick Actions */}
+      <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 mt-12 pt-6 border-t border-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 text-xs text-zinc-500">
+        <div className="space-y-1">
+          <p className="text-zinc-400 font-mono">
+            thread-graph (ATELIER BIOMETRIC) · Non-Commercial Open-Source (PolyForm NC 1.0) · Free for Personal Use
+          </p>
+          <p className="text-[11px] text-zinc-500">
+            Kostenlos für den Privatgebrauch &amp; Self-Hosting. Kommerzielle Nutzung untersagt. Offline-fähige Kleiderschrank- &amp; Outfit-App.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-200 cursor-pointer whitespace-nowrap"
+          >
+            <Settings2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>{isEn ? 'Settings & Colors' : 'Einstellungen & Farben'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsSetupWizardOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-xs text-amber-200 cursor-pointer whitespace-nowrap"
+          >
+            <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>{isEn ? 'Setup Wizard' : 'Start-Assistent'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsImportExportOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 cursor-pointer whitespace-nowrap"
+          >
+            {isEn ? 'Backup & Export' : 'Backup & Daten'}
+          </button>
           <PWAInstallButton />
         </div>
       </footer>
@@ -422,10 +532,10 @@ export default function App() {
       >
         {(
           [
-            { id: 'stylist', label: 'Stylist', icon: Compass },
-            { id: 'closet', label: 'Schrank', icon: Shirt },
-            { id: 'gaps', label: 'Gaps & ROI', icon: Grid },
-            { id: 'profile', label: 'Biometrie', icon: UserCheck },
+            { id: 'stylist', label: 'Outfits', icon: Compass },
+            { id: 'closet', label: isEn ? 'Closet' : 'Kleiderschrank', icon: Shirt },
+            { id: 'gaps', label: isEn ? 'Missing' : 'Was fehlt?', icon: Grid },
+            { id: 'profile', label: isEn ? 'My Colors' : 'Mein Typ', icon: UserCheck },
           ] as const
         ).map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id;
@@ -455,6 +565,28 @@ export default function App() {
         profile={profile}
         onSaveGarment={handleSaveGarment}
         initialGarment={editingGarment}
+      />
+
+      {/* 3-Step Quick Setup Wizard Modal */}
+      <SetupWizardModal
+        isOpen={isSetupWizardOpen}
+        onClose={() => setIsSetupWizardOpen(false)}
+        locale={locale}
+        currentProfile={profile}
+        currentStyleVibe={context.styleVibe || 'balanced'}
+        onCompleteSetup={handleCompleteSetupWizard}
+      />
+
+      {/* Settings, Style Scope & Custom Color Builder Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        profile={profile}
+        locale={locale}
+        onLocaleChange={setLocale}
+        onSaveProfile={handleUpdateProfile}
+        onLoadPreset={handleLoadCollectionPreset}
+        onQuickAddGarment={(g) => handleSaveGarment(g, false)}
       />
 
       {/* Wardrobe Import / Export & Structured LLM Exchange Modal */}

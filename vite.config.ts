@@ -77,10 +77,31 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
+          enabled: false,
           type: 'module',
         },
       }),
+      {
+        name: 'guard-vite-client-websocket',
+        transform(code, id) {
+          if (id.includes('vite/dist/client/client.mjs')) {
+            return code
+              .replaceAll(
+                'await wsTransport.connect(handlers);',
+                'return;'
+              )
+              .replaceAll(
+                'reject(/* @__PURE__ */ new Error("WebSocket closed without opened."));',
+                'resolve();'
+              )
+              .replaceAll(
+                'ws.send(JSON.stringify(data));',
+                'if (ws && ws.readyState === 1) ws.send(JSON.stringify(data));'
+              );
+          }
+          return null;
+        },
+      },
     ],
     resolve: {
       alias: {

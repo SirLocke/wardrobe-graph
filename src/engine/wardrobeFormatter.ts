@@ -23,33 +23,9 @@ const VALID_CATEGORIES: GarmentCategory[] = [
   'footwear',
 ];
 
-const VALID_SUBCATEGORIES: GarmentSubcategory[] = [
-  't_shirt',
-  'heavyweight_tee',
-  'polo',
-  'longsleeve',
-  'overshirt',
-  'button_down_shirt',
-  'crewneck_sweater',
-  'knit_sweater',
-  'turtleneck',
-  'hoodie',
-  'cardigan',
-  'light_jacket',
-  'coat',
-  'parka',
-  'blouson',
-  'chino',
-  'denim',
-  'trousers',
-  'cargo',
-  'shorts',
-  'sneaker_clean',
-  'sneaker_chunky',
-  'boots',
-  'loafer_derby',
-  'runner',
-];
+const VALID_SUBCATEGORIES: GarmentSubcategory[] = Object.values(
+  SUBCATEGORIES_BY_CATEGORY
+).flat();
 
 const VALID_FITS: FitType[] = ['slim', 'regular', 'relaxed', 'boxy_oversized'];
 

@@ -1,0 +1,28 @@
+PolyForm Noncommercial License 1.0.0 (Non-Commercial Source-Available)
+
+Copyright (c) 2025 thread-graph (ATELIER BIOMETRIC) Contributors
+
+1. Acceptance
+In order to get any license under these terms, you must agree to them as both strict obligations and conditions to all your licenses.
+
+2. Copyright License (Personal & Non-Commercial Use Only)
+The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any Permitted Purpose.
+
+3. Permitted Purpose (Privatgebrauch & Nicht-Kommerzielle Nutzung)
+A Permitted Purpose is any personal, private, educational, academic research, or non-commercial use, including:
+- Running the application locally, on a personal home server (e.g., via Docker), or as a personal offline PWA.
+- Modifying, extending, and forking the codebase for personal or non-commercial community use.
+- Sharing modifications or garment SVG silhouettes with the community for non-commercial purposes.
+
+4. Commercial Use Prohibited (Keine kommerzielle Nutzung)
+You may NOT use the software, or any derivative work of the software, for any commercial purpose, including but not limited to:
+- Offering the software as a paid or ad-supported hosted service (SaaS).
+- Selling the software or bundling it into a commercial product.
+- Using the software in the business operations of a for-profit company.
+For commercial licensing inquiries, explicit written permission from the copyright holder is required.
+
+5. Notices
+You must ensure that anyone who gets a copy of any part of the software from you also gets a copy of these terms.
+
+6. No Liability
+As far as the law allows, the software comes as is, without any warranty or condition, and the licensor will not be liable to you for any damages arising out of these terms or the use or nature of the software, under any kind of legal claim.

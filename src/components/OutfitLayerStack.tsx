@@ -13,6 +13,7 @@ const OPENABLE_MID_LAYERS: GarmentSubcategory[] = [
   'overshirt',
   'button_down_shirt',
   'cardigan',
+  'blazer',
 ];
 
 /**
@@ -68,7 +69,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
         <div
           className="w-7 h-3.5 rounded-b-full border border-white/20 shadow-inner -mb-2 z-20 transition-transform"
           style={{ backgroundColor: profile.skinHex }}
-          title={`Hautton-Referenz (${profile.skinHex}) am Kragen`}
+          title="Hautton-Referenz am Kragen"
         />
 
         {/* 2. TORSO ZONE (Base-Top + Mid-Layer + Outerwear layered on top of each other) */}
@@ -195,7 +196,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
               key={item.id}
               className="h-2 flex-1 first:rounded-l-full last:rounded-r-full border border-white/15"
               style={{ backgroundColor: item.colorHex }}
-              title={`${item.name}: ${item.colorName} (${item.colorHex})`}
+              title={`${item.name}: ${item.colorName}`}
             />
           ))}
         </div>

@@ -82,12 +82,12 @@ const SAMPLE_LLM_SNIPPET = `\`\`\`json
 
 const CLAUDE_DESKTOP_DOCKER_CONFIG = `{
   "mcpServers": {
-    "atelier-biometric-wardrobe": {
+    "thread-graph": {
       "command": "docker",
       "args": [
         "exec",
         "-i",
-        "atelier-biometric",
+        "thread-graph",
         "npx",
         "tsx",
         "mcp-server.ts"
@@ -97,8 +97,9 @@ const CLAUDE_DESKTOP_DOCKER_CONFIG = `{
 }`;
 
 const DOCKER_COMPOSE_SNIPPET = `services:
-  atelier-biometric:
-    container_name: atelier-biometric
+  thread-graph:
+    image: ghcr.io/thread-graph/thread-graph:latest
+    container_name: thread-graph
     build: .
     ports:
       - "3000:3000"
@@ -109,6 +110,8 @@ const DOCKER_COMPOSE_SNIPPET = `services:
       - PORT=3000
       - WARDROBE_DATA_FILE=/app/data/wardrobe-store.json
     restart: unless-stopped`;
+
+const OPEN_SOURCE_PITCH = `A deterministic, zero-AI personal stylist & wardrobe gap analyzer. Uses CIELAB/HSL color math, biometric profiling, and graph theory to build outfits and calculate high-ROI missing pieces. Offline-first PWA.`;
 
 export const WardrobeImportExportModal: React.FC<WardrobeImportExportModalProps> = ({
   isOpen,
@@ -712,7 +715,7 @@ export const WardrobeImportExportModal: React.FC<WardrobeImportExportModalProps>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-zinc-300">
-                      docker-compose.yml (Start mit `docker compose up -d --build`)
+                      docker-compose.yml (`docker compose up -d --build`)
                     </span>
                     <button
                       type="button"
@@ -735,6 +738,62 @@ export const WardrobeImportExportModal: React.FC<WardrobeImportExportModalProps>
                   <pre className="rounded-xl bg-zinc-900 border border-zinc-800 p-3.5 text-[11px] font-mono text-zinc-300 overflow-x-auto leading-relaxed">
                     {DOCKER_COMPOSE_SNIPPET}
                   </pre>
+                </div>
+              </div>
+
+              {/* Open-Source Repository Setup (thread-graph / MIT / GitHub Pages / Modular Engine) */}
+              <div className="rounded-xl bg-zinc-900/45 border border-zinc-800 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-semibold text-zinc-100">
+                      Open-Source Setup: <span className="font-mono text-amber-300">thread-graph</span> (MIT License · README.md · GitHub Pages Action)
+                    </h4>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Bereit für GitHub Pages / Cloudflare Pages (100% clientseitiges IndexedDB-Fallback) & Pull Requests auf <code className="font-mono text-zinc-200">src/engine/</code>.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(OPEN_SOURCE_PITCH, 'os_pitch')}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-[11px] text-zinc-200 hover:bg-zinc-800 cursor-pointer"
+                  >
+                    {copiedKey === 'os_pitch' ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span>Pitch kopiert</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>GitHub Repo-Pitch kopieren</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/90 text-xs font-mono text-zinc-300 leading-relaxed">
+                  &ldquo;{OPEN_SOURCE_PITCH}&rdquo;
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]">
+                  <div className="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800/80">
+                    <p className="font-mono font-semibold text-zinc-200">src/engine/styleRules.ts</p>
+                    <p className="text-zinc-400 mt-0.5">
+                      Deklarative Matrizen (Fit-Proportionen, Textur-Kontrast, Kragen/Haarschnitt-Framing).
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800/80">
+                    <p className="font-mono font-semibold text-zinc-200">src/components/GarmentVector.tsx</p>
+                    <p className="text-zinc-400 mt-0.5">
+                      25 modulare SVG-Silhouetten + Textur-Patterns — ideal für Community-PRs.
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800/80">
+                    <p className="font-mono font-semibold text-zinc-200">.github/workflows/deploy-pages.yml</p>
+                    <p className="text-zinc-400 mt-0.5">
+                      Automatischer Unit-Test-Lauf & 0-Backend Live-Demo Deployment auf GitHub Pages.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

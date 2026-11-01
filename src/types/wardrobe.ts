@@ -3,6 +3,10 @@ export type ContrastLevel = 'low' | 'medium' | 'high';
 export type ChromaLevel = 'muted' | 'moderate' | 'bright';
 export type ValueLevel = 'light' | 'medium' | 'dark';
 
+export type AppLocale = 'de' | 'en';
+
+export type WardrobeScope = 'womenswear' | 'menswear' | 'unisex' | 'all';
+
 export type HaircutStyle = 
   | 'short_fade_structured_top' // Crisp sides, volume on top
   | 'buzz_very_short'           // Minimal hair framing
@@ -25,16 +29,27 @@ export interface BiometricProfile {
   haircutStyle: HaircutStyle;
   facialHair: FacialHair;
   preferredFit: 'slim_tapered' | 'regular_tailored' | 'relaxed_boxy';
+  wardrobeScope?: WardrobeScope;
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear';
 
 export type GarmentSubcategory =
+  // Base Tops (Menswear, Womenswear & Unisex)
   | 't_shirt' | 'heavyweight_tee' | 'polo' | 'longsleeve'
+  | 'blouse' | 'tank_camisole' | 'crop_top' | 'bodysuit'
+  // Mid Layers
   | 'overshirt' | 'button_down_shirt' | 'crewneck_sweater' | 'knit_sweater' | 'turtleneck' | 'hoodie' | 'cardigan'
+  | 'blazer' | 'vest_gilet' | 'wrap_top'
+  // Outerwear
   | 'light_jacket' | 'coat' | 'parka' | 'blouson'
+  | 'trenchcoat' | 'leather_jacket' | 'puffer_jacket'
+  // Bottoms & Skirts
   | 'chino' | 'denim' | 'trousers' | 'cargo' | 'shorts'
-  | 'sneaker_clean' | 'sneaker_chunky' | 'boots' | 'loafer_derby' | 'runner';
+  | 'wide_leg_trousers' | 'midi_skirt' | 'mini_skirt'
+  // Footwear
+  | 'sneaker_clean' | 'sneaker_chunky' | 'boots' | 'loafer_derby' | 'runner'
+  | 'heeled_ankle_boot' | 'ballet_flat' | 'sandal_strappy';
 
 export type FitType = 'slim' | 'regular' | 'relaxed' | 'boxy_oversized';
 export type NecklineType = 'crewneck' | 'heavy_crewneck' | 'v_neck' | 'stand_collar' | 'shirt_collar' | 'turtleneck' | 'hooded' | 'none';
@@ -64,10 +79,21 @@ export interface Garment {
 export type WeatherCondition = 'sunny_dry' | 'cloudy_windy' | 'rain_wet';
 export type OccasionType = 'casual' | 'smart_casual_office' | 'active_sporty' | 'date_night' | 'formal_event';
 
+/**
+ * Deterministic Style Direction / Aesthetic Vibe
+ */
+export type StyleVibe =
+  | 'balanced'            // Default biometric & contextual balance
+  | 'minimal_capsule'     // Quiet Luxury / Monochrome & tonal capsule purity
+  | 'statement_editorial' // High-impact power color focal point + architectural silhouette
+  | 'tailored_chic'       // Structured tailoring, blazers, trench, pleated/wide-leg, fine knits
+  | 'street_relaxed';     // Relaxed/boxy cuts, overshirts, denim/cargo, sneakers/boots
+
 export interface OutfitContext {
   temperatureC: number;
   weather: WeatherCondition;
   occasion: OccasionType;
+  styleVibe?: StyleVibe;
   lockedGarmentIds: string[];
   ignoreCleanStatus?: boolean;
 }

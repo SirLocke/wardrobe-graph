@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-01T16:49:08.355Z",
+  "updatedAt": "2026-11-01T18:39:57.095Z",
   "profile": {
     "id": "default_profile",
     "undertone": "olive",
@@ -14,21 +14,22 @@
     "hairHex": "#5A4D41",
     "haircutStyle": "short_fade_structured_top",
     "facialHair": "stubble",
-    "preferredFit": "regular_tailored"
+    "preferredFit": "regular_tailored",
+    "wardrobeScope": "womenswear"
   },
   "garments": [
     {
-      "id": "seed_top_1",
-      "name": "Heavyweight Tee Salbeigrün",
+      "id": "fem_top_1",
+      "name": "Leichte Hemdbluse Salbeigrün",
       "category": "base_top",
-      "subcategory": "heavyweight_tee",
+      "subcategory": "blouse",
       "colorName": "Salbeigrün",
       "colorHex": "#8F9779",
       "fit": "relaxed",
-      "neckline": "heavy_crewneck",
-      "texture": "heavy_jersey",
+      "neckline": "v_neck",
+      "texture": "smooth_cotton",
       "thermalRating": 2,
-      "formality": 2,
+      "formality": 3,
       "waterResistant": false,
       "isClean": true,
       "hsl": {
@@ -39,17 +40,17 @@
       "colorTemp": "warm"
     },
     {
-      "id": "seed_top_2",
-      "name": "Heavyweight Tee Off-White",
+      "id": "fem_top_2",
+      "name": "Schlichtes Top Cremeweiß",
       "category": "base_top",
-      "subcategory": "heavyweight_tee",
+      "subcategory": "tank_camisole",
       "colorName": "Off-White",
       "colorHex": "#F4F1EA",
-      "fit": "regular",
-      "neckline": "heavy_crewneck",
-      "texture": "heavy_jersey",
-      "thermalRating": 2,
-      "formality": 3,
+      "fit": "slim",
+      "neckline": "crewneck",
+      "texture": "fine_knit",
+      "thermalRating": 1,
+      "formality": 2,
       "waterResistant": false,
       "isClean": true,
       "hsl": {
@@ -60,13 +61,34 @@
       "colorTemp": "neutral"
     },
     {
-      "id": "seed_top_3",
-      "name": "Supima T-Shirt Anthrazit",
+      "id": "fem_top_3",
+      "name": "Langarmshirt Dunkelbraun",
+      "category": "base_top",
+      "subcategory": "longsleeve",
+      "colorName": "Espresso",
+      "colorHex": "#3B2F2F",
+      "fit": "slim",
+      "neckline": "heavy_crewneck",
+      "texture": "fine_knit",
+      "thermalRating": 2,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 0,
+        "s": 11,
+        "l": 21
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "fem_top_4",
+      "name": "Dunkelgraues T-Shirt",
       "category": "base_top",
       "subcategory": "t_shirt",
       "colorName": "Anthrazit",
       "colorHex": "#2B2D42",
-      "fit": "regular",
+      "fit": "relaxed",
       "neckline": "crewneck",
       "texture": "smooth_cotton",
       "thermalRating": 1,
@@ -81,36 +103,57 @@
       "colorTemp": "cool"
     },
     {
-      "id": "seed_top_4",
-      "name": "Struktur-Longsleeve Espresso",
+      "id": "fem_top_5",
+      "name": "Klassisches Weißes T-Shirt",
       "category": "base_top",
-      "subcategory": "longsleeve",
-      "colorName": "Espresso",
-      "colorHex": "#3B2F2F",
+      "subcategory": "t_shirt",
+      "colorName": "Off-White",
+      "colorHex": "#F4F1EA",
       "fit": "regular",
-      "neckline": "heavy_crewneck",
-      "texture": "heavy_jersey",
+      "neckline": "crewneck",
+      "texture": "smooth_cotton",
+      "thermalRating": 1,
+      "formality": 2,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 42,
+        "s": 31,
+        "l": 94
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "fem_mid_1",
+      "name": "Klassischer Blazer Beige",
+      "category": "mid_layer",
+      "subcategory": "blazer",
+      "colorName": "Sand / Beige",
+      "colorHex": "#D5C7B8",
+      "fit": "relaxed",
+      "neckline": "shirt_collar",
+      "texture": "flannel_wool",
       "thermalRating": 3,
       "formality": 3,
       "waterResistant": false,
       "isClean": true,
       "hsl": {
-        "h": 0,
-        "s": 11,
-        "l": 21
+        "h": 31,
+        "s": 26,
+        "l": 78
       },
-      "colorTemp": "neutral"
+      "colorTemp": "warm"
     },
     {
-      "id": "seed_mid_1",
-      "name": "Twill Overshirt Dunkel-Oliv",
+      "id": "fem_mid_2",
+      "name": "Weiche Strickjacke (Cardigan) Olivgrün",
       "category": "mid_layer",
-      "subcategory": "overshirt",
+      "subcategory": "cardigan",
       "colorName": "Dunkel-Oliv",
       "colorHex": "#4B5320",
-      "fit": "relaxed",
-      "neckline": "stand_collar",
-      "texture": "twill_chino",
+      "fit": "regular",
+      "neckline": "v_neck",
+      "texture": "fine_knit",
       "thermalRating": 3,
       "formality": 3,
       "waterResistant": false,
@@ -123,33 +166,12 @@
       "colorTemp": "warm"
     },
     {
-      "id": "seed_mid_2",
-      "name": "Oxford Hemd Sand-Beige",
-      "category": "mid_layer",
-      "subcategory": "button_down_shirt",
-      "colorName": "Sand / Beige",
-      "colorHex": "#D5C7B8",
-      "fit": "regular",
-      "neckline": "shirt_collar",
-      "texture": "smooth_cotton",
-      "thermalRating": 2,
-      "formality": 3,
-      "waterResistant": false,
-      "isClean": true,
-      "hsl": {
-        "h": 31,
-        "s": 26,
-        "l": 78
-      },
-      "colorTemp": "warm"
-    },
-    {
-      "id": "seed_mid_3",
-      "name": "Waffelstrick Crewneck Navy",
+      "id": "fem_mid_3",
+      "name": "Kuscheliger Strickpullover Kamel",
       "category": "mid_layer",
       "subcategory": "knit_sweater",
-      "colorName": "Navy",
-      "colorHex": "#1B263B",
+      "colorName": "Kamel",
+      "colorHex": "#C19A6B",
       "fit": "relaxed",
       "neckline": "heavy_crewneck",
       "texture": "chunky_knit",
@@ -158,15 +180,57 @@
       "waterResistant": false,
       "isClean": true,
       "hsl": {
-        "h": 219,
-        "s": 37,
-        "l": 17
+        "h": 33,
+        "s": 41,
+        "l": 59
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "fem_mid_4",
+      "name": "Gemütlicher Hoodie Salbeigrün",
+      "category": "mid_layer",
+      "subcategory": "hoodie",
+      "colorName": "Salbeigrün",
+      "colorHex": "#8F9779",
+      "fit": "relaxed",
+      "neckline": "hooded",
+      "texture": "heavy_jersey",
+      "thermalRating": 3,
+      "formality": 2,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 76,
+        "s": 13,
+        "l": 53
+      },
+      "colorTemp": "warm"
+    },
+    {
+      "id": "fem_mid_5",
+      "name": "Bequemes Sweatshirt Dunkelgrau",
+      "category": "mid_layer",
+      "subcategory": "crewneck_sweater",
+      "colorName": "Anthrazit",
+      "colorHex": "#2B2D42",
+      "fit": "relaxed",
+      "neckline": "crewneck",
+      "texture": "heavy_jersey",
+      "thermalRating": 3,
+      "formality": 2,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 235,
+        "s": 21,
+        "l": 21
       },
       "colorTemp": "cool"
     },
     {
-      "id": "seed_orphan_1",
-      "name": "Feinstrick Rollkragen Burgunder",
+      "id": "fem_orphan_1",
+      "name": "Feiner Rollkragenpullover Weinrot",
       "category": "mid_layer",
       "subcategory": "turtleneck",
       "colorName": "Burgunder",
@@ -175,7 +239,7 @@
       "neckline": "turtleneck",
       "texture": "fine_knit",
       "thermalRating": 4,
-      "formality": 4,
+      "formality": 5,
       "waterResistant": false,
       "isClean": true,
       "hsl": {
@@ -186,14 +250,14 @@
       "colorTemp": "warm"
     },
     {
-      "id": "seed_out_1",
-      "name": "3-Lagen Tech-Parka Dunkel-Oliv",
+      "id": "fem_out_1",
+      "name": "Klassischer Trenchcoat Olivgrün",
       "category": "outerwear",
-      "subcategory": "parka",
+      "subcategory": "trenchcoat",
       "colorName": "Dunkel-Oliv",
       "colorHex": "#4B5320",
       "fit": "relaxed",
-      "neckline": "stand_collar",
+      "neckline": "shirt_collar",
       "texture": "tech_waterproof",
       "thermalRating": 4,
       "formality": 3,
@@ -207,10 +271,10 @@
       "colorTemp": "warm"
     },
     {
-      "id": "seed_orphan_2",
-      "name": "Suede-Leder Blouson Waldkiefer",
+      "id": "fem_orphan_2",
+      "name": "Wildleder-Jacke Tannengrün",
       "category": "outerwear",
-      "subcategory": "blouson",
+      "subcategory": "leather_jacket",
       "colorName": "Waldkiefer",
       "colorHex": "#2D4A3E",
       "fit": "regular",
@@ -228,13 +292,13 @@
       "colorTemp": "warm"
     },
     {
-      "id": "seed_bot_1",
-      "name": "Tapered Chino Sand-Beige",
+      "id": "fem_bot_1",
+      "name": "Weite Stoffhose Beige",
       "category": "bottom",
-      "subcategory": "chino",
+      "subcategory": "wide_leg_trousers",
       "colorName": "Sand / Beige",
       "colorHex": "#D5C7B8",
-      "fit": "regular",
+      "fit": "relaxed",
       "neckline": "none",
       "texture": "twill_chino",
       "thermalRating": 2,
@@ -249,8 +313,29 @@
       "colorTemp": "warm"
     },
     {
-      "id": "seed_bot_2",
-      "name": "Selvedge Denim Raw Indigo",
+      "id": "fem_bot_2",
+      "name": "Midi-Rock Dunkelbraun",
+      "category": "bottom",
+      "subcategory": "midi_skirt",
+      "colorName": "Espresso",
+      "colorHex": "#3B2F2F",
+      "fit": "relaxed",
+      "neckline": "none",
+      "texture": "smooth_cotton",
+      "thermalRating": 2,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 0,
+        "s": 11,
+        "l": 21
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "fem_bot_3",
+      "name": "Klassische Blaue Jeans",
       "category": "bottom",
       "subcategory": "denim",
       "colorName": "Raw Indigo",
@@ -270,8 +355,50 @@
       "colorTemp": "cool"
     },
     {
-      "id": "seed_shoe_1",
-      "name": "Minimalistischer Leder-Sneaker Off-White",
+      "id": "fem_shoe_1",
+      "name": "Dunkelbraune Stiefeletten (Ankle Boots)",
+      "category": "footwear",
+      "subcategory": "heeled_ankle_boot",
+      "colorName": "Espresso",
+      "colorHex": "#3B2F2F",
+      "fit": "regular",
+      "neckline": "none",
+      "texture": "leather_suede",
+      "thermalRating": 3,
+      "formality": 3,
+      "waterResistant": true,
+      "isClean": true,
+      "hsl": {
+        "h": 0,
+        "s": 11,
+        "l": 21
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "fem_shoe_2",
+      "name": "Schwarze Loafer / Ballerinas",
+      "category": "footwear",
+      "subcategory": "ballet_flat",
+      "colorName": "Schwarz",
+      "colorHex": "#141414",
+      "fit": "regular",
+      "neckline": "none",
+      "texture": "leather_suede",
+      "thermalRating": 2,
+      "formality": 3,
+      "waterResistant": false,
+      "isClean": true,
+      "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 8
+      },
+      "colorTemp": "neutral"
+    },
+    {
+      "id": "fem_shoe_3",
+      "name": "Weiße Leder-Sneaker",
       "category": "footwear",
       "subcategory": "sneaker_clean",
       "colorName": "Off-White",
@@ -280,34 +407,13 @@
       "neckline": "none",
       "texture": "leather_suede",
       "thermalRating": 2,
-      "formality": 3,
+      "formality": 2,
       "waterResistant": true,
       "isClean": true,
       "hsl": {
         "h": 42,
         "s": 31,
         "l": 94
-      },
-      "colorTemp": "neutral"
-    },
-    {
-      "id": "seed_shoe_2",
-      "name": "Suede Desert-Boot Espresso",
-      "category": "footwear",
-      "subcategory": "boots",
-      "colorName": "Espresso",
-      "colorHex": "#3B2F2F",
-      "fit": "regular",
-      "neckline": "none",
-      "texture": "leather_suede",
-      "thermalRating": 3,
-      "formality": 3,
-      "waterResistant": false,
-      "isClean": true,
-      "hsl": {
-        "h": 0,
-        "s": 11,
-        "l": 21
       },
       "colorTemp": "neutral"
     }

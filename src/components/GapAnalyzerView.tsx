@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   FlaskConical,
+  HelpCircle,
   Layers,
   Sparkles,
 } from 'lucide-react';
@@ -37,25 +38,31 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
   onJumpToContext,
   onLockOrphanInStylist,
 }) => {
-  const [expandedRecId, setExpandedRecId] = useState<string | null>(
-    report.recommendations[0]?.archetypeId || null
-  );
+  const [expandedRecId, setExpandedRecId] = useState<string | null>(null);
+  const [expandedOrphanIds, setExpandedOrphanIds] = useState<Record<string, boolean>>({});
+
+  const toggleOrphanReason = (id: string) => {
+    setExpandedOrphanIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const sandboxItemsInCloset = garments.filter((g) => g.isWishlistSandbox);
 
   return (
     <div className="space-y-10">
-      {/* Section 1: Wardrobe Health & Context Matrix Heatmap */}
+      {/* Section 1: Weather & Occasion Overview */}
       <section className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-              Kombinatorischer Gap-Analyzer & Sandbox
+              Was fehlt mir im Kleiderschrank?
             </h1>
-            <p className="text-xs sm:text-sm text-zinc-400 mt-1 font-mono tabular-nums">
-              Garderoben-Gesundheit: {report.wardrobeHealthScore}/100 ·{' '}
-              {report.totalValidOutfitsAcrossContexts} valide Outfits (&ge;76% Score) im Kern-Graphen ·{' '}
-              {report.orphanPieces.length} isolierte Schrankleichen
+            <p className="text-xs sm:text-sm text-zinc-400 mt-1">
+              Du kannst aktuell <strong>{report.totalValidOutfitsAcrossContexts} verschiedene Outfits</strong> für Wetter &amp; Alltag kombinieren
+              {report.orphanPieces.length > 0
+                ? ` · Zu ${report.orphanPieces.length} ${
+                    report.orphanPieces.length === 1 ? 'Teil fehlt' : 'Teilen fehlen'
+                  } noch passende Partner.`
+                : '.'}
             </p>
           </div>
 
@@ -63,7 +70,7 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
             <div className="flex items-center gap-2 text-xs text-sky-300 bg-sky-950/30 border border-sky-800/50 rounded-xl px-3.5 py-2">
               <FlaskConical className="w-4 h-4 text-sky-400 shrink-0" />
               <span>
-                {sandboxItemsInCloset.length} virtuelle Sandbox-Teile im Schrank aktiv
+                {sandboxItemsInCloset.length} Test-Kleidungsstück(e) werden gerade im Schrank ausprobiert
               </span>
             </div>
           )}
@@ -71,12 +78,12 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
 
         {/* Context Matrix Grid */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
             <h2 className="text-sm font-semibold text-zinc-200">
-              01. Wardrobe Health & Context Matrix (Temperatur × Anlass Heatmap)
+              1. Wie gut bist du für jedes Wetter &amp; jeden Anlass ausgestattet?
             </h2>
             <span className="text-xs text-zinc-400">
-              Klicke auf eine Zelle, um sie im Tages-Stylisten zu öffnen
+              Klicke auf ein Feld, um passende Outfits anzusehen
             </span>
           </div>
 
@@ -105,7 +112,7 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                     </p>
                     {cell.isBottleneck && (
                       <p className="text-[11px] text-amber-300 font-medium">
-                        Engpass (&lt;3 valide Outfits)
+                        Hier hast du noch wenig Auswahl
                       </p>
                     )}
                   </div>
@@ -131,107 +138,125 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
         </div>
       </section>
 
-      {/* Section 2: Orphan Pieces ("Isolierte Schrankleichen") */}
+      {/* Section 2: Orphan Pieces ("Einzelstücke / Schrankleichen") */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-zinc-100">
-              02. Isolierte Schrankleichen (Orphan Pieces)
+              2. Einzelstücke im Schrank, zu denen dir ein Partner fehlt
             </h2>
             <p className="text-xs text-zinc-400">
-              Kleidungsstücke mit hoher Biometrie-Eignung (&ge;70% Match), die jedoch in &le;2 validen
-              Outfits funktionieren, weil passende Kombinationspartner fehlen.
+              Diese Kleidungsstücke stehen dir gut, lassen sich aber aktuell kaum mit deinen anderen Sachen kombinieren.
             </p>
           </div>
         </div>
 
         {report.orphanPieces.length === 0 ? (
           <div className="rounded-2xl bg-zinc-900/40 border border-zinc-800 p-6 text-xs text-emerald-300">
-            Exzellente Vernetzung: Aktuell befinden sich keine isolierten Schrankleichen in deinem Inventar!
+            Super! Alle deine Kleidungsstücke lassen sich vielseitig miteinander kombinieren.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {report.orphanPieces.map(({ garment, biometricScore, validOutfitCount, isolationReasons }) => (
-              <article
-                key={garment.id}
-                className="rounded-2xl bg-zinc-900/45 border border-amber-500/30 p-5 flex flex-col justify-between gap-4"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs font-mono tabular-nums text-zinc-400 pb-3 border-b border-zinc-800/80">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-emerald-400 font-semibold">
-                        {biometricScore}% Biometrie-Match
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span className="text-amber-300 font-semibold">
-                        Nur {validOutfitCount} {validOutfitCount === 1 ? 'Outfit' : 'Outfits'}
-                      </span>
+            {report.orphanPieces.map(({ garment, biometricScore, validOutfitCount, isolationReasons }) => {
+              const isOrphanExpanded = Boolean(expandedOrphanIds[garment.id]);
+              return (
+                <article
+                  key={garment.id}
+                  className="rounded-2xl bg-zinc-900/45 border border-amber-500/30 p-5 flex flex-col justify-between gap-4"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs text-zinc-400 pb-3 border-b border-zinc-800/80">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="text-amber-300 font-semibold">
+                          Aktuell nur {validOutfitCount} {validOutfitCount === 1 ? 'Outfit' : 'Outfits'} möglich
+                        </span>
+                      </div>
+                      <span>{CATEGORY_LABELS[garment.category].split(' (')[0]}</span>
                     </div>
-                    <span>{CATEGORY_LABELS[garment.category].split(' ')[0]}</span>
+
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
+                        <GarmentVector
+                          type={garment.subcategory}
+                          colorHex={garment.colorHex}
+                          texture={garment.texture}
+                          neckline={garment.neckline}
+                          className="w-13 h-13"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-zinc-100 truncate">
+                          {garment.name}
+                        </h3>
+                        <p className="text-xs text-zinc-400">
+                          {SUBCATEGORY_LABELS[garment.subcategory]} · {garment.colorName}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Collapsible Explanation why it is isolated */}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => toggleOrphanReason(garment.id)}
+                        aria-expanded={isOrphanExpanded}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-zinc-950/60 hover:bg-zinc-950 border border-zinc-800/70 text-xs text-zinc-300 transition-colors cursor-pointer"
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <HelpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Warum lässt sich das schwer kombinieren? (Erklärung)</span>
+                        </span>
+                        {isOrphanExpanded ? (
+                          <ChevronUp className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        )}
+                      </button>
+
+                      {isOrphanExpanded && (
+                        <div className="mt-2 rounded-xl bg-zinc-950/80 border border-zinc-800/80 p-3 space-y-1.5">
+                          <p className="text-[11px] font-medium text-emerald-400">
+                            Farb-Passung zu deinem Typ: {biometricScore}% (steht dir sehr gut!)
+                          </p>
+                          <p className="text-[11px] font-semibold text-zinc-300 pt-1">
+                            Was im Kleiderschrank dazu fehlt:
+                          </p>
+                          {isolationReasons.map((reason, idx) => (
+                            <p key={idx} className="text-xs text-zinc-400 leading-relaxed">
+                              → {reason}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
-                      <GarmentVector
-                        type={garment.subcategory}
-                        colorHex={garment.colorHex}
-                        texture={garment.texture}
-                        neckline={garment.neckline}
-                        className="w-13 h-13"
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-zinc-100 truncate">
-                        {garment.name}
-                      </h3>
-                      <p className="text-xs text-zinc-400">
-                        {SUBCATEGORY_LABELS[garment.subcategory]} · {garment.colorName} ({garment.colorHex})
-                      </p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">
-                        Wärme {garment.thermalRating}/5 · Formalität {garment.formality}/5
-                      </p>
-                    </div>
+                  <div className="flex justify-end pt-2 border-t border-zinc-800/70">
+                    <button
+                      type="button"
+                      onClick={() => onLockOrphanInStylist(garment.id)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-300 hover:text-amber-200 cursor-pointer"
+                    >
+                      <span>Outfits mit diesem Teil anschauen</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-
-                  <div className="rounded-xl bg-zinc-950/70 border border-zinc-800/80 p-3 space-y-1.5">
-                    <p className="text-[11px] font-semibold text-zinc-300">
-                      Ursache der Isolation im Kombinations-Graphen:
-                    </p>
-                    {isolationReasons.map((reason, idx) => (
-                      <p key={idx} className="text-xs text-zinc-400 leading-relaxed">
-                        → {reason}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2 border-t border-zinc-800/70">
-                  <button
-                    type="button"
-                    onClick={() => onLockOrphanInStylist(garment.id)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-300 hover:text-amber-200 cursor-pointer"
-                  >
-                    <span>Im Stylisten als Anker testen</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
 
-      {/* Section 3: High-ROI Shopping List ("Was fehlt?") */}
+      {/* Section 3: Shopping / Missing Pieces ("Welche neuen Teile bringen am meisten?") */}
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-zinc-100">
-            03. High-ROI Shopping-Matrix („Was fehlt?“)
+            3. Welche neuen Teile bringen dir am meisten neue Outfits?
           </h2>
           <p className="text-xs text-zinc-400">
-            35 klassische Archetypen wurden virtuell in deinen Kleiderschrank injiziert und nach{' '}
-            <span className="font-mono text-zinc-300">(Neue Outfits × 2 + Gerettete Schrankleichen × 5)</span>{' '}
-            gerankt.
+            Diese klassischen Alltags-Teile passen am besten zu deinen vorhandenen Sachen und ermöglichen sofort viele neue Kombinationen:
           </p>
         </div>
 
@@ -259,23 +284,21 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                     </div>
 
                     <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2 text-xs font-mono tabular-nums text-zinc-400">
-                        <span className="text-zinc-200 font-semibold">0{idx + 1}. ROI-Empfehlung</span>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                        <span className="text-zinc-200 font-semibold">Empfehlung #{idx + 1}</span>
                         <span aria-hidden="true">·</span>
                         <span className="text-emerald-400 font-semibold">
-                          +{newOutfitsUnlocked} neue Outfits
+                          +{newOutfitsUnlocked} neue Outfits möglich
                         </span>
                         {orphansRescued.length > 0 && (
                           <>
                             <span aria-hidden="true">·</span>
                             <span className="text-amber-300 font-semibold">
-                              Rettet {orphansRescued.length}{' '}
-                              {orphansRescued.length === 1 ? 'Schrankleiche' : 'Schrankleichen'}
+                              Passt perfekt zu {orphansRescued.length}{' '}
+                              {orphansRescued.length === 1 ? 'Einzelstück' : 'Einzelstücken'}
                             </span>
                           </>
                         )}
-                        <span aria-hidden="true">·</span>
-                        <span>ROI-Index {roiScore}</span>
                       </div>
 
                       <h3 className="text-base font-semibold text-zinc-100">
@@ -287,13 +310,13 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                           className="w-3 h-3 rounded-full border border-white/20 inline-block"
                           style={{ backgroundColor: virtualGarment.colorHex }}
                         />
-                        <span className="font-mono">{virtualGarment.colorHex}</span>
+                        <span>{virtualGarment.colorName}</span>
                         <span aria-hidden="true">·</span>
                         <span>{SUBCATEGORY_LABELS[virtualGarment.subcategory]}</span>
                         <span aria-hidden="true">·</span>
-                        <span>{FIT_LABELS[virtualGarment.fit].split(' / ')[0]}</span>
+                        <span>{FIT_LABELS[virtualGarment.fit].split(' (')[0]}</span>
                         <span aria-hidden="true">·</span>
-                        <span>{TEXTURE_LABELS[virtualGarment.texture].split(' / ')[0]}</span>
+                        <span>{TEXTURE_LABELS[virtualGarment.texture].split(' (')[0]}</span>
                       </div>
 
                       <p className="text-xs text-zinc-300 pt-1 leading-relaxed">{rationale}</p>
@@ -309,8 +332,8 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                       aria-expanded={isExpanded}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-zinc-100 cursor-pointer whitespace-nowrap"
                     >
-                      <Layers className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>Vorschau ({unlockedCombinationsPreview.length})</span>
+                      <Layers className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Neue Outfits &amp; Erklärung ({unlockedCombinationsPreview.length})</span>
                       {isExpanded ? (
                         <ChevronUp className="w-3.5 h-3.5" />
                       ) : (
@@ -330,12 +353,12 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                       {isAlreadyInSandbox ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-sky-400" />
-                          <span>Im Sandbox-Schrank aktiv (Entfernen)</span>
+                          <span>Wird im Schrank getestet (Entfernen)</span>
                         </>
                       ) : (
                         <>
                           <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Als Sandbox-Teil testen</span>
+                          <span>Probeweise in den Schrank legen</span>
                         </>
                       )}
                     </button>
@@ -345,61 +368,69 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                 {/* Rescued Orphans Line */}
                 {orphansRescued.length > 0 && (
                   <div className="text-xs text-amber-200/90 bg-amber-950/20 border border-amber-500/20 rounded-lg px-3.5 py-2">
-                    Bindet folgende isolierte Schrankleichen erfolgreich ein:{' '}
+                    Damit kannst du endlich kombinieren:{' '}
                     <strong>{orphansRescued.map((o) => o.name).join(', ')}</strong>
                   </div>
                 )}
 
-                {/* Expandable Concrete Outfit Combinations Preview */}
-                {isExpanded && unlockedCombinationsPreview.length > 0 && (
+                {/* Expandable Concrete Outfit Combinations Preview + Calculation Details */}
+                {isExpanded && (
                   <div className="pt-4 border-t border-zinc-800/80 space-y-3">
-                    <p className="text-xs font-medium text-zinc-300">
-                      Konkrete neue Top-Outfits mit deinen bestehenden Schrank-Teilen:
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {unlockedCombinationsPreview.map((combo, cIdx) => (
-                        <div
-                          key={combo.id}
-                          className="rounded-xl bg-zinc-950/90 border border-zinc-800/80 p-3.5 space-y-3"
-                        >
-                          <div className="flex items-center justify-between text-xs font-mono tabular-nums">
-                            <span className="text-zinc-400">Kombination 0{cIdx + 1}</span>
-                            <span className="text-emerald-400 font-semibold">
-                              {combo.totalScore}% Match
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 overflow-x-auto py-1">
-                            {combo.items.map((item) => {
-                              const isVirtual = item.id === virtualGarment.id;
-                              return (
-                                <div
-                                  key={item.id}
-                                  className={`flex flex-col items-center p-2 rounded-lg border min-w-[68px] ${
-                                    isVirtual
-                                      ? 'border-amber-500/50 bg-amber-500/10'
-                                      : 'border-zinc-800 bg-zinc-900/50'
-                                  }`}
-                                >
-                                  <GarmentVector
-                                    type={item.subcategory}
-                                    colorHex={item.colorHex}
-                                    texture={item.texture}
-                                    neckline={item.neckline}
-                                    className="w-9 h-9"
-                                  />
-                                  <span className="text-[10px] text-zinc-300 truncate max-w-[64px] mt-1">
-                                    {item.name.split(' ')[0]}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <p className="text-[11px] text-zinc-400 line-clamp-2">
-                            {combo.traces[0]}
-                          </p>
-                        </div>
-                      ))}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                      <p className="font-medium text-zinc-300">
+                        Beispiel-Outfits mit deinen vorhandenen Kleidungsstücken:
+                      </p>
+                      <span className="font-mono text-[11px] text-zinc-500">
+                        Berechnungs-Wert: {roiScore} Punkte (+{newOutfitsUnlocked} Outfits, {orphansRescued.length} Einzelstücke eingebunden)
+                      </span>
                     </div>
+
+                    {unlockedCombinationsPreview.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {unlockedCombinationsPreview.map((combo, cIdx) => (
+                          <div
+                            key={combo.id}
+                            className="rounded-xl bg-zinc-950/90 border border-zinc-800/80 p-3.5 space-y-3"
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-zinc-400 font-medium">Beispiel-Outfit {cIdx + 1}</span>
+                              <span className="text-emerald-400 font-mono text-[11px]">
+                                {combo.totalScore}% Harmonie
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 overflow-x-auto py-1">
+                              {combo.items.map((item) => {
+                                const isVirtual = item.id === virtualGarment.id;
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className={`flex flex-col items-center p-2 rounded-lg border min-w-[68px] ${
+                                      isVirtual
+                                        ? 'border-amber-500/50 bg-amber-500/10'
+                                        : 'border-zinc-800 bg-zinc-900/50'
+                                    }`}
+                                  >
+                                    <GarmentVector
+                                      type={item.subcategory}
+                                      colorHex={item.colorHex}
+                                      texture={item.texture}
+                                      neckline={item.neckline}
+                                      className="w-9 h-9"
+                                    />
+                                    <span className="text-[10px] text-zinc-300 truncate max-w-[64px] mt-1">
+                                      {item.name.split(' ')[0]}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <p className="text-[11px] text-zinc-400 line-clamp-2">
+                              {combo.traces[0]}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </article>

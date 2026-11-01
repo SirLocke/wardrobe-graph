@@ -18,7 +18,13 @@ const FORMALITY_WINDOWS: Record<OccasionType, [number, number]> = {
   formal_event: [4, 5],
 };
 
-const OFFICE_EXCLUDED_SUBCATEGORIES: GarmentSubcategory[] = ['hoodie', 'shorts', 'runner'];
+const OFFICE_EXCLUDED_SUBCATEGORIES: GarmentSubcategory[] = [
+  'hoodie',
+  'shorts',
+  'runner',
+  'crop_top',
+  'mini_skirt',
+];
 
 const CONTRAST_LABELS: Record<ContrastLevel, string> = {
   low: 'niedrigen',
@@ -27,7 +33,7 @@ const CONTRAST_LABELS: Record<ContrastLevel, string> = {
 };
 
 const TEXTURE_LABELS: Record<TextureType, string> = {
-  smooth_cotton: 'glatter Baumwolle',
+  smooth_cotton: 'glatter Baumwolle/Seide',
   heavy_jersey: 'schwerem Jersey',
   twill_chino: 'Twill',
   denim: 'Denim',
@@ -48,6 +54,38 @@ const STRUCTURED_TEXTURES: TextureType[] = [
   'flannel_wool',
   'linen',
   'leather_suede',
+];
+
+const TAILORED_SUBCATEGORIES: GarmentSubcategory[] = [
+  'blazer',
+  'trenchcoat',
+  'coat',
+  'button_down_shirt',
+  'blouse',
+  'turtleneck',
+  'trousers',
+  'wide_leg_trousers',
+  'midi_skirt',
+  'loafer_derby',
+  'heeled_ankle_boot',
+  'ballet_flat',
+];
+
+const STREET_RELAXED_SUBCATEGORIES: GarmentSubcategory[] = [
+  'heavyweight_tee',
+  'crop_top',
+  'overshirt',
+  'hoodie',
+  'crewneck_sweater',
+  'leather_jacket',
+  'puffer_jacket',
+  'blouson',
+  'denim',
+  'cargo',
+  'wide_leg_trousers',
+  'sneaker_clean',
+  'sneaker_chunky',
+  'boots',
 ];
 
 /**
@@ -85,7 +123,7 @@ export function passesHardContextFilter(
 
   // 3. Occasion Formality Window
   if (!isLocked) {
-    const [minFormality, maxFormality] = FORMALITY_WINDOWS[context.occasion];
+    const [minFormality, maxFormality] = FORMALITY_WINDOWS[context.occasion] ?? [2, 4];
     const effectiveMin =
       garment.category === 'base_top' && context.temperatureC <= 20
         ? Math.max(1, minFormality - 1)
@@ -118,10 +156,11 @@ export function passesHardContextFilter(
         return false;
       }
     } else {
-      // temp < 14°C: Slots = [base_top] + [mid_layer] + [outerwear (thermal 3-5)] + [bottom (thermal 3-5)] + [footwear]
       if (garment.category === 'outerwear' && garment.thermalRating < 3) return false;
       if (garment.category === 'bottom' && garment.thermalRating < 3) return false;
-      if (garment.subcategory === 'shorts') return false;
+      if (garment.subcategory === 'shorts' || garment.subcategory === 'mini_skirt' || garment.subcategory === 'sandal_strappy') {
+        return false;
+      }
     }
   }
 
@@ -145,7 +184,6 @@ export function scoreOutfitCombination(
   const baseTop = items.find((i) => i.category === 'base_top');
   const midLayer = items.find((i) => i.category === 'mid_layer');
   const outerwear = items.find((i) => i.category === 'outerwear');
-  const footwear = items.find((i) => i.category === 'footwear');
 
   // 1. Biometric Base (35% weight)
   let weightedBioSum = 0;
@@ -264,7 +302,7 @@ export function scoreOutfitCombination(
     traces.push('Zu viele konkurrierende Buntfarben im Outfit (-35 Pkt. Farbharmonie-Abzug)');
   }
 
-  // Check formality coherence across visible items (outerwear/midLayer, bottom, footwear)
+  // Check formality coherence across visible items
   const visibleFormalities = items
     .filter((i) => i.category !== 'base_top' || items.length === 3)
     .map((i) => i.formality);
@@ -283,20 +321,24 @@ export function scoreOutfitCombination(
     const topRelaxed = effectiveTop.fit === 'relaxed' || effectiveTop.fit === 'boxy_oversized';
     const bottomSlimReg = bottomItem.fit === 'slim' || bottomItem.fit === 'regular';
     const topSlimReg = effectiveTop.fit === 'slim' || effectiveTop.fit === 'regular';
-    const bottomRelaxed = bottomItem.fit === 'relaxed' || bottomItem.fit === 'boxy_oversized';
+    const bottomRelaxed =
+      bottomItem.fit === 'relaxed' ||
+      bottomItem.fit === 'boxy_oversized' ||
+      bottomItem.subcategory === 'wide_leg_trousers' ||
+      bottomItem.subcategory === 'midi_skirt';
 
     if (topRelaxed && bottomSlimReg) {
       silhouetteBalance = 15;
       traces.push('Ausgewogene Silhouette: Relaxed Top zu schmalerer Beinlinie');
     } else if (topSlimReg && bottomRelaxed) {
       silhouetteBalance = 15;
-      traces.push('Moderne Proportion: Körpernahes Oberteil zu entspannter Hosenweite');
+      traces.push('Moderne Proportion: Körpernahes Oberteil zu fließender Wide-Leg-/Rock-Linie');
     } else if (
       effectiveTop.fit === 'boxy_oversized' &&
       bottomItem.fit === 'boxy_oversized'
     ) {
-      if (context.occasion === 'casual') {
-        silhouetteBalance = 9;
+      if (context.occasion === 'casual' || context.styleVibe === 'street_relaxed') {
+        silhouetteBalance = 11;
       } else {
         silhouetteBalance = -15;
         traces.push('Proportionaler Konflikt: Doppel-Oversized staucht die Silhouette');
@@ -324,6 +366,66 @@ export function scoreOutfitCombination(
     textureContrast = 8;
   }
 
+  // 6. Deterministic Style Direction (StyleVibe) Modifier
+  const vibe = context.styleVibe || 'balanced';
+  let styleVibeBonus = 0;
+
+  if (vibe === 'minimal_capsule') {
+    if (distinctNonNeutralHues.length <= 1 && items.every((i) => i.hsl.s <= 45)) {
+      styleVibeBonus += 8;
+      traces.push(
+        'Stil-Fokus [Minimal Capsule]: Tonal-ruhige Quiet-Luxury-Komposition ohne laute Farbbrüche'
+      );
+    } else if (distinctNonNeutralHues.length >= 2) {
+      styleVibeBonus -= 8;
+    }
+  } else if (vibe === 'statement_editorial') {
+    const hasRichTexture = items.some(
+      (i) =>
+        i.texture === 'leather_suede' ||
+        i.texture === 'chunky_knit' ||
+        i.subcategory === 'trenchcoat' ||
+        i.subcategory === 'blazer' ||
+        i.subcategory === 'midi_skirt' ||
+        i.subcategory === 'wide_leg_trousers'
+    );
+    if (distinctNonNeutralHues.length >= 1 && (hasRichTexture || silhouetteBalance === 15)) {
+      styleVibeBonus += 9;
+      traces.push(
+        'Stil-Fokus [Statement / Editorial]: Architektonischer Silhouetten- & Power-Color-Akzent'
+      );
+    } else if (distinctNonNeutralHues.length === 0) {
+      styleVibeBonus -= 6;
+    }
+  } else if (vibe === 'tailored_chic') {
+    const tailoredMatches = items.filter((i) =>
+      TAILORED_SUBCATEGORIES.includes(i.subcategory)
+    ).length;
+    if (tailoredMatches >= 2) {
+      styleVibeBonus += 9;
+      traces.push(
+        `Stil-Fokus [Tailored Chic]: ${tailoredMatches} klassisch-geschnittene Atelier-Komponenten kombiniert`
+      );
+    } else {
+      styleVibeBonus -= 5;
+    }
+  } else if (vibe === 'street_relaxed') {
+    const streetMatches = items.filter(
+      (i) =>
+        STREET_RELAXED_SUBCATEGORIES.includes(i.subcategory) ||
+        i.fit === 'relaxed' ||
+        i.fit === 'boxy_oversized'
+    ).length;
+    if (streetMatches >= 3) {
+      styleVibeBonus += 9;
+      traces.push(
+        'Stil-Fokus [Street / Relaxed]: Entspannte Proportionen & urbane Layering-Struktur'
+      );
+    } else {
+      styleVibeBonus -= 5;
+    }
+  }
+
   if (context.weather === 'rain_wet') {
     const wetReady = items
       .filter((i) => i.category === 'outerwear' || i.category === 'footwear')
@@ -339,7 +441,8 @@ export function scoreOutfitCombination(
     colorHarmony +
     silhouetteBalance +
     textureContrast +
-    formalityPenalty;
+    formalityPenalty +
+    styleVibeBonus;
 
   const totalScore = Math.max(10, Math.min(99, Math.round(rawTotal)));
 
@@ -351,7 +454,7 @@ export function scoreOutfitCombination(
       biometricBase: Math.round(biometricBase),
       contrastCalibration,
       colorHarmony: Math.max(-15, colorHarmony + formalityPenalty),
-      silhouetteBalance,
+      silhouetteBalance: Math.max(0, Math.min(15, silhouetteBalance + Math.round(styleVibeBonus / 2))),
       textureContrast,
       rawBiometricAvg: Math.round(rawBiometricAvg),
       lightnessDelta,
@@ -395,6 +498,18 @@ export function generateOutfitsForContext(
   const temp = context.temperatureC;
   const candidateCombos: Garment[][] = [];
 
+  const isRealisticEverydayLayering = (top: Garment, mid: Garment): boolean => {
+    if (top.neckline === 'hooded' && mid.neckline !== 'hooded') return false;
+    // Avoid wearing a blouse under a sporty hoodie or sweatshirt
+    if (
+      top.subcategory === 'blouse' &&
+      (mid.subcategory === 'hoodie' || mid.subcategory === 'crewneck_sweater')
+    ) {
+      return false;
+    }
+    return true;
+  };
+
   if (temp >= 21) {
     const hasLockedMid = slotMidLayers.some((g) => lockedSet.has(g.id));
     for (const top of slotBaseTops) {
@@ -414,7 +529,7 @@ export function generateOutfitsForContext(
     const hasLockedOuter = slotOuterwears.some((g) => lockedSet.has(g.id));
     for (const top of slotBaseTops) {
       for (const mid of slotMidLayers) {
-        if (top.neckline === 'hooded' && mid.neckline !== 'hooded') continue;
+        if (!isRealisticEverydayLayering(top, mid)) continue;
         for (const bottom of slotBottoms) {
           for (const shoe of slotFootwears) {
             if (hasLockedOuter) {
@@ -429,9 +544,9 @@ export function generateOutfitsForContext(
       }
     }
   } else {
-    // temp < 14°C: Slots = [base_top] + [mid_layer] + [outerwear] + [bottom] + [footwear]
     for (const top of slotBaseTops) {
       for (const mid of slotMidLayers) {
+        if (!isRealisticEverydayLayering(top, mid)) continue;
         for (const out of slotOuterwears) {
           for (const bottom of slotBottoms) {
             for (const shoe of slotFootwears) {
@@ -456,33 +571,114 @@ export function generateOutfitsForContext(
     .map((combo) => scoreOutfitCombination(combo, profile, context))
     .sort((a, b) => b.totalScore - a.totalScore);
 
-  if (limit <= 0) {
+  if (limit <= 0 || scored.length === 0) {
     return scored;
   }
 
-  const selected: GeneratedOutfit[] = [];
-  const pairUsage = new Map<string, number>();
+  // Deterministic Maximal Marginal Relevance (MMR) Diversity Selection:
+  // Ensures the Top N recommended outfits on the start page do not repeat the same
+  // visible Mid-Layer, Outerwear, Bottom, Base-Top, or Footwear combination.
+  const selected: GeneratedOutfit[] = [scored[0]];
+  const selectedIds = new Set<string>([scored[0].id]);
 
-  for (const outfit of scored) {
-    if (selected.length >= limit) break;
-    const upperKey = outfit.items
-      .filter((i) => i.category === 'mid_layer' || i.category === 'outerwear' || i.category === 'base_top')
-      .map((i) => i.id)
-      .join('-');
-    const usedCount = pairUsage.get(upperKey) || 0;
-    if (usedCount < 2 || scored.length <= limit * 2) {
-      selected.push(outfit);
-      pairUsage.set(upperKey, usedCount + 1);
-    }
-  }
+  while (selected.length < limit && selected.length < scored.length) {
+    let bestCandidate: GeneratedOutfit | null = null;
+    let bestDiversityScore = -Infinity;
 
-  if (selected.length < limit) {
-    for (const outfit of scored) {
-      if (selected.length >= limit) break;
-      if (!selected.some((s) => s.id === outfit.id)) {
-        selected.push(outfit);
+    for (const candidate of scored) {
+      if (selectedIds.has(candidate.id)) continue;
+
+      let penalty = 0;
+      let bonus = 0;
+
+      const candMid = candidate.items.find((i) => i.category === 'mid_layer');
+      const candOut = candidate.items.find((i) => i.category === 'outerwear');
+      const candBot = candidate.items.find((i) => i.category === 'bottom');
+      const candTop = candidate.items.find((i) => i.category === 'base_top');
+      const candShoe = candidate.items.find((i) => i.category === 'footwear');
+
+      let unseenMidSubcategory = true;
+      let unseenDominantHue = true;
+      const candDominantHex = (candOut || candMid || candTop)?.colorHex;
+
+      for (const prev of selected) {
+        const prevIds = new Set(prev.items.map((i) => i.id));
+        const sharedUnlockedCount = candidate.items.filter(
+          (i) => !lockedSet.has(i.id) && prevIds.has(i.id)
+        ).length;
+        const unlockedSlotsCount = candidate.items.filter((i) => !lockedSet.has(i.id)).length;
+
+        // Heavy penalty if candidate differs by only 1 item from an already selected outfit
+        if (unlockedSlotsCount >= 2 && sharedUnlockedCount >= unlockedSlotsCount - 1) {
+          penalty += 60;
+        } else if (unlockedSlotsCount >= 3 && sharedUnlockedCount >= unlockedSlotsCount - 2) {
+          penalty += 22;
+        }
+
+        const prevMid = prev.items.find((i) => i.category === 'mid_layer');
+        const prevOut = prev.items.find((i) => i.category === 'outerwear');
+        const prevBot = prev.items.find((i) => i.category === 'bottom');
+        const prevTop = prev.items.find((i) => i.category === 'base_top');
+        const prevShoe = prev.items.find((i) => i.category === 'footwear');
+
+        if (candOut && prevOut && !lockedSet.has(candOut.id) && candOut.id === prevOut.id) {
+          penalty += 26;
+        }
+        if (candMid && prevMid && !lockedSet.has(candMid.id)) {
+          if (candMid.id === prevMid.id) {
+            penalty += 30;
+          }
+          if (candMid.subcategory === prevMid.subcategory) {
+            unseenMidSubcategory = false;
+          }
+        }
+        if (candBot && prevBot && !lockedSet.has(candBot.id) && candBot.id === prevBot.id) {
+          penalty += 20;
+        }
+        if (candTop && prevTop && !lockedSet.has(candTop.id) && candTop.id === prevTop.id) {
+          penalty += 18;
+        }
+        if (candShoe && prevShoe && !lockedSet.has(candShoe.id) && candShoe.id === prevShoe.id) {
+          penalty += 14;
+        }
+
+        // Extra penalty if exact same (Mid/Top + Bottom) visual torso-leg block repeats
+        if (
+          candMid &&
+          prevMid &&
+          candBot &&
+          prevBot &&
+          !lockedSet.has(candMid.id) &&
+          !lockedSet.has(candBot.id) &&
+          candMid.id === prevMid.id &&
+          candBot.id === prevBot.id
+        ) {
+          penalty += 35;
+        }
+
+        const prevDominantHex = (prevOut || prevMid || prevTop)?.colorHex;
+        if (candDominantHex && prevDominantHex && candDominantHex === prevDominantHex) {
+          unseenDominantHue = false;
+        }
+      }
+
+      if (candMid && unseenMidSubcategory) {
+        bonus += 12;
+      }
+      if (candDominantHex && unseenDominantHue) {
+        bonus += 10;
+      }
+
+      const diversityAdjustedScore = candidate.totalScore + bonus - penalty;
+      if (diversityAdjustedScore > bestDiversityScore) {
+        bestDiversityScore = diversityAdjustedScore;
+        bestCandidate = candidate;
       }
     }
+
+    if (!bestCandidate) break;
+    selected.push(bestCandidate);
+    selectedIds.add(bestCandidate.id);
   }
 
   return selected;
