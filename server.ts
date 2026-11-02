@@ -51,7 +51,7 @@ async function startServer() {
         : current.garments;
       const nextWornHistory = Array.isArray(req.body?.wornHistory)
         ? req.body.wornHistory
-        : (current as any).wornHistory || [];
+        : current.wornHistory || [];
 
       await store.setState({
         profile: nextProfile,

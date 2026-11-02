@@ -9,14 +9,17 @@ export interface GarmentVectorProps {
   neckline?: NecklineType;
   className?: string;
   /**
-   * When true, openable garments (jackets, coats, trenchcoats, blazers, overshirts, cardigans)
+   * When true, openable garments (jackets, coats, trenchcoats, blazers, overshirts, cardigans, vests)
    * render with an open front placket/lapel so underlying layers are visible when stacked.
    */
   openFront?: boolean;
+  wornOpen?: boolean;
+  hasPrint?: boolean;
+  hasLogo?: boolean;
 }
 
 /**
- * Dynamic SVG Garment Avatar component that renders 38 tailored architectural silhouettes
+ * Dynamic SVG Garment Avatar component that renders tailored architectural silhouettes
  * (Menswear, Womenswear & Unisex) colored with the exact garment hex code, studio lighting
  * depth gradient, and SVG fabric texture patterns.
  */
@@ -28,7 +31,11 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
   neckline,
   className = 'w-16 h-16',
   openFront = false,
+  wornOpen,
+  hasPrint = false,
+  hasLogo = false,
 }) => {
+  const effectiveOpenFront = openFront || Boolean(wornOpen);
   const uid = useId().replace(/:/g, '');
   const patternId = `tex-${uid}`;
   const gradId = `grad-${uid}`;
@@ -95,6 +102,24 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
         return (
           <pattern id={patternId} width="4" height="4" patternUnits="userSpaceOnUse">
             <circle cx="2" cy="2" r="0.55" fill={patternStroke} />
+          </pattern>
+        );
+      case 'fleece':
+        return (
+          <pattern id={patternId} width="6" height="6" patternUnits="userSpaceOnUse">
+            <path
+              d="M1 2 Q2.5 0.5 4 2 M2 5 Q3.5 3.5 5 5"
+              fill="none"
+              stroke={patternStroke}
+              strokeWidth="1.1"
+              strokeLinecap="round"
+            />
+          </pattern>
+        );
+      case 'down_quilted':
+        return (
+          <pattern id={patternId} width="12" height="10" patternUnits="userSpaceOnUse">
+            <line x1="0" y1="5" x2="12" y2="5" stroke={patternStroke} strokeWidth="0.95" />
           </pattern>
         );
       default:
@@ -301,6 +326,45 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
           </g>
         );
 
+      case 'fleece_vest':
+        if (effectiveOpenFront) {
+          return (
+            <g>
+              <path
+                d="M32 16 L40 11 L45 16 L44 82 L32 82 L31 41 C35 35 35 26 32 16 Z"
+                fill={fillUrl}
+                stroke={strokeColor}
+                strokeWidth="2.2"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M68 16 L60 11 L55 16 L56 82 L68 82 L69 41 C65 35 65 26 68 16 Z"
+                fill={fillUrl}
+                stroke={strokeColor}
+                strokeWidth="2.2"
+                strokeLinejoin="round"
+              />
+              <rect x="57" y="28" width="8" height="11" rx="1" fill="none" stroke={detailStroke} strokeWidth="1.5" />
+            </g>
+          );
+        }
+        return (
+          <g>
+            <path
+              d="M32 16 L40 11 L60 11 L68 16 C65 26 65 35 69 41 L68 82 L32 82 L31 41 C35 35 35 26 32 16 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            <rect x="40" y="9" width="20" height="6" rx="1.5" fill={fillUrl} stroke={strokeColor} strokeWidth="2" />
+            <line x1="50" y1="15" x2="50" y2="82" stroke={strokeColor} strokeWidth="2" />
+            <rect x="54" y="27" width="10" height="12" rx="1" fill="none" stroke={detailStroke} strokeWidth="1.5" />
+            <line x1="36" y1="56" x2="41" y2="68" stroke={detailStroke} strokeWidth="1.8" />
+            <line x1="64" y1="56" x2="59" y2="68" stroke={detailStroke} strokeWidth="1.8" />
+          </g>
+        );
+
       case 'wrap_top':
         return (
           <g>
@@ -319,7 +383,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
         );
 
       case 'blazer':
-        if (openFront) {
+        if (effectiveOpenFront) {
           return (
             <g>
               {/* Left Tailored Blazer Panel */}
@@ -421,7 +485,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
       case 'overshirt':
       case 'button_down_shirt': {
         const isOvershirt = type === 'overshirt';
-        if (openFront) {
+        if (effectiveOpenFront) {
           return (
             <g>
               <path
@@ -489,7 +553,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
       }
 
       case 'cardigan':
-        if (openFront) {
+        if (effectiveOpenFront) {
           return (
             <g>
               <path
@@ -529,10 +593,16 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
       case 'blouson':
       case 'light_jacket':
       case 'leather_jacket':
-      case 'puffer_jacket': {
+      case 'puffer_jacket':
+      case 'down_jacket':
+      case 'fleece_jacket':
+      case 'rain_jacket': {
         const isLeather = type === 'leather_jacket';
-        const isPuffer = type === 'puffer_jacket';
-        if (openFront) {
+        const isPuffer = type === 'puffer_jacket' || type === 'down_jacket';
+        const isDown = type === 'down_jacket';
+        const isFleece = type === 'fleece_jacket';
+        const isRain = type === 'rain_jacket';
+        if (effectiveOpenFront) {
           return (
             <g>
               <path
@@ -550,13 +620,21 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
                 strokeLinejoin="round"
               />
               <path d="M39 10 L44 10 L43 16 L39 16 Z M56 10 L61 10 L61 16 L57 16 Z" fill={fillUrl} stroke={strokeColor} strokeWidth="1.8" />
+              {isRain && (
+                <path d="M36 11 C36 4 64 4 64 11" fill="none" stroke={strokeColor} strokeWidth="2.1" />
+              )}
               {isPuffer && (
                 <>
-                  <line x1="31" y1="36" x2="42" y2="36" stroke={detailStroke} strokeWidth="1.6" />
-                  <line x1="31" y1="54" x2="42" y2="54" stroke={detailStroke} strokeWidth="1.6" />
-                  <line x1="58" y1="36" x2="69" y2="36" stroke={detailStroke} strokeWidth="1.6" />
-                  <line x1="58" y1="54" x2="69" y2="54" stroke={detailStroke} strokeWidth="1.6" />
+                  <line x1="31" y1="32" x2="42" y2="32" stroke={detailStroke} strokeWidth="1.6" />
+                  <line x1="31" y1="47" x2="42" y2="47" stroke={detailStroke} strokeWidth="1.6" />
+                  <line x1="31" y1="62" x2="42" y2="62" stroke={detailStroke} strokeWidth="1.6" />
+                  <line x1="58" y1="32" x2="69" y2="32" stroke={detailStroke} strokeWidth="1.6" />
+                  <line x1="58" y1="47" x2="69" y2="47" stroke={detailStroke} strokeWidth="1.6" />
+                  <line x1="58" y1="62" x2="69" y2="62" stroke={detailStroke} strokeWidth="1.6" />
                 </>
+              )}
+              {isFleece && (
+                <rect x="58" y="28" width="9" height="11" rx="1" fill="none" stroke={detailStroke} strokeWidth="1.5" />
               )}
             </g>
           );
@@ -570,7 +648,17 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               strokeWidth="2.3"
               strokeLinejoin="round"
             />
-            <rect x="40" y="9.5" width="20" height="6.5" rx="2" fill={fillUrl} stroke={strokeColor} strokeWidth="2" />
+            {isRain ? (
+              <path
+                d="M35 15 C34 4 66 4 65 15 Z"
+                fill={fillUrl}
+                stroke={strokeColor}
+                strokeWidth="2.1"
+                strokeLinejoin="round"
+              />
+            ) : (
+              <rect x="40" y="9.5" width="20" height="6.5" rx="2" fill={fillUrl} stroke={strokeColor} strokeWidth="2" />
+            )}
             {/* Asymmetric biker zip for leather_jacket or center zip */}
             <line
               x1={isLeather ? '45' : '50'}
@@ -582,9 +670,33 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
             />
             {isPuffer ? (
               <>
-                <line x1="33" y1="34" x2="67" y2="34" stroke={detailStroke} strokeWidth="1.7" />
-                <line x1="33" y1="50" x2="67" y2="50" stroke={detailStroke} strokeWidth="1.7" />
-                <line x1="33" y1="66" x2="67" y2="66" stroke={detailStroke} strokeWidth="1.7" />
+                <line x1="33" y1="30" x2="67" y2="30" stroke={detailStroke} strokeWidth="1.7" />
+                <line x1="33" y1="43" x2="67" y2="43" stroke={detailStroke} strokeWidth="1.7" />
+                <line x1="33" y1="56" x2="67" y2="56" stroke={detailStroke} strokeWidth="1.7" />
+                <line x1="33" y1="69" x2="67" y2="69" stroke={detailStroke} strokeWidth="1.7" />
+                {isDown && (
+                  <>
+                    <line x1="17" y1="44" x2="31" y2="46" stroke={detailStroke} strokeWidth="1.5" />
+                    <line x1="19" y1="59" x2="30" y2="61" stroke={detailStroke} strokeWidth="1.5" />
+                    <line x1="83" y1="44" x2="69" y2="46" stroke={detailStroke} strokeWidth="1.5" />
+                    <line x1="81" y1="59" x2="70" y2="61" stroke={detailStroke} strokeWidth="1.5" />
+                  </>
+                )}
+              </>
+            ) : isFleece ? (
+              <>
+                <rect x="54" y="27" width="10" height="12" rx="1.5" fill="none" stroke={detailStroke} strokeWidth="1.6" />
+                <line x1="56" y1="30" x2="56" y2="36" stroke={strokeColor} strokeWidth="1.4" />
+                <line x1="37" y1="54" x2="43" y2="66" stroke={detailStroke} strokeWidth="2" />
+                <line x1="63" y1="54" x2="57" y2="66" stroke={detailStroke} strokeWidth="2" />
+              </>
+            ) : isRain ? (
+              <>
+                <line x1="52.5" y1="16" x2="52.5" y2="80" stroke={detailStroke} strokeWidth="1.3" />
+                <line x1="36" y1="34" x2="45" y2="37" stroke={detailStroke} strokeWidth="1.6" />
+                <line x1="64" y1="34" x2="55" y2="37" stroke={detailStroke} strokeWidth="1.6" />
+                <line x1="37" y1="54" x2="43" y2="66" stroke={detailStroke} strokeWidth="2" />
+                <line x1="63" y1="54" x2="57" y2="66" stroke={detailStroke} strokeWidth="2" />
               </>
             ) : (
               <>
@@ -602,7 +714,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
       case 'trenchcoat': {
         const isParka = type === 'parka';
         const isTrench = type === 'trenchcoat';
-        if (openFront) {
+        if (effectiveOpenFront) {
           return (
             <g>
               <path
@@ -1417,6 +1529,38 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
       {hasPattern && (
         <g opacity="0.85" className="pointer-events-none">
           {renderSilhouette(`url(#${patternId})`, true)}
+        </g>
+      )}
+      {hasPrint && !effectiveOpenFront && (
+        <g className="pointer-events-none" opacity="0.85">
+          <rect
+            x="40"
+            y="30"
+            width="20"
+            height="22"
+            rx="2"
+            fill="none"
+            stroke={isVeryDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'}
+            strokeWidth="1.5"
+          />
+          <path
+            d="M42 48 L47 38 L52 45 L55 41 L58 48 Z"
+            fill={isVeryDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.35)'}
+          />
+          <circle
+            cx="54"
+            cy="35"
+            r="2"
+            fill={isVeryDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)'}
+          />
+        </g>
+      )}
+      {hasLogo && (
+        <g className="pointer-events-none" opacity="0.9">
+          <path
+            d="M56 29 L61 27 L59 31.5 L55 30 Z"
+            fill={isVeryDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)'}
+          />
         </g>
       )}
     </svg>

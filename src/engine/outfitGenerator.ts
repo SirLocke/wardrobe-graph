@@ -40,6 +40,8 @@ const TEXTURE_LABELS: Record<TextureType, string> = {
   chunky_knit: 'Grobstrick',
   fine_knit: 'Feinstrick',
   flannel_wool: 'Flanell/Wolle',
+  fleece: 'Fleece',
+  down_quilted: 'gesteppter Daune',
   linen: 'Leinen',
   tech_waterproof: 'Tech-Membran',
   leather_suede: 'Leder/Suede',
@@ -52,6 +54,8 @@ const STRUCTURED_TEXTURES: TextureType[] = [
   'denim',
   'chunky_knit',
   'flannel_wool',
+  'fleece',
+  'down_quilted',
   'linen',
   'leather_suede',
 ];
@@ -81,8 +85,12 @@ const STREET_RELAXED_SUBCATEGORIES: GarmentSubcategory[] = [
   'overshirt',
   'hoodie',
   'crewneck_sweater',
+  'fleece_vest',
   'leather_jacket',
   'puffer_jacket',
+  'down_jacket',
+  'fleece_jacket',
+  'rain_jacket',
   'blouson',
   'denim',
   'cargo',
@@ -91,6 +99,19 @@ const STREET_RELAXED_SUBCATEGORIES: GarmentSubcategory[] = [
   'sneaker_chunky',
   'boots',
 ];
+
+/**
+ * Checks whether a garment is rain/water-resistant via explicit flags, rain_jacket/parka type, or waterproof tech fabric.
+ */
+export function isGarmentWaterResistant(garment: Garment): boolean {
+  return Boolean(
+    garment.waterResistant ||
+      garment.rainproof ||
+      garment.texture === 'tech_waterproof' ||
+      garment.subcategory === 'rain_jacket' ||
+      garment.subcategory === 'parka'
+  );
+}
 
 /**
  * Checks if a single garment passes hard context filters (cleanliness, rain resistance, formality, temperature slot).
@@ -122,7 +143,7 @@ export function passesHardContextFilter(
   if (context.weather === 'rain_wet' && !isLocked) {
     if (
       (garment.category === 'footwear' || garment.category === 'outerwear') &&
-      !garment.waterResistant
+      !isGarmentWaterResistant(garment)
     ) {
       return false;
     }
@@ -542,9 +563,49 @@ export function scoreOutfitCombination(
   if (context.weather === 'rain_wet') {
     const wetReady = coreItems
       .filter((i) => i.category === 'outerwear' || i.category === 'footwear')
-      .every((i) => i.waterResistant);
+      .every((i) => isGarmentWaterResistant(i));
     if (wetReady) {
-      traces.push('Wetterfest: Wasserabweisende Materialien für Regen & Nässe');
+      traces.push('Wetterfest: Regen- & wasserabweisende Materialien für Nässe');
+    }
+  } else if (context.weather === 'cloudy_windy') {
+    const windPiece = coreItems.find(
+      (i) =>
+        i.windproof ||
+        i.rainproof ||
+        i.texture === 'tech_waterproof' ||
+        i.subcategory === 'rain_jacket' ||
+        i.subcategory === 'parka'
+    );
+    if (windPiece) {
+      styleVibeBonus += 3;
+      traces.push(`Windschutz: ${windPiece.name} schützt zuverlässig bei windigem Wetter`);
+    }
+  }
+
+  // 7. Print, Logo & Open/Closed Shirt Styling Rules
+  const printedItems = coreItems.filter((i) => i.hasPrint);
+  const logoItems = coreItems.filter((i) => i.hasLogo);
+  if (printedItems.length >= 2) {
+    styleVibeBonus -= 8;
+    traces.push('Print-Konflikt: Mehrere auffällige Prints im selben Outfit konkurrieren miteinander');
+  } else if (printedItems.length === 1) {
+    if (vibe === 'minimal_capsule') {
+      styleVibeBonus -= 4;
+    } else if (context.occasion === 'casual' || vibe === 'street_relaxed') {
+      styleVibeBonus += 2;
+      traces.push(`Lässiger Hingucker: ${printedItems[0].name} mit Print lockert das Outfit auf`);
+    }
+  } else if (logoItems.length === 1 && (context.occasion === 'casual' || vibe === 'street_relaxed')) {
+    styleVibeBonus += 1;
+    traces.push(`Dezentes Marken-Detail: ${logoItems[0].name} mit Logo-Akzent`);
+  }
+
+  if (midLayer && baseTop) {
+    if (midLayer.wornOpen === true) {
+      styleVibeBonus += 3;
+      traces.push(`Offenes Layering: ${midLayer.name} locker offen über ${baseTop.name} getragen`);
+    } else if (midLayer.wornOpen === false) {
+      traces.push(`Klassisch geschlossen: ${midLayer.name} zugeknöpft getragen`);
     }
   }
 
@@ -675,6 +736,14 @@ export function generateOutfitsForContext(
     if (
       top.subcategory === 'blouse' &&
       (mid.subcategory === 'hoodie' || mid.subcategory === 'crewneck_sweater')
+    ) {
+      return false;
+    }
+    // If a button-down shirt is explicitly worn closed (buttoned up), avoid hiding a graphic print tee underneath
+    if (
+      mid.wornOpen === false &&
+      (mid.subcategory === 'button_down_shirt' || mid.subcategory === 'overshirt') &&
+      top.hasPrint
     ) {
       return false;
     }
@@ -854,21 +923,30 @@ export function generateOutfitsForContext(
     return scoredCore;
   }
 
+  const variationSeed = context.variationSeed || 0;
+
   // Deterministic Maximal Marginal Relevance (MMR) Diversity Selection on Core Outfits:
   // Ensures the Top N recommended outfits on the start page do not repeat the same
   // visible Mid-Layer, Outerwear, Bottom, Base-Top, or Footwear combination.
-  const selected: GeneratedOutfit[] = [scoredCore[0]];
-  const selectedIds = new Set<string>([scoredCore[0].id]);
+  // When variationSeed > 0 ("Neue Outfits generieren"), starts from a rotated top candidate
+  // and applies a deterministic variation offset to surface fresh valid combinations.
+  const startPoolSize = Math.min(scoredCore.length, Math.max(5, limit * 3));
+  const firstIdx = variationSeed > 0 ? (variationSeed * 2) % startPoolSize : 0;
+  const selected: GeneratedOutfit[] = [scoredCore[firstIdx]];
+  const selectedIds = new Set<string>([scoredCore[firstIdx].id]);
 
   while (selected.length < limit && selected.length < scoredCore.length) {
     let bestCandidate: GeneratedOutfit | null = null;
     let bestDiversityScore = -Infinity;
 
-    for (const candidate of scoredCore) {
+    for (let cIdx = 0; cIdx < scoredCore.length; cIdx++) {
+      const candidate = scoredCore[cIdx];
       if (selectedIds.has(candidate.id)) continue;
 
       let penalty = 0;
-      let bonus = getVibeAlignmentPriority(candidate) * 0.25;
+      const seedJitter =
+        variationSeed > 0 ? (((cIdx * 7 + variationSeed * 13) % 11) - 5) * 2.2 : 0;
+      let bonus = getVibeAlignmentPriority(candidate) * 0.25 + seedJitter;
 
       const candMid = candidate.items.find((i) => i.category === 'mid_layer');
       const candOut = candidate.items.find((i) => i.category === 'outerwear');

@@ -47,6 +47,12 @@ export interface BiometricProfile {
   defaultSizes?: DefaultSizes;
   brandSizeRules?: BrandSizeRule[];
   isDemoMode?: boolean;
+  /**
+   * Subcategories that automatically get marked as "In der Wäsche" (isClean = false)
+   * when an outfit is logged as worn ("Heute anziehen").
+   * Default: ['t_shirt', 'heavyweight_tee', 'longsleeve', 'polo', 'tank_camisole', 'crop_top', 'bodysuit', 'socks', 'socks_short']
+   */
+  autoLaundrySubcategories?: GarmentSubcategory[];
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear' | 'accessory';
@@ -57,10 +63,10 @@ export type GarmentSubcategory =
   | 'blouse' | 'tank_camisole' | 'crop_top' | 'bodysuit'
   // Mid Layers
   | 'overshirt' | 'button_down_shirt' | 'crewneck_sweater' | 'knit_sweater' | 'turtleneck' | 'hoodie' | 'cardigan'
-  | 'blazer' | 'vest_gilet' | 'wrap_top'
+  | 'blazer' | 'vest_gilet' | 'fleece_vest' | 'wrap_top'
   // Outerwear
   | 'light_jacket' | 'coat' | 'parka' | 'blouson'
-  | 'trenchcoat' | 'leather_jacket' | 'puffer_jacket'
+  | 'trenchcoat' | 'leather_jacket' | 'puffer_jacket' | 'down_jacket' | 'fleece_jacket' | 'rain_jacket'
   // Bottoms & Skirts
   | 'chino' | 'denim' | 'trousers' | 'cargo' | 'shorts'
   | 'wide_leg_trousers' | 'midi_skirt' | 'mini_skirt'
@@ -72,7 +78,19 @@ export type GarmentSubcategory =
 
 export type FitType = 'slim' | 'regular' | 'relaxed' | 'boxy_oversized';
 export type NecklineType = 'crewneck' | 'heavy_crewneck' | 'v_neck' | 'stand_collar' | 'shirt_collar' | 'turtleneck' | 'hooded' | 'none';
-export type TextureType = 'smooth_cotton' | 'heavy_jersey' | 'twill_chino' | 'denim' | 'chunky_knit' | 'fine_knit' | 'flannel_wool' | 'linen' | 'tech_waterproof' | 'leather_suede';
+export type TextureType =
+  | 'smooth_cotton'
+  | 'heavy_jersey'
+  | 'twill_chino'
+  | 'denim'
+  | 'chunky_knit'
+  | 'fine_knit'
+  | 'flannel_wool'
+  | 'fleece'
+  | 'down_quilted'
+  | 'linen'
+  | 'tech_waterproof'
+  | 'leather_suede';
 
 export interface Garment {
   id: string;
@@ -94,6 +112,12 @@ export interface Garment {
   formality: 1 | 2 | 3 | 4 | 5;     // 1 = Lounge/Sport, 2 = Casual, 3 = Smart Casual, 4 = Business/Chic, 5 = Formal
   formalities?: Array<1 | 2 | 3 | 4 | 5>;    // Optional multi-select occasion formalities
   waterResistant: boolean;
+  windproof?: boolean;              // Winddicht tag
+  rainproof?: boolean;              // Regenfest / Wasserdicht tag
+  hasPrint?: boolean;               // Mit Print / Grafik-Motiv (T-Shirts, Pullover, Hoodies)
+  hasLogo?: boolean;                // Mit sichtbarem Marken-Logo / Brust-Logo
+  wornOpen?: boolean;               // Hemd / Overshirt / Cardigan: true = offen über T-Shirt, false = geschlossen
+  targetScope?: WardrobeScopeTarget;
   isClean: boolean;
   brand?: string;                   // Optional brand tag (e.g. "Nike", "Adidas", "Levi's", "Zara")
   size?: string;                    // Optional garment size (e.g. "M", "L", "38", "W32/L32", "42")
@@ -133,6 +157,11 @@ export interface OutfitContext {
    * (e.g. ['cap_beanie', 'bracelet', 'socks']).
    */
   excludedAccessorySubcategories?: GarmentSubcategory[];
+  /**
+   * Optional seed/offset incremented when the user clicks "Neue Outfits generieren"
+   * to surface fresh valid outfit combinations.
+   */
+  variationSeed?: number;
 }
 
 export interface ColorSwatchSpec {
@@ -223,6 +252,7 @@ export interface GapAnalysisReport {
   orphanPieces: OrphanPieceAnalysis[];
   outfitCountsByGarmentId: Record<string, number>;
   recommendations: ArchetypeRecommendation[];
+  recommendationsByCategory?: Partial<Record<GarmentCategory, ArchetypeRecommendation[]>>;
 }
 
 export interface WornOutfitRecord {

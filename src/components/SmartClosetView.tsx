@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  canGarmentUseLaundry,
   CATEGORY_LABELS,
   FIT_LABELS,
   NECKLINE_LABELS,
@@ -115,8 +116,10 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
         ) {
           return false;
         }
-        if (cleanFilter === 'clean' && !garment.isClean) return false;
-        if (cleanFilter === 'dirty' && garment.isClean) return false;
+        const usesLaundry = canGarmentUseLaundry(garment);
+        const effectivelyClean = usesLaundry ? garment.isClean : true;
+        if (cleanFilter === 'clean' && !effectivelyClean) return false;
+        if (cleanFilter === 'dirty' && (!usesLaundry || effectivelyClean)) return false;
         if (cleanFilter === 'sandbox' && !garment.isWishlistSandbox) return false;
 
         if (seasonFilter === 'warm_weather' && garment.thermalRating > 2) return false;
@@ -177,8 +180,8 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
               {garments.length} {isEn ? 'items in wardrobe' : 'Kleidungsstücke im Schrank'} ·{' '}
-              {garments.filter((g) => g.isClean).length}{' '}
-              {isEn ? 'clean & ready to wear' : 'frisch gewaschen & tragbar'}
+              {garments.filter((g) => (canGarmentUseLaundry(g) ? g.isClean : true)).length}{' '}
+              {isEn ? 'clean & ready to wear' : 'tragebereit im Schrank'}
             </p>
           </div>
 
@@ -207,13 +210,13 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
           </div>
         </div>
 
-        {/* Starter Collection Switcher */}
-        {onLoadCollectionPreset && (
+        {/* Starter Collection Switcher (Only visible in Demo mode so it doesn't look like a gender filter in own closet) */}
+        {onLoadCollectionPreset && profile.isDemoMode !== false && (
           <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-zinc-800/70">
             <span className="text-xs font-medium text-zinc-400">
               {isEn
                 ? 'Load example wardrobe:'
-                : 'Beispiel-Kleiderschrank laden (zum Ausprobieren):'}
+                : 'Beispiel-Kleiderschrank laden (Demo-Auswahl):'}
             </span>
             <div className="flex flex-wrap items-center gap-1.5">
               {(
@@ -347,7 +350,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2.5 min-h-[42px] text-xs text-zinc-200 cursor-pointer"
             >
               <option value="all">Wäsche-Status: Alle</option>
-              <option value="clean">Nur frisch gewaschen</option>
+              <option value="clean">Nur tragebereit / frisch</option>
               <option value="dirty">Im Wäschekorb</option>
               <option value="sandbox">Nur Test-Stücke</option>
             </select>
@@ -417,6 +420,13 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(({ garment, bio, validOutfits }) => {
             const isOrphan = bio.score >= 70 && validOutfits <= 2;
+            const supportsLaundry = canGarmentUseLaundry(garment);
+            const isRainReady = Boolean(
+              garment.rainproof ||
+                garment.waterResistant ||
+                garment.texture === 'tech_waterproof' ||
+                garment.subcategory === 'rain_jacket'
+            );
 
             return (
               <article
@@ -493,6 +503,9 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                           accentColorHex={garment.accentColorHex}
                           texture={garment.texture}
                           neckline={garment.neckline}
+                          hasPrint={garment.hasPrint}
+                          hasLogo={garment.hasLogo}
+                          wornOpen={garment.wornOpen}
                           className="w-14 h-14"
                         />
                       )}
@@ -536,6 +549,31 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                             Gr. {garment.size}
                           </span>
                         )}
+                        {garment.hasPrint && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-[10px] text-purple-300 font-medium">
+                            Print
+                          </span>
+                        )}
+                        {garment.hasLogo && (
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-[10px] text-indigo-300 font-medium">
+                            Logo
+                          </span>
+                        )}
+                        {garment.wornOpen !== undefined && (
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px] text-zinc-300 font-medium">
+                            {garment.wornOpen ? 'Offen getragen' : 'Geschlossen'}
+                          </span>
+                        )}
+                        {isRainReady && garment.category !== 'accessory' && (
+                          <span className="px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/30 text-[10px] text-sky-300 font-medium">
+                            Regenfest
+                          </span>
+                        )}
+                        {garment.windproof && (
+                          <span className="px-1.5 py-0.5 rounded bg-teal-500/15 border border-teal-500/30 text-[10px] text-teal-300 font-medium">
+                            Winddicht
+                          </span>
+                        )}
                         <span
                           className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-flex items-center gap-1 ${
                             (garment.wearCount || 0) > 0
@@ -562,16 +600,23 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
 
                 {/* Card Bottom Actions */}
                 <div className="mt-2 pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onToggleClean(garment.id, !garment.isClean)}
-                    className={`inline-flex items-center gap-1.5 min-h-[42px] px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer touch-manipulation active:scale-95 ${
-                      garment.isClean ? 'text-emerald-400 hover:text-emerald-300' : 'text-amber-400 hover:text-amber-300'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{garment.isClean ? 'Frisch im Schrank' : 'Im Wäschekorb'}</span>
-                  </button>
+                  {supportsLaundry ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggleClean(garment.id, !garment.isClean)}
+                      className={`inline-flex items-center gap-1.5 min-h-[42px] px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer touch-manipulation active:scale-95 ${
+                        garment.isClean ? 'text-emerald-400 hover:text-emerald-300' : 'text-amber-400 hover:text-amber-300'
+                      }`}
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{garment.isClean ? 'Frisch im Schrank' : 'Im Wäschekorb'}</span>
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 min-h-[42px] px-2.5 py-1.5 text-xs text-zinc-400">
+                      <Check className="w-3.5 h-3.5 text-emerald-400/80" />
+                      <span>{isEn ? 'Always ready' : 'Immer tragebereit'}</span>
+                    </span>
+                  )}
 
                   <button
                     type="button"
@@ -610,6 +655,9 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                     accentColorHex={popupEntry.garment.accentColorHex}
                     texture={popupEntry.garment.texture}
                     neckline={popupEntry.garment.neckline}
+                    hasPrint={popupEntry.garment.hasPrint}
+                    hasLogo={popupEntry.garment.hasLogo}
+                    wornOpen={popupEntry.garment.wornOpen}
                     className="w-9 h-9"
                   />
                 </div>

@@ -88,13 +88,17 @@ export const SUBCATEGORY_LABELS: Record<GarmentSubcategory, string> = {
   hoodie: 'Hoodie',
   cardigan: 'Strickjacke',
   blazer: 'Blazer / Sakko',
-  vest_gilet: 'Pullunder / Weste',
+  vest_gilet: 'Pullunder / Strickweste',
+  fleece_vest: 'Fleeceweste (ärmellos)',
   wrap_top: 'Feinstrick-Jacke',
   // Outerwear
   light_jacket: 'Übergangsjacke',
+  rain_jacket: 'Regenjacke / Hardshell',
+  fleece_jacket: 'Fleecejacke',
+  down_jacket: 'Daunenjacke',
   coat: 'Wollmantel',
-  parka: 'Regenjacke / Parka',
-  blouson: 'Leichte Jacke',
+  parka: 'Winter-Parka',
+  blouson: 'Leichte Jacke / Blouson',
   trenchcoat: 'Trenchcoat',
   leather_jacket: 'Lederjacke',
   puffer_jacket: 'Winter- / Steppjacke',
@@ -151,14 +155,18 @@ export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcatego
     'overshirt',
     'turtleneck',
     'vest_gilet',
+    'fleece_vest',
     'wrap_top',
   ],
   outerwear: [
     'light_jacket',
-    'trenchcoat',
-    'coat',
-    'parka',
+    'rain_jacket',
+    'fleece_jacket',
+    'down_jacket',
     'puffer_jacket',
+    'parka',
+    'coat',
+    'trenchcoat',
     'leather_jacket',
     'blouson',
   ],
@@ -223,6 +231,8 @@ export const TEXTURE_LABELS: Record<TextureType, string> = {
   chunky_knit: 'Grobstrick',
   fine_knit: 'Feinstrick',
   flannel_wool: 'Wollstoff / Flanell',
+  fleece: 'Fleece / Teddy-Stoff',
+  down_quilted: 'Daune / Gesteppt',
   linen: 'Leinen',
   tech_waterproof: 'Wasserabweisender Funktionsstoff',
   leather_suede: 'Leder / Wildleder',
@@ -327,7 +337,59 @@ export const DEFAULT_BIOMETRIC_PROFILE: BiometricProfile = {
     { brand: 'Zara', size: 'L', categoryGroup: 'top' },
   ],
   isDemoMode: true,
+  autoLaundrySubcategories: [
+    't_shirt',
+    'heavyweight_tee',
+    'longsleeve',
+    'polo',
+    'tank_camisole',
+    'crop_top',
+    'bodysuit',
+    'socks',
+    'socks_short',
+  ],
 };
+
+export const DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES: GarmentSubcategory[] = [
+  't_shirt',
+  'heavyweight_tee',
+  'longsleeve',
+  'polo',
+  'tank_camisole',
+  'crop_top',
+  'bodysuit',
+  'socks',
+  'socks_short',
+];
+
+/**
+ * Shoes and non-sock accessories (watches, glasses, belts, bags, jewelry, caps, scarves)
+ * never use "In der Wäsche" UI. Only clothing and socks can be put in the laundry.
+ */
+export function canGarmentUseLaundry(garment: {
+  category: GarmentCategory;
+  subcategory: GarmentSubcategory;
+}): boolean {
+  if (garment.category === 'footwear') return false;
+  if (garment.category === 'accessory') {
+    return garment.subcategory === 'socks' || garment.subcategory === 'socks_short';
+  }
+  return true;
+}
+
+/**
+ * Determines whether a garment should automatically be marked as dirty (isClean = false)
+ * when an outfit is logged as worn ("Heute anziehen").
+ */
+export function shouldAutoMarkDirtyOnWear(
+  garment: { category: GarmentCategory; subcategory: GarmentSubcategory },
+  profile?: BiometricProfile
+): boolean {
+  if (!canGarmentUseLaundry(garment)) return false;
+  const activeAutoSubcategories =
+    profile?.autoLaundrySubcategories ?? DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES;
+  return activeAutoSubcategories.includes(garment.subcategory);
+}
 
 function makeSeedGarment(
   raw: Omit<Garment, 'hsl' | 'colorTemp'>
@@ -1307,6 +1369,10 @@ export const WARDROBE_MULTI_SCOPE_META: Record<
       'sneaker_clean',
       'sneaker_chunky',
       'puffer_jacket',
+      'down_jacket',
+      'fleece_jacket',
+      'fleece_vest',
+      'rain_jacket',
       'watch',
       'sunglasses',
       'glasses',
@@ -1413,6 +1479,8 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
     thermalRating: 1 | 2 | 3 | 4 | 5;
     formality: 1 | 2 | 3 | 4 | 5;
     waterResistant: boolean;
+    rainproof?: boolean;
+    windproof?: boolean;
   }
 > = {
   // Base Tops
@@ -1434,15 +1502,19 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
   cardigan: { category: 'mid_layer', fit: 'relaxed', neckline: 'v_neck', texture: 'chunky_knit', thermalRating: 3, formality: 3, waterResistant: false },
   blazer: { category: 'mid_layer', fit: 'relaxed', neckline: 'shirt_collar', texture: 'flannel_wool', thermalRating: 3, formality: 4, waterResistant: false },
   vest_gilet: { category: 'mid_layer', fit: 'relaxed', neckline: 'v_neck', texture: 'chunky_knit', thermalRating: 2, formality: 3, waterResistant: false },
+  fleece_vest: { category: 'mid_layer', fit: 'regular', neckline: 'stand_collar', texture: 'fleece', thermalRating: 3, formality: 2, waterResistant: false },
   wrap_top: { category: 'mid_layer', fit: 'regular', neckline: 'v_neck', texture: 'fine_knit', thermalRating: 3, formality: 3, waterResistant: false },
   // Outerwear
-  light_jacket: { category: 'outerwear', fit: 'regular', neckline: 'stand_collar', texture: 'tech_waterproof', thermalRating: 3, formality: 3, waterResistant: true },
-  trenchcoat: { category: 'outerwear', fit: 'relaxed', neckline: 'shirt_collar', texture: 'tech_waterproof', thermalRating: 3, formality: 4, waterResistant: true },
+  light_jacket: { category: 'outerwear', fit: 'regular', neckline: 'stand_collar', texture: 'tech_waterproof', thermalRating: 3, formality: 3, waterResistant: true, windproof: true },
+  rain_jacket: { category: 'outerwear', fit: 'relaxed', neckline: 'hooded', texture: 'tech_waterproof', thermalRating: 3, formality: 2, waterResistant: true, rainproof: true, windproof: true },
+  fleece_jacket: { category: 'outerwear', fit: 'relaxed', neckline: 'stand_collar', texture: 'fleece', thermalRating: 3, formality: 2, waterResistant: false },
+  down_jacket: { category: 'outerwear', fit: 'regular', neckline: 'stand_collar', texture: 'down_quilted', thermalRating: 5, formality: 2, waterResistant: false, windproof: true },
+  trenchcoat: { category: 'outerwear', fit: 'relaxed', neckline: 'shirt_collar', texture: 'tech_waterproof', thermalRating: 3, formality: 4, waterResistant: true, windproof: true },
   coat: { category: 'outerwear', fit: 'regular', neckline: 'shirt_collar', texture: 'flannel_wool', thermalRating: 4, formality: 4, waterResistant: true },
-  parka: { category: 'outerwear', fit: 'relaxed', neckline: 'hooded', texture: 'tech_waterproof', thermalRating: 4, formality: 3, waterResistant: true },
+  parka: { category: 'outerwear', fit: 'relaxed', neckline: 'hooded', texture: 'tech_waterproof', thermalRating: 4, formality: 3, waterResistant: true, rainproof: true, windproof: true },
   blouson: { category: 'outerwear', fit: 'regular', neckline: 'stand_collar', texture: 'leather_suede', thermalRating: 3, formality: 3, waterResistant: false },
-  leather_jacket: { category: 'outerwear', fit: 'regular', neckline: 'stand_collar', texture: 'leather_suede', thermalRating: 3, formality: 3, waterResistant: false },
-  puffer_jacket: { category: 'outerwear', fit: 'boxy_oversized', neckline: 'stand_collar', texture: 'tech_waterproof', thermalRating: 4, formality: 2, waterResistant: true },
+  leather_jacket: { category: 'outerwear', fit: 'regular', neckline: 'stand_collar', texture: 'leather_suede', thermalRating: 3, formality: 3, waterResistant: false, windproof: true },
+  puffer_jacket: { category: 'outerwear', fit: 'boxy_oversized', neckline: 'stand_collar', texture: 'down_quilted', thermalRating: 4, formality: 2, waterResistant: true, windproof: true },
   // Bottoms
   denim: { category: 'bottom', fit: 'regular', neckline: 'none', texture: 'denim', thermalRating: 3, formality: 2, waterResistant: false },
   chino: { category: 'bottom', fit: 'regular', neckline: 'none', texture: 'twill_chino', thermalRating: 2, formality: 3, waterResistant: false },

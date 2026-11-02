@@ -12,6 +12,7 @@ import {
   GarmentSubcategory,
   NecklineType,
   TextureType,
+  WornOutfitRecord,
 } from '../types/wardrobe';
 import { classifyColorTemp, deriveSeasonPalette, hexToHsl, scoreGarmentBiometrics } from './colorMath';
 
@@ -49,6 +50,8 @@ const VALID_TEXTURES: TextureType[] = [
   'chunky_knit',
   'fine_knit',
   'flannel_wool',
+  'fleece',
+  'down_quilted',
   'linen',
   'tech_waterproof',
   'leather_suede',
@@ -58,6 +61,7 @@ export interface ParsedWardrobeImportResult {
   ok: boolean;
   garments: Garment[];
   profile?: BiometricProfile;
+  wornHistory?: WornOutfitRecord[];
   warnings: string[];
   error?: string;
 }
@@ -135,6 +139,7 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
 
   let rawGarments: unknown[] = [];
   let parsedProfile: BiometricProfile | undefined = undefined;
+  let parsedWornHistory: WornOutfitRecord[] | undefined = undefined;
 
   if (Array.isArray(parsed)) {
     rawGarments = parsed;
@@ -155,6 +160,10 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
         ...(obj.profile as Partial<BiometricProfile>),
         id: 'default_profile',
       };
+    }
+
+    if (Array.isArray(obj.wornHistory)) {
+      parsedWornHistory = obj.wornHistory as WornOutfitRecord[];
     }
   }
 
@@ -264,9 +273,28 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
           .filter((n) => Number.isFinite(n)) as Array<1 | 2 | 3 | 4 | 5>)
       : undefined;
 
-    const waterResistant = Boolean(item.waterResistant);
+    const waterResistant = Boolean(item.waterResistant || item.rainproof);
+    const windproof = item.windproof === undefined ? undefined : Boolean(item.windproof);
+    const rainproof = item.rainproof === undefined ? undefined : Boolean(item.rainproof);
+    const hasPrint = item.hasPrint === undefined ? undefined : Boolean(item.hasPrint);
+    const hasLogo = item.hasLogo === undefined ? undefined : Boolean(item.hasLogo);
+    const wornOpen = item.wornOpen === undefined ? undefined : Boolean(item.wornOpen);
     const isClean = item.isClean === undefined ? true : Boolean(item.isClean);
     const isWishlistSandbox = Boolean(item.isWishlistSandbox);
+    const wearCount =
+      typeof item.wearCount === 'number' && Number.isFinite(item.wearCount)
+        ? Math.max(0, Math.round(item.wearCount))
+        : undefined;
+    const lastWornDate =
+      typeof item.lastWornDate === 'string' && item.lastWornDate.trim()
+        ? item.lastWornDate.trim()
+        : undefined;
+    const targetScope =
+      item.targetScope === 'menswear' ||
+      item.targetScope === 'womenswear' ||
+      item.targetScope === 'unisex'
+        ? item.targetScope
+        : undefined;
 
     const hsl = hexToHsl(colorHex);
     const colorTemp = classifyColorTemp(hsl);
@@ -295,8 +323,16 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       formality,
       formalities: formalities && formalities.length > 0 ? formalities : undefined,
       waterResistant,
+      windproof,
+      rainproof,
+      hasPrint,
+      hasLogo,
+      wornOpen,
       isClean,
       isWishlistSandbox,
+      wearCount,
+      lastWornDate,
+      targetScope,
       brand: typeof item.brand === 'string' && item.brand.trim() ? item.brand.trim() : undefined,
       size: typeof item.size === 'string' && item.size.trim() ? item.size.trim() : undefined,
       imageDataUrl: typeof item.imageDataUrl === 'string' ? item.imageDataUrl : undefined,
@@ -307,6 +343,7 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
     ok: true,
     garments: normalizedGarments,
     profile: parsedProfile,
+    wornHistory: parsedWornHistory,
     warnings,
   };
 }

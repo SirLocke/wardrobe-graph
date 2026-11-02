@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  canGarmentUseLaundry,
   CATEGORY_LABELS,
   FIT_LABELS,
   getAllColorPresets,
@@ -59,6 +60,19 @@ interface AddGarmentModalProps {
   initialGarment?: Garment | null;
 }
 
+const OPENABLE_SUBCATEGORIES: GarmentSubcategory[] = [
+  'button_down_shirt',
+  'overshirt',
+  'cardigan',
+  'fleece_vest',
+  'vest_gilet',
+  'blouse',
+];
+
+function isOpenableSubcategory(sub: GarmentSubcategory): boolean {
+  return OPENABLE_SUBCATEGORIES.includes(sub);
+}
+
 const THERMAL_LEVEL_OPTIONS: Array<{ value: 1 | 2 | 3 | 4 | 5; label: string; shortLabel: string }> = [
   { value: 1, label: 'Sehr leicht (Sommer)', shortLabel: 'Sommer (>24°C)' },
   { value: 2, label: 'Mild (Frühling / Spätsommer)', shortLabel: 'Mild (18–23°C)' },
@@ -101,6 +115,11 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [formality, setFormality] = useState<1 | 2 | 3 | 4 | 5>(2);
   const [formalities, setFormalities] = useState<Array<1 | 2 | 3 | 4 | 5>>([2]);
   const [waterResistant, setWaterResistant] = useState(false);
+  const [rainproof, setRainproof] = useState(false);
+  const [windproof, setWindproof] = useState(false);
+  const [hasPrint, setHasPrint] = useState(false);
+  const [hasLogo, setHasLogo] = useState(false);
+  const [wornOpen, setWornOpen] = useState(false);
   const [isClean, setIsClean] = useState(true);
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
@@ -162,8 +181,21 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
           ? initialGarment.formalities
           : [initialGarment.formality]
       );
-      setWaterResistant(initialGarment.waterResistant);
-      setIsClean(initialGarment.isClean);
+      const isRainproofInit = Boolean(
+        initialGarment.rainproof ||
+          initialGarment.waterResistant ||
+          initialGarment.texture === 'tech_waterproof' ||
+          initialGarment.subcategory === 'rain_jacket'
+      );
+      setWaterResistant(Boolean(initialGarment.waterResistant || isRainproofInit));
+      setRainproof(Boolean(initialGarment.rainproof || initialGarment.subcategory === 'rain_jacket' || initialGarment.texture === 'tech_waterproof'));
+      setWindproof(Boolean(initialGarment.windproof));
+      setHasPrint(Boolean(initialGarment.hasPrint));
+      setHasLogo(Boolean(initialGarment.hasLogo));
+      setWornOpen(Boolean(initialGarment.wornOpen));
+      setIsClean(
+        canGarmentUseLaundry(initialGarment) ? initialGarment.isClean : true
+      );
       setImageDataUrl(initialGarment.imageDataUrl);
     } else {
       const defaultSub: GarmentSubcategory = 't_shirt';
@@ -184,6 +216,11 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setFormality(defaults.formality);
       setFormalities([defaults.formality]);
       setWaterResistant(defaults.waterResistant);
+      setRainproof(Boolean(defaults.rainproof));
+      setWindproof(Boolean(defaults.windproof));
+      setHasPrint(false);
+      setHasLogo(false);
+      setWornOpen(false);
       setIsClean(true);
       setImageDataUrl(undefined);
       setName('T-Shirt Salbeigrün');
@@ -216,6 +253,12 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
     const nextAccentName = defaults.category === 'footwear' ? accentColorName : '';
     const nextAccentHex = defaults.category === 'footwear' ? accentColorHex : '';
+    const isRain = Boolean(
+      defaults.rainproof ||
+        defaults.waterResistant ||
+        defaults.texture === 'tech_waterproof' ||
+        newSub === 'rain_jacket'
+    );
 
     setCategory(defaults.category);
     setSubcategory(newSub);
@@ -226,7 +269,15 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     setThermalRatings([defaults.thermalRating]);
     setFormality(defaults.formality);
     setFormalities([defaults.formality]);
-    setWaterResistant(defaults.waterResistant);
+    setWaterResistant(isRain);
+    setRainproof(Boolean(defaults.rainproof || newSub === 'rain_jacket' || defaults.texture === 'tech_waterproof'));
+    setWindproof(Boolean(defaults.windproof));
+    setHasPrint(false);
+    setHasLogo(false);
+    setWornOpen(newSub === 'fleece_vest' || newSub === 'vest_gilet');
+    if (!canGarmentUseLaundry({ category: defaults.category, subcategory: newSub })) {
+      setIsClean(true);
+    }
     if (defaults.category !== 'footwear') {
       setAccentColorName('');
       setAccentColorHex('');
@@ -427,6 +478,16 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
     const isAccessory = category === 'accessory';
     const isFootwear = category === 'footwear';
+    const laundryAllowed = canGarmentUseLaundry({ category, subcategory });
+    const effectiveWaterResistant = Boolean(
+      waterResistant ||
+        rainproof ||
+        texture === 'tech_waterproof' ||
+        subcategory === 'rain_jacket'
+    );
+    const effectiveRainproof = Boolean(
+      rainproof || subcategory === 'rain_jacket' || texture === 'tech_waterproof'
+    );
 
     const newGarment: Garment = {
       id:
@@ -453,11 +514,21 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       thermalRatings: isAccessory ? undefined : thermalRatings,
       formality: isAccessory ? 3 : formalities[0] || formality,
       formalities: isAccessory ? undefined : formalities,
-      waterResistant,
-      isClean,
+      waterResistant: effectiveWaterResistant,
+      rainproof: effectiveRainproof ? true : undefined,
+      windproof: windproof ? true : undefined,
+      hasPrint:
+        (category === 'base_top' || category === 'mid_layer') && hasPrint ? true : undefined,
+      hasLogo:
+        (category === 'base_top' || category === 'mid_layer') && hasLogo ? true : undefined,
+      wornOpen: isOpenableSubcategory(subcategory) ? wornOpen : undefined,
+      isClean: laundryAllowed ? isClean : true,
       imageDataUrl,
       brand: brand.trim() || undefined,
       size: size.trim() || undefined,
+      wearCount: initialGarment && !keepOpenForDuplicate ? initialGarment.wearCount : undefined,
+      lastWornDate:
+        initialGarment && !keepOpenForDuplicate ? initialGarment.lastWornDate : undefined,
     };
 
     await onSaveGarment(newGarment, keepOpenForDuplicate);
@@ -486,6 +557,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       : 'text-rose-400 border-rose-500/30 bg-rose-950/20';
 
   const sizePills = COMMON_SIZE_SUGGESTIONS[getCategorySizeGroup(category)];
+  const laundrySupported = canGarmentUseLaundry({ category, subcategory });
 
   return (
     <div
@@ -502,7 +574,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               {initialGarment ? 'Kleidungsstück anpassen' : 'Kleidungsstück einfach hinzufügen'}
             </h2>
             <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
-              1. Schnitt antippen · 2. Farbe wählen · 3. Optional Marke &amp; Größe · Fertig!
+              1. Schnitt antippen · 2. Farbe wählen · 3. Optional Eigenschaften, Marke &amp; Größe · Fertig!
             </p>
           </div>
           <button
@@ -537,6 +609,10 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                 colorHex={colorHex}
                 accentColorHex={category === 'footwear' && accentColorHex ? accentColorHex : undefined}
                 texture={texture}
+                neckline={neckline}
+                hasPrint={hasPrint}
+                hasLogo={hasLogo}
+                wornOpen={wornOpen}
                 className="w-20 h-20"
               />
             </div>
@@ -788,6 +864,154 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             )}
           </div>
 
+          {/* STEP 2b: Eigenschaften, Trageweise (Offen/Geschlossen), Print/Logo & Wetter-Tags */}
+          {(category === 'base_top' ||
+            category === 'mid_layer' ||
+            category === 'outerwear' ||
+            category === 'footwear' ||
+            category === 'bottom') && (
+            <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                Eigenschaften &amp; Trageweise (Optional)
+              </label>
+
+              {/* Print & Logo options for T-Shirts, Tops, Pullovers, Hoodies, etc. */}
+              {(category === 'base_top' || category === 'mid_layer') && (
+                <div className="space-y-1.5">
+                  <span className="block text-xs text-zinc-400">
+                    Muster / Aufdruck (für T-Shirts, Pullover &amp; Oberteile):
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasPrint(false);
+                        setHasLogo(false);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        !hasPrint && !hasLogo
+                          ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      Unifarben / Clean
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHasPrint((v) => !v)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        hasPrint
+                          ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {hasPrint ? '✓ ' : ''}Mit Print / Motiv
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHasLogo((v) => !v)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        hasLogo
+                          ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {hasLogo ? '✓ ' : ''}Mit Logo
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Shirt / Overshirt / Cardigan / Vest: Worn Open vs. Closed */}
+              {isOpenableSubcategory(subcategory) && (
+                <div className="space-y-1.5">
+                  <span className="block text-xs text-zinc-400">
+                    Trageweise (Hemd / Overshirt / Cardigan / Weste):
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWornOpen(false)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        !wornOpen
+                          ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {!wornOpen ? '✓ ' : ''}Geschlossen getragen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWornOpen(true)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        wornOpen
+                          ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {wornOpen ? '✓ ' : ''}Offen getragen (über T-Shirt)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Weather & Protection Tags (Regenfest, Winddicht, Wasserabweisend) */}
+              {(category === 'outerwear' ||
+                category === 'footwear' ||
+                category === 'mid_layer' ||
+                category === 'bottom') && (
+                <div className="space-y-1.5">
+                  <span className="block text-xs text-zinc-400">
+                    Wetterschutz-Tags (z. B. für Regen, Nässe oder starken Wind):
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !rainproof;
+                        setRainproof(next);
+                        if (next) setWaterResistant(true);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        rainproof
+                          ? 'bg-sky-500/20 border-sky-400 text-sky-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {rainproof ? '✓ ' : ''}Regenfest / Wasserdicht
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !waterResistant;
+                        setWaterResistant(next);
+                        if (!next) setRainproof(false);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        waterResistant
+                          ? 'bg-sky-500/15 border-sky-500/50 text-sky-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {waterResistant ? '✓ ' : ''}Wasserabweisend
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWindproof((v) => !v)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                        windproof
+                          ? 'bg-teal-500/20 border-teal-400 text-teal-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {windproof ? '✓ ' : ''}Winddicht
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* STEP 3: Marke & Größe (Optional – mit automatischem Größen-Vorschlag) */}
           <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -925,7 +1149,14 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                       </label>
                       <select
                         value={texture}
-                        onChange={(e) => setTexture(e.target.value as TextureType)}
+                        onChange={(e) => {
+                          const nextTex = e.target.value as TextureType;
+                          setTexture(nextTex);
+                          if (nextTex === 'tech_waterproof') {
+                            setWaterResistant(true);
+                            setRainproof(true);
+                          }
+                        }}
                         className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
                       >
                         {(Object.keys(TEXTURE_LABELS) as TextureType[]).map((t) => (
@@ -986,7 +1217,14 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                         </label>
                         <select
                           value={texture}
-                          onChange={(e) => setTexture(e.target.value as TextureType)}
+                          onChange={(e) => {
+                            const nextTex = e.target.value as TextureType;
+                            setTexture(nextTex);
+                            if (nextTex === 'tech_waterproof') {
+                              setWaterResistant(true);
+                              setRainproof(true);
+                            }
+                          }}
                           className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
                         >
                           {(Object.keys(TEXTURE_LABELS) as TextureType[]).map((t) => (
@@ -1062,28 +1300,37 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                   <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setWaterResistant((v) => !v)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                        waterResistant
-                          ? 'bg-sky-950/50 border-sky-500/50 text-sky-200'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      {waterResistant ? '✓ Wasserabweisend (Regenfest)' : 'Nicht wasserabweisend'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsClean((v) => !v)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                        isClean
-                          ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-200'
-                          : 'bg-rose-950/50 border-rose-500/50 text-rose-200'
-                      }`}
-                    >
-                      {isClean ? '✓ Frisch gewaschen' : 'In der Wäsche'}
-                    </button>
+                    {category !== 'accessory' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !waterResistant;
+                          setWaterResistant(next);
+                          if (!next) setRainproof(false);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                          waterResistant
+                            ? 'bg-sky-950/50 border-sky-500/50 text-sky-200'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                        }`}
+                      >
+                        {waterResistant ? '✓ Wasserabweisend (Regenfest)' : 'Nicht wasserabweisend'}
+                      </button>
+                    )}
+
+                    {laundrySupported && (
+                      <button
+                        type="button"
+                        onClick={() => setIsClean((v) => !v)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                          isClean
+                            ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-200'
+                            : 'bg-rose-950/50 border-rose-500/50 text-rose-200'
+                        }`}
+                      >
+                        {isClean ? '✓ Frisch gewaschen' : 'In der Wäsche'}
+                      </button>
+                    )}
                   </div>
 
                   <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-medium text-zinc-300 hover:border-zinc-600 cursor-pointer">

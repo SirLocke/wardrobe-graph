@@ -15,6 +15,7 @@ const OPENABLE_MID_LAYERS: GarmentSubcategory[] = [
   'button_down_shirt',
   'cardigan',
   'blazer',
+  'fleece_vest',
 ];
 
 /**
@@ -48,7 +49,10 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
   );
 
   const isMidLayerOpenable =
-    midLayer !== undefined && OPENABLE_MID_LAYERS.includes(midLayer.subcategory);
+    midLayer !== undefined &&
+    (midLayer.wornOpen !== undefined
+      ? midLayer.wornOpen
+      : OPENABLE_MID_LAYERS.includes(midLayer.subcategory));
 
   const isShortsOrSkirt =
     bottom?.subcategory === 'shorts' ||
@@ -185,6 +189,8 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 accentColorHex={baseTop.accentColorHex}
                 texture={baseTop.texture}
                 neckline={baseTop.neckline}
+                hasPrint={baseTop.hasPrint}
+                hasLogo={baseTop.hasLogo}
                 className="w-32 h-32 drop-shadow-[0_4px_10px_rgba(0,0,0,0.65)]"
               />
             </div>
@@ -212,6 +218,9 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 texture={midLayer.texture}
                 neckline={midLayer.neckline}
                 openFront={isMidLayerOpenable && Boolean(baseTop)}
+                wornOpen={isMidLayerOpenable && Boolean(baseTop)}
+                hasPrint={midLayer.hasPrint}
+                hasLogo={midLayer.hasLogo}
                 className="w-34 h-34 drop-shadow-[0_6px_14px_rgba(0,0,0,0.75)]"
               />
             </div>
@@ -237,6 +246,8 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 texture={outerwear.texture}
                 neckline={outerwear.neckline}
                 openFront={true}
+                hasPrint={outerwear.hasPrint}
+                hasLogo={outerwear.hasLogo}
                 className="w-36 h-36 drop-shadow-[0_8px_18px_rgba(0,0,0,0.85)]"
               />
             </div>

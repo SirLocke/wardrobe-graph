@@ -26,6 +26,7 @@ import {
   BiometricProfile,
   GapAnalysisReport,
   Garment,
+  WornOutfitRecord,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 
@@ -38,7 +39,8 @@ interface WardrobeImportExportModalProps {
   onImportGarments: (
     garments: Garment[],
     mode: 'merge' | 'replace',
-    importedProfile?: BiometricProfile
+    importedProfile?: BiometricProfile,
+    importedWornHistory?: WornOutfitRecord[]
   ) => Promise<void>;
   onDownloadJsonBackup: () => void;
   onRefreshFromServer?: () => Promise<void>;
@@ -181,7 +183,8 @@ export const WardrobeImportExportModal: React.FC<WardrobeImportExportModalProps>
     await onImportGarments(
       parsedImport.garments,
       importMode,
-      parsedImport.profile
+      parsedImport.profile,
+      parsedImport.wornHistory
     );
     setImportSuccessBanner(
       `${parsedImport.garments.length} ${

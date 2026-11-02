@@ -26,8 +26,10 @@ import { SetupWizardModal } from './components/SetupWizardModal';
 import { SmartClosetView } from './components/SmartClosetView';
 import { WardrobeImportExportModal } from './components/WardrobeImportExportModal';
 import {
+  canGarmentUseLaundry,
   DEFAULT_BIOMETRIC_PROFILE,
   SEED_WARDROBE_GARMENTS,
+  shouldAutoMarkDirtyOnWear,
   WARDROBE_PRESETS,
   WardrobePresetKey,
 } from './data/seedData';
@@ -175,7 +177,11 @@ export default function App() {
   const handleToggleClean = async (id: string, nextClean: boolean) => {
     await updateGarmentsCleanStatus([id], nextClean);
     setGarments((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, isClean: nextClean } : g))
+      prev.map((g) =>
+        g.id === id
+          ? { ...g, isClean: canGarmentUseLaundry(g) ? nextClean : true }
+          : g
+      )
     );
   };
 
@@ -184,15 +190,19 @@ export default function App() {
     const outfitItemIds = new Set(outfit.items.map((i) => i.id));
 
     // Update wear count and lastWornDate on all items in the outfit
-    // Also mark tops/midlayers as dirty
+    // Automatically put configured subcategories (default: T-Shirts/Tops & Socks) in the laundry
     const updatedGarments = garments.map((g) => {
       if (!outfitItemIds.has(g.id)) return g;
-      const shouldMarkDirty = g.category === 'base_top' || g.category === 'mid_layer';
+      const shouldMarkDirty = shouldAutoMarkDirtyOnWear(g, profile);
       return {
         ...g,
         wearCount: (g.wearCount || 0) + 1,
         lastWornDate: wornDate,
-        isClean: shouldMarkDirty ? false : g.isClean,
+        isClean: !canGarmentUseLaundry(g)
+          ? true
+          : shouldMarkDirty
+          ? false
+          : g.isClean,
       };
     });
 
@@ -317,7 +327,8 @@ export default function App() {
   const handleStructuredImport = async (
     importedGarments: Garment[],
     mode: 'merge' | 'replace',
-    importedProfile?: BiometricProfile
+    importedProfile?: BiometricProfile,
+    importedWornHistory?: WornOutfitRecord[]
   ) => {
     const nextProfile = importedProfile || profile;
     if (importedProfile) {
@@ -331,6 +342,7 @@ export default function App() {
         exportedAt: new Date().toISOString(),
         profile: nextProfile,
         garments: importedGarments,
+        wornHistory: importedWornHistory,
       });
       setProfile(res.profile);
       setGarments(res.garments);
@@ -423,7 +435,8 @@ export default function App() {
         await handleStructuredImport(
           parsed.garments,
           'replace',
-          parsed.profile ? { ...parsed.profile, isDemoMode: false } : { ...profile, isDemoMode: false }
+          parsed.profile ? { ...parsed.profile, isDemoMode: false } : { ...profile, isDemoMode: false },
+          parsed.wornHistory
         );
       }
     } catch {
@@ -623,6 +636,7 @@ export default function App() {
                 onEditGarment={openEditGarment}
                 onOpenSetupWizard={handleExitDemoAndOpenWizard}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onUpdateProfile={handleUpdateProfile}
               />
             )}
 

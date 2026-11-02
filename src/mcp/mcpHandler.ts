@@ -16,11 +16,20 @@ import {
   Garment,
   OccasionType,
   WeatherCondition,
+  WornOutfitRecord,
 } from '../types/wardrobe';
 
 export interface WardrobeStateStore {
-  getState: () => Promise<{ profile: BiometricProfile; garments: Garment[] }>;
-  setState: (next: { profile: BiometricProfile; garments: Garment[] }) => Promise<void>;
+  getState: () => Promise<{
+    profile: BiometricProfile;
+    garments: Garment[];
+    wornHistory?: WornOutfitRecord[];
+  }>;
+  setState: (next: {
+    profile: BiometricProfile;
+    garments: Garment[];
+    wornHistory?: WornOutfitRecord[];
+  }) => Promise<void>;
 }
 
 export interface JsonRpcRequest {
@@ -767,9 +776,14 @@ export async function handleMcpJsonRpcRequest(
   }
 }
 
-export function createDefaultWardrobeState() {
+export function createDefaultWardrobeState(): {
+  profile: BiometricProfile;
+  garments: Garment[];
+  wornHistory?: WornOutfitRecord[];
+} {
   return {
     profile: DEFAULT_BIOMETRIC_PROFILE,
     garments: SEED_WARDROBE_GARMENTS,
+    wornHistory: [],
   };
 }

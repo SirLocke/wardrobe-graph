@@ -4,6 +4,7 @@ import {
   ContextBottleneck,
   GapAnalysisReport,
   Garment,
+  GarmentCategory,
   GeneratedOutfit,
   OccasionType,
   OrphanPieceAnalysis,
@@ -12,7 +13,7 @@ import {
 } from '../types/wardrobe';
 import { instantiateCandidateArchetypes } from './archetypes';
 import { getHslDistance, scoreGarmentBiometrics } from './colorMath';
-import { generateOutfitsForContext } from './outfitGenerator';
+import { generateOutfitsForContext, isGarmentWaterResistant } from './outfitGenerator';
 
 export const VALID_OUTFIT_THRESHOLD = 76;
 
@@ -53,6 +54,16 @@ export const EVALUATION_BUCKETS: StandardEvaluationBucket[] = [
     tempLabel: 'Übergang (9–15°C)',
     occasion: 'smart_casual_office',
     occasionLabel: 'Büro / Smart Casual',
+    weather: 'cloudy_windy',
+    isCoreGraphContext: true,
+  },
+  {
+    id: 'cold_dry_everyday',
+    label: 'Kalt & Trocken Alltag (4°C)',
+    temperatureC: 4,
+    tempLabel: 'Winter / Kalt (<8°C)',
+    occasion: 'casual',
+    occasionLabel: 'Alltag / Casual (Trocken)',
     weather: 'cloudy_windy',
     isCoreGraphContext: true,
   },
@@ -226,15 +237,37 @@ function diagnoseOrphanIsolation(
     }
   }
 
-  if (!garment.waterResistant && (garment.category === 'footwear' || garment.category === 'outerwear')) {
+  if (garment.thermalRating >= 4) {
+    const warmBottoms = allGarments.filter(
+      (g) =>
+        g.category === 'bottom' &&
+        (g.thermalRatings ? g.thermalRatings.some((t) => t >= 3) : g.thermalRating >= 3)
+    );
+    const warmMidLayers = allGarments.filter(
+      (g) =>
+        g.category === 'mid_layer' &&
+        (g.thermalRatings ? g.thermalRatings.some((t) => t >= 3) : g.thermalRating >= 3)
+    );
+    if (warmBottoms.length === 0 || warmMidLayers.length === 0) {
+      reasons.push(
+        'Winter-Kleidungsstück (Wärmestufe 4–5): Für komplette Winter-Outfits brauchst du mindestens einen warmen Pullover/Mid-Layer und eine lange Hose (Wärmestufe 3+).'
+      );
+    }
+  }
+
+  if (
+    !isGarmentWaterResistant(garment) &&
+    (garment.category === 'footwear' || garment.category === 'outerwear') &&
+    reasons.length > 0
+  ) {
     reasons.push(
-      'Nicht wasserabweisend: Fällt bei Regen-/Nässe-Szenarien automatisch aus der Wertung.'
+      'Hinweis für Regentage: Da nicht als „Regenfest / Wasserabweisend“ markiert, wird dieses Teil nur bei trockenem oder bewölktem Wetter eingeplant.'
     );
   }
 
   if (reasons.length === 0) {
     reasons.push(
-      'Dir fehlt ein passendes Bindeglied (Mid-Layer, Hose oder Schuhwerk) in kompatibler Farbtemperatur und Formalität, um dieses Teil in mehr als 2 Top-Outfits einzubinden.'
+      'Dir fehlt ein passendes Bindeglied (Mid-Layer, Hose oder Schuhwerk) in kompatibler Farbtemperatur, Kontraststufe und Formalität, um dieses Teil vielseitiger zu kombinieren.'
     );
   }
 
@@ -412,6 +445,35 @@ export function analyzeWardrobeGaps(
     }
   }
 
+  // Build category-specific recommendations (up to 4 diverse pieces per category)
+  const recommendationsByCategory: Partial<Record<GarmentCategory, ArchetypeRecommendation[]>> = {};
+  const coreCategories: GarmentCategory[] = [
+    'base_top',
+    'mid_layer',
+    'outerwear',
+    'bottom',
+    'footwear',
+  ];
+  for (const cat of coreCategories) {
+    const inCat = recommendations.filter((r) => r.virtualGarment.category === cat);
+    const picked: ArchetypeRecommendation[] = [];
+    const seenSubs = new Set<string>();
+    for (const rec of inCat) {
+      if (picked.length >= 4) break;
+      if (!seenSubs.has(rec.virtualGarment.subcategory)) {
+        picked.push(rec);
+        seenSubs.add(rec.virtualGarment.subcategory);
+      }
+    }
+    for (const rec of inCat) {
+      if (picked.length >= 4) break;
+      if (!picked.some((p) => p.archetypeId === rec.archetypeId)) {
+        picked.push(rec);
+      }
+    }
+    recommendationsByCategory[cat] = picked;
+  }
+
   const totalCoreOutfits = allValidCoreOutfitsMap.size;
   const healthyBuckets = contextMatrix.filter((c) => !c.isBottleneck).length;
   const wardrobeHealthScore = Math.min(
@@ -430,5 +492,6 @@ export function analyzeWardrobeGaps(
     orphanPieces,
     outfitCountsByGarmentId: countsByGarmentId,
     recommendations: diverseTop5,
+    recommendationsByCategory,
   };
 }

@@ -12,6 +12,7 @@ import {
   Layers,
   LayoutGrid,
   Lock,
+  RefreshCw,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
@@ -22,8 +23,10 @@ import {
   X,
 } from 'lucide-react';
 import {
+  canGarmentUseLaundry,
   CATEGORY_LABELS,
   CATEGORY_LABELS_EN,
+  DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES,
   OCCASION_LABELS,
   OCCASION_LABELS_EN,
   STYLE_VIBE_META,
@@ -62,7 +65,73 @@ interface DailyStylistViewProps {
   onEditGarment?: (garment: Garment) => void;
   onOpenSetupWizard?: () => void;
   onOpenSettings?: () => void;
+  onUpdateProfile?: (nextProfile: BiometricProfile) => Promise<void>;
 }
+
+const AUTO_LAUNDRY_GROUPS: Array<{
+  id: string;
+  labelDe: string;
+  labelEn: string;
+  subcategories: GarmentSubcategory[];
+}> = [
+  {
+    id: 'tops',
+    labelDe: 'T-Shirts & Tops',
+    labelEn: 'T-Shirts & Tops',
+    subcategories: [
+      't_shirt',
+      'heavyweight_tee',
+      'longsleeve',
+      'polo',
+      'tank_camisole',
+      'crop_top',
+      'bodysuit',
+    ],
+  },
+  {
+    id: 'socks',
+    labelDe: 'Socken',
+    labelEn: 'Socks',
+    subcategories: ['socks', 'socks_short'],
+  },
+  {
+    id: 'shirts',
+    labelDe: 'Hemden & Blusen',
+    labelEn: 'Shirts & Blouses',
+    subcategories: ['button_down_shirt', 'blouse'],
+  },
+  {
+    id: 'midlayers',
+    labelDe: 'Pullover & Hoodies',
+    labelEn: 'Sweaters & Hoodies',
+    subcategories: [
+      'hoodie',
+      'crewneck_sweater',
+      'knit_sweater',
+      'turtleneck',
+      'cardigan',
+      'overshirt',
+      'fleece_jacket',
+      'fleece_vest',
+      'vest_gilet',
+    ],
+  },
+  {
+    id: 'bottoms',
+    labelDe: 'Hosen & Röcke',
+    labelEn: 'Pants & Skirts',
+    subcategories: [
+      'denim',
+      'chino',
+      'trousers',
+      'wide_leg_trousers',
+      'cargo',
+      'shorts',
+      'midi_skirt',
+      'mini_skirt',
+    ],
+  },
+];
 
 const TEMP_PRESETS = [
   { labelDe: 'Kalt (<8°C)', labelEn: 'Cold (<8°C)', temp: 5 },
@@ -148,6 +217,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   onEditGarment,
   onOpenSetupWizard,
   onOpenSettings,
+  onUpdateProfile,
 }) => {
   const isEn = locale === 'en';
   const [showAnchorPicker, setShowAnchorPicker] = useState(false);
@@ -168,9 +238,34 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   }, [garments, profile, context]);
 
   const dirtyCount = useMemo(
-    () => garments.filter((g) => !g.isClean).length,
+    () => garments.filter((g) => canGarmentUseLaundry(g) && !g.isClean).length,
     [garments]
   );
+
+  const activeAutoLaundrySubs = useMemo<GarmentSubcategory[]>(() => {
+    return Array.isArray(profile.autoLaundrySubcategories)
+      ? profile.autoLaundrySubcategories
+      : DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES;
+  }, [profile.autoLaundrySubcategories]);
+
+  const toggleAutoLaundryGroup = async (groupSubs: GarmentSubcategory[]) => {
+    if (!onUpdateProfile) return;
+    const isAllActive = groupSubs.every((s) => activeAutoLaundrySubs.includes(s));
+    const nextSubs = isAllActive
+      ? activeAutoLaundrySubs.filter((s) => !groupSubs.includes(s))
+      : Array.from(new Set([...activeAutoLaundrySubs, ...groupSubs]));
+    await onUpdateProfile({
+      ...profile,
+      autoLaundrySubcategories: nextSubs,
+    });
+  };
+
+  const handleGenerateNewOutfits = () => {
+    onChangeContext({
+      ...context,
+      variationSeed: (context.variationSeed || 0) + 1,
+    });
+  };
 
   const lockedGarments = useMemo(
     () => garments.filter((g) => context.lockedGarmentIds.includes(g.id)),
@@ -292,6 +387,15 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           </h1>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleGenerateNewOutfits}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+            >
+              <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+              <span>{isEn ? 'Generate New Outfits' : 'Neue Outfits generieren'}</span>
+            </button>
+
             {onOpenSetupWizard && (
               <button
                 type="button"
@@ -421,6 +525,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       accentColorHex={g.accentColorHex}
                       texture={g.texture}
                       neckline={g.neckline}
+                      hasPrint={g.hasPrint}
+                      hasLogo={g.hasLogo}
+                      wornOpen={g.wornOpen}
                       className="w-8 h-8 shrink-0"
                     />
                     <div className="min-w-0 flex-1">
@@ -659,6 +766,48 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             })}
           </div>
         </div>
+
+        {/* Configurable Automatic Laundry Bar ("Automatisch in die Wäsche bei 'Heute anziehen'") */}
+        {onUpdateProfile && (
+          <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 shrink-0">
+              <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-xs font-medium text-zinc-300">
+                {isEn
+                  ? 'Auto-laundry when worn:'
+                  : 'Automatisch in die Wäsche (bei „Heute anziehen“):'}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 flex-1 sm:justify-end">
+              {AUTO_LAUNDRY_GROUPS.map((group) => {
+                const isActive = group.subcategories.every((s) =>
+                  activeAutoLaundrySubs.includes(s)
+                );
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => toggleAutoLaundryGroup(group.subcategories)}
+                    title={
+                      isActive
+                        ? `${group.labelDe} landen beim Tragen automatisch im Wäschekorb (Standard: T-Shirts & Socken)`
+                        : `${group.labelDe} bleiben nach 1× Tragen weiter frisch im Schrank`
+                    }
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                      isActive
+                        ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200 font-semibold'
+                        : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+                    }`}
+                  >
+                    {isActive ? '✓ ' : ''}
+                    {isEn ? group.labelEn : group.labelDe}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Generated Outfits Feed (Immediately below filter controls) */}
@@ -714,6 +863,25 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         </div>
       ) : (
         <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+            <p className="text-xs text-zinc-400">
+              {isEn
+                ? `${outfits.length} matching outfit suggestions`
+                : `${outfits.length} passende Outfit-Vorschläge`}
+              {context.variationSeed
+                ? ` · ${isEn ? `Variation #${context.variationSeed + 1}` : `Variante #${context.variationSeed + 1}`}`
+                : ''}
+            </p>
+            <button
+              type="button"
+              onClick={handleGenerateNewOutfits}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-amber-500/40 hover:border-amber-400 text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors cursor-pointer touch-manipulation active:scale-95"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+              <span>{isEn ? 'Generate New Outfits' : 'Neue Outfits generieren'}</span>
+            </button>
+          </div>
+
           {outfits.map((outfit) => {
             const isWornJustNow = wornFeedbackId === outfit.id;
             const hasSandboxItem = outfit.items.some((i) => i.isWishlistSandbox);
@@ -858,6 +1026,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     accentColorHex={item.accentColorHex}
                                     texture={item.texture}
                                     neckline={item.neckline}
+                                    hasPrint={item.hasPrint}
+                                    hasLogo={item.hasLogo}
+                                    wornOpen={item.wornOpen}
                                     className="w-10 h-10"
                                   />
                                 )}
@@ -880,6 +1051,26 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     <>
                                       <span aria-hidden="true">·</span>
                                       <span>Gr. {item.size}</span>
+                                    </>
+                                  )}
+                                  {item.hasPrint && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span className="text-purple-300">Print</span>
+                                    </>
+                                  )}
+                                  {item.hasLogo && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span className="text-indigo-300">Logo</span>
+                                    </>
+                                  )}
+                                  {item.wornOpen !== undefined && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span className="text-zinc-300">
+                                        {item.wornOpen ? 'Offen getragen' : 'Geschlossen'}
+                                      </span>
                                     </>
                                   )}
                                   {item.isWishlistSandbox && (
@@ -1050,6 +1241,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                 accentColorHex={item.accentColorHex}
                                 texture={item.texture}
                                 neckline={item.neckline}
+                                hasPrint={item.hasPrint}
+                                hasLogo={item.hasLogo}
+                                wornOpen={item.wornOpen}
                                 className="w-16 h-16"
                               />
                             )}

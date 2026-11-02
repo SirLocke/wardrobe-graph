@@ -749,3 +749,209 @@ test('customGarmentName & shoeAccents & multiSelectRatings: preserves custom nam
     'Socks should always be included regardless of occasion formality window'
   );
 });
+
+test('backupPersistence: parseAndNormalizeWardrobeImport preserves wornHistory, wearCount, print/logo/open/weather flags, and fleece/down textures', () => {
+  const backupJson = JSON.stringify({
+    version: 2,
+    exportedAt: '2026-11-02T08:00:00.000Z',
+    profile: {
+      ...DEFAULT_BIOMETRIC_PROFILE,
+      isDemoMode: false,
+      autoLaundrySubcategories: ['t_shirt', 'socks'],
+    },
+    garments: [
+      {
+        id: 'custom_fleece_1',
+        name: 'Patagonia Fleecejacke Salbei',
+        category: 'outerwear',
+        subcategory: 'fleece_jacket',
+        colorName: 'Salbeigrün',
+        colorHex: '#8F9779',
+        texture: 'fleece',
+        thermalRating: 4,
+        formality: 2,
+        windproof: true,
+        rainproof: false,
+        hasLogo: true,
+        wearCount: 9,
+        lastWornDate: '2026-11-01T10:00:00.000Z',
+      },
+      {
+        id: 'custom_shirt_1',
+        name: 'Offenes Flanellhemd Oliv',
+        category: 'mid_layer',
+        subcategory: 'overshirt',
+        colorName: 'Dunkel-Oliv',
+        colorHex: '#556B2F',
+        texture: 'flannel_wool',
+        thermalRating: 3,
+        formality: 2,
+        wornOpen: true,
+        hasPrint: true,
+        wearCount: 4,
+      },
+    ],
+    wornHistory: [
+      {
+        id: 'worn_test_1',
+        wornDate: '2026-11-01T10:00:00.000Z',
+        outfitTitle: 'Fleecejacke & Flanellhemd',
+        garmentIds: ['custom_fleece_1', 'custom_shirt_1'],
+        garmentSnapshots: [
+          {
+            id: 'custom_fleece_1',
+            name: 'Patagonia Fleecejacke Salbei',
+            category: 'outerwear',
+            subcategory: 'fleece_jacket',
+            colorHex: '#8F9779',
+            colorName: 'Salbeigrün',
+          },
+        ],
+        occasion: 'casual',
+        temperatureC: 12,
+        weather: 'cloudy_windy',
+        totalScore: 91,
+      },
+    ],
+  });
+
+  const parsed = parseAndNormalizeWardrobeImport(backupJson);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.garments.length, 2);
+  assert.equal(parsed.garments[0].texture, 'fleece');
+  assert.equal(parsed.garments[0].windproof, true);
+  assert.equal(parsed.garments[0].hasLogo, true);
+  assert.equal(parsed.garments[0].wearCount, 9);
+  assert.equal(parsed.garments[1].wornOpen, true);
+  assert.equal(parsed.garments[1].hasPrint, true);
+  assert.equal(parsed.wornHistory?.length, 1);
+  assert.equal(parsed.wornHistory?.[0].id, 'worn_test_1');
+});
+
+test('laundry & winterJacket & techWaterproof & variationSeed & categoryRecommendations: verifies all new wardrobe rules', async () => {
+  const { canGarmentUseLaundry, shouldAutoMarkDirtyOnWear } = await import('../data/seedData');
+  const { isGarmentWaterResistant } = await import('./outfitGenerator');
+
+  // 1) Shoes and non-sock accessories never use laundry
+  assert.equal(canGarmentUseLaundry({ category: 'footwear', subcategory: 'sneaker_clean' }), false);
+  assert.equal(canGarmentUseLaundry({ category: 'accessory', subcategory: 'watch' }), false);
+  assert.equal(canGarmentUseLaundry({ category: 'accessory', subcategory: 'socks' }), true);
+  assert.equal(canGarmentUseLaundry({ category: 'base_top', subcategory: 't_shirt' }), true);
+
+  // 2) Auto-laundry defaults to T-Shirts/Tops & Socks, not sweaters/jeans/shoes
+  assert.equal(
+    shouldAutoMarkDirtyOnWear({ category: 'base_top', subcategory: 't_shirt' }, DEFAULT_BIOMETRIC_PROFILE),
+    true
+  );
+  assert.equal(
+    shouldAutoMarkDirtyOnWear({ category: 'accessory', subcategory: 'socks' }, DEFAULT_BIOMETRIC_PROFILE),
+    true
+  );
+  assert.equal(
+    shouldAutoMarkDirtyOnWear({ category: 'mid_layer', subcategory: 'hoodie' }, DEFAULT_BIOMETRIC_PROFILE),
+    false
+  );
+  assert.equal(
+    shouldAutoMarkDirtyOnWear({ category: 'footwear', subcategory: 'sneaker_clean' }, DEFAULT_BIOMETRIC_PROFILE),
+    false
+  );
+
+  // 3) Jacket with texture 'tech_waterproof' or subcategory 'rain_jacket' or 'rainproof: true' counts as water-resistant in rain
+  const techJacket = {
+    ...SEED_WARDROBE_GARMENTS.find((g) => g.category === 'outerwear')!,
+    id: 'test_tech_jacket',
+    name: 'Übergangsjacke Wasserabweisend',
+    subcategory: 'light_jacket' as const,
+    texture: 'tech_waterproof' as const,
+    waterResistant: false,
+  };
+  assert.equal(isGarmentWaterResistant(techJacket), true, 'tech_waterproof texture must count as water-resistant');
+
+  const rainOutfitsWithTechJacket = generateOutfitsForContext(
+    [...SEED_WARDROBE_GARMENTS, techJacket],
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 12,
+      weather: 'rain_wet',
+      occasion: 'casual',
+      lockedGarmentIds: ['test_tech_jacket'],
+    },
+    3
+  );
+  assert.ok(
+    rainOutfitsWithTechJacket.length > 0,
+    'Transitional jacket with tech_waterproof texture must be valid in rain_wet'
+  );
+
+  // 4) Non-waterproof Black Winter Jacket (down_jacket, thermalRating: 5, waterResistant: false) works in dry winter and is NOT an orphan
+  const blackWinterJacket = {
+    ...SEED_WARDROBE_GARMENTS.find((g) => g.category === 'outerwear')!,
+    id: 'test_black_winter_jacket',
+    name: 'Schwarze Winterjacke',
+    subcategory: 'down_jacket' as const,
+    colorName: 'Tiefschwarz',
+    colorHex: '#141414',
+    texture: 'down_quilted' as const,
+    thermalRating: 5 as const,
+    thermalRatings: [4, 5] as Array<1 | 2 | 3 | 4 | 5>,
+    formality: 2 as const,
+    formalities: [2, 3] as Array<1 | 2 | 3 | 4 | 5>,
+    waterResistant: false,
+  };
+
+  const gapReportWithWinterJacket = analyzeWardrobeGaps(
+    [...SEED_WARDROBE_GARMENTS, blackWinterJacket],
+    DEFAULT_BIOMETRIC_PROFILE
+  );
+  const winterJacketOutfitCount =
+    gapReportWithWinterJacket.outfitCountsByGarmentId['test_black_winter_jacket'] || 0;
+  assert.ok(
+    winterJacketOutfitCount >= 3,
+    `Expected Schwarze Winterjacke to have >= 3 valid outfits in dry winter, got ${winterJacketOutfitCount}`
+  );
+  assert.equal(
+    gapReportWithWinterJacket.orphanPieces.some((o) => o.garment.id === 'test_black_winter_jacket'),
+    false,
+    'Non-waterproof Schwarze Winterjacke must NOT be flagged as an orphan piece'
+  );
+
+  // 5) Category-specific recommendations exist for core categories
+  assert.ok(gapReportWithWinterJacket.recommendationsByCategory, 'Should include recommendationsByCategory');
+  assert.ok(
+    (gapReportWithWinterJacket.recommendationsByCategory?.outerwear?.length || 0) > 0,
+    'Should provide category-specific tips for outerwear'
+  );
+
+  // 6) variationSeed ("Neue Outfits generieren") produces fresh outfit variations
+  const seed0Outfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+      variationSeed: 0,
+    },
+    5
+  );
+  const seed1Outfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+      variationSeed: 1,
+    },
+    5
+  );
+  assert.notDeepEqual(
+    seed0Outfits.map((o) => o.id),
+    seed1Outfits.map((o) => o.id),
+    'Incrementing variationSeed should generate a different batch of outfits'
+  );
+});
+
+

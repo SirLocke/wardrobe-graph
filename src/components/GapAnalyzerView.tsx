@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -20,6 +20,7 @@ import {
   ContextBottleneck,
   GapAnalysisReport,
   Garment,
+  GarmentCategory,
   OrphanPieceAnalysis,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
@@ -32,6 +33,18 @@ interface GapAnalyzerViewProps {
   onLockOrphanInStylist: (garmentId: string) => void;
 }
 
+const RECOMMENDATION_CATEGORY_TABS: Array<{
+  id: 'all' | GarmentCategory;
+  label: string;
+}> = [
+  { id: 'all', label: 'Alle Top-Tipps' },
+  { id: 'base_top', label: 'T-Shirts & Tops' },
+  { id: 'mid_layer', label: 'Pullover & Hemden' },
+  { id: 'outerwear', label: 'Jacken & Mäntel' },
+  { id: 'bottom', label: 'Hosen & Röcke' },
+  { id: 'footwear', label: 'Schuhe' },
+];
+
 export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
   report,
   garments,
@@ -41,12 +54,40 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
 }) => {
   const [popupOrphan, setPopupOrphan] = useState<OrphanPieceAnalysis | null>(null);
   const [popupRec, setPopupRec] = useState<ArchetypeRecommendation | null>(null);
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'all' | GarmentCategory>('all');
 
   const sandboxItemsInCloset = garments.filter((g) => g.isWishlistSandbox);
 
+  const displayedRecommendations = useMemo(() => {
+    if (selectedCategoryTab === 'all') {
+      return report.recommendations;
+    }
+    const byCat = report.recommendationsByCategory?.[selectedCategoryTab];
+    if (byCat && byCat.length > 0) {
+      return byCat;
+    }
+    return report.recommendations.filter(
+      (r) => r.virtualGarment.category === selectedCategoryTab
+    );
+  }, [report.recommendations, report.recommendationsByCategory, selectedCategoryTab]);
+
+  // Identify which categories have 0 clean items in the closet to highlight urgent category gaps
+  const missingCoreCategories = useMemo(() => {
+    const coreCats: Array<{ cat: GarmentCategory; label: string }> = [
+      { cat: 'base_top', label: 'T-Shirts & Tops' },
+      { cat: 'mid_layer', label: 'Pullover & Hemden' },
+      { cat: 'outerwear', label: 'Jacken & Mäntel' },
+      { cat: 'bottom', label: 'Hosen & Röcke' },
+      { cat: 'footwear', label: 'Schuhe' },
+    ];
+    return coreCats.filter(
+      ({ cat }) => !garments.some((g) => g.category === cat && g.isClean)
+    );
+  }, [garments]);
+
   return (
     <div className="space-y-10">
-      {/* Section 1: Weather & Occasion Overview */}
+      {/* Page Header Summary */}
       <section className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
           <div>
@@ -73,74 +114,273 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
           )}
         </div>
 
-        {/* Context Matrix Grid */}
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-            <h2 className="text-sm font-semibold text-zinc-200">
-              1. Wie gut bist du für jedes Wetter &amp; jeden Anlass ausgestattet?
-            </h2>
-            <span className="text-xs text-zinc-400">
-              Klicke auf ein Feld, um passende Outfits anzusehen
-            </span>
+        {/* Urgent Missing Category Alert (when outfits are missing because a whole category is empty) */}
+        {missingCoreCategories.length > 0 && (
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/40 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-amber-200 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  Für komplette Outfits fehlen aktuell noch Teile in:{' '}
+                  {missingCoreCategories.map((c) => c.label).join(', ')}
+                </span>
+              </p>
+              <p className="text-xs text-zinc-300">
+                Wähle unten direkt die passende Kategorie aus, um gezielte Empfehlungen zu sehen und sie probeweise in deinen Schrank zu legen:
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5 shrink-0">
+              {missingCoreCategories.map((c) => (
+                <button
+                  key={c.cat}
+                  type="button"
+                  onClick={() => setSelectedCategoryTab(c.cat)}
+                  className="px-3 py-1.5 rounded-lg bg-amber-400 text-zinc-950 text-xs font-semibold hover:bg-amber-300 transition-colors cursor-pointer"
+                >
+                  Tipps für {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 1 (CORE): Shopping / Missing Pieces by Category ("Welche neuen Teile bringen dir am meisten neue Outfits?") */}
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base sm:text-lg font-semibold text-zinc-100">
+                1. Welche neuen Teile bringen dir am meisten neue Outfits? (Tipps nach Kategorie)
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Wähle eine Kategorie, um genau zu sehen, welches T-Shirt, welcher Pullover, welche Jacke, Hose oder welche Schuhe dir die meisten neuen Kombinationen ermöglichen:
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {report.contextMatrix.map((cell) => {
-              const toneClass =
-                cell.validOutfitCount >= 6
-                  ? 'border-emerald-500/30 bg-emerald-950/15 hover:border-emerald-500/50'
-                  : cell.validOutfitCount >= 3
-                  ? 'border-zinc-800 bg-zinc-950/80 hover:border-zinc-700'
-                  : 'border-amber-500/40 bg-amber-950/20 hover:border-amber-500/60';
-
+          {/* Category Filter Tabs for Missing Pieces */}
+          <div className="flex items-center gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800/80 overflow-x-auto scrollbar-none flex-nowrap">
+            {RECOMMENDATION_CATEGORY_TABS.map((tab) => {
+              const isActive = selectedCategoryTab === tab.id;
+              const catCount =
+                tab.id === 'all'
+                  ? report.recommendations.length
+                  : (report.recommendationsByCategory?.[tab.id] || []).length;
               return (
                 <button
-                  key={cell.id}
+                  key={tab.id}
                   type="button"
-                  onClick={() => onJumpToContext(cell)}
-                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${toneClass}`}
+                  onClick={() => setSelectedCategoryTab(tab.id)}
+                  className={`px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 touch-manipulation active:scale-95 ${
+                    isActive
+                      ? 'bg-amber-400 text-zinc-950 font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-100'
+                  }`}
                 >
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-xs font-semibold text-zinc-100 truncate">
-                      {cell.label}
-                    </p>
-                    <p className="text-[11px] text-zinc-400 truncate">
-                      {cell.occasionLabel} · {cell.tempLabel}
-                    </p>
-                    {cell.isBottleneck && (
-                      <p className="text-[11px] text-amber-300 font-medium">
-                        Hier hast du noch wenig Auswahl
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="text-right font-mono tabular-nums shrink-0">
-                    <span
-                      className={`text-lg font-bold ${
-                        cell.validOutfitCount >= 6
-                          ? 'text-emerald-400'
-                          : cell.validOutfitCount >= 3
-                          ? 'text-zinc-200'
-                          : 'text-amber-400'
-                      }`}
-                    >
-                      {cell.validOutfitCount}
-                    </span>
-                    <span className="block text-[10px] text-zinc-500">Outfits</span>
-                  </div>
+                  {tab.label} ({catCount})
                 </button>
               );
             })}
           </div>
+
+          {displayedRecommendations.length === 0 ? (
+            <div className="rounded-xl bg-zinc-950/60 border border-zinc-800 p-6 text-xs text-zinc-400 text-center">
+              Für diese Kategorie bist du bereits bestens ausgestattet! Wähle oben eine andere Kategorie.
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {displayedRecommendations.map((rec, idx) => {
+                const {
+                  virtualGarment,
+                  newOutfitsUnlocked,
+                  orphansRescued,
+                  unlockedCombinationsPreview,
+                  rationale,
+                } = rec;
+                const isAlreadyInSandbox = garments.some((g) => g.id === virtualGarment.id);
+
+                return (
+                  <article
+                    key={`${selectedCategoryTab}_${rec.archetypeId}`}
+                    className="rounded-2xl bg-zinc-950/80 border border-zinc-800/90 p-4 sm:p-5 space-y-3.5 transition-colors hover:border-zinc-700"
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div className="flex items-start sm:items-center gap-4">
+                        <div className="w-16 h-16 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
+                          <GarmentVector
+                            type={virtualGarment.subcategory}
+                            colorHex={virtualGarment.colorHex}
+                            texture={virtualGarment.texture}
+                            neckline={virtualGarment.neckline}
+                            hasPrint={virtualGarment.hasPrint}
+                            hasLogo={virtualGarment.hasLogo}
+                            wornOpen={virtualGarment.wornOpen}
+                            className="w-13 h-13"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold">
+                              {CATEGORY_LABELS[virtualGarment.category].split(' (')[0]} · Tipp #{idx + 1}
+                            </span>
+                            <span className="text-emerald-400 font-semibold">
+                              +{newOutfitsUnlocked} neue Outfits möglich
+                            </span>
+                            {orphansRescued.length > 0 && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="text-amber-300 font-semibold">
+                                  Rettet {orphansRescued.length}{' '}
+                                  {orphansRescued.length === 1 ? 'Einzelstück' : 'Einzelstücke'}
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          <h3 className="text-base font-semibold text-zinc-100">
+                            {virtualGarment.name}
+                          </h3>
+
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                            <span
+                              className="w-3 h-3 rounded-full border border-white/20 inline-block"
+                              style={{ backgroundColor: virtualGarment.colorHex }}
+                            />
+                            <span>{virtualGarment.colorName}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{SUBCATEGORY_LABELS[virtualGarment.subcategory].split(' (')[0]}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{FIT_LABELS[virtualGarment.fit].split(' (')[0]}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{TEXTURE_LABELS[virtualGarment.texture].split(' (')[0]}</span>
+                          </div>
+
+                          <p className="text-xs text-zinc-300 pt-1 leading-relaxed">{rationale}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setPopupRec(rec)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 cursor-pointer whitespace-nowrap"
+                        >
+                          <Layers className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Beispiel-Outfits ({unlockedCombinationsPreview.length})</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onToggleSandboxGarment(virtualGarment)}
+                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                            isAlreadyInSandbox
+                              ? 'bg-sky-500/20 border border-sky-500/50 text-sky-200 hover:bg-sky-500/30'
+                              : 'bg-zinc-100 text-zinc-950 hover:bg-white'
+                          }`}
+                        >
+                          {isAlreadyInSandbox ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-sky-400" />
+                              <span>Wird im Schrank getestet (Entfernen)</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Probeweise in den Schrank legen</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rescued Orphans Line */}
+                    {orphansRescued.length > 0 && (
+                      <div className="text-xs text-amber-200/90 bg-amber-950/20 border border-amber-500/20 rounded-lg px-3.5 py-2">
+                        Damit kannst du endlich kombinieren:{' '}
+                        <strong>{orphansRescued.map((o) => o.name).join(', ')}</strong>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Section 2: Orphan Pieces ("Einzelstücke / Schrankleichen") */}
+      {/* Section 2: Weather & Occasion Overview */}
+      <section className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div>
+            <h2 className="text-base sm:text-lg font-semibold text-zinc-100">
+              2. Wie gut bist du für jedes Wetter &amp; jeden Anlass ausgestattet?
+            </h2>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Klicke auf ein Feld, um passende Outfits für dieses Wetter im Outfit-Planer anzusehen:
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {report.contextMatrix.map((cell) => {
+            const toneClass =
+              cell.validOutfitCount >= 6
+                ? 'border-emerald-500/30 bg-emerald-950/15 hover:border-emerald-500/50'
+                : cell.validOutfitCount >= 3
+                ? 'border-zinc-800 bg-zinc-950/80 hover:border-zinc-700'
+                : 'border-amber-500/40 bg-amber-950/20 hover:border-amber-500/60';
+
+            return (
+              <button
+                key={cell.id}
+                type="button"
+                onClick={() => onJumpToContext(cell)}
+                className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${toneClass}`}
+              >
+                <div className="min-w-0 space-y-1">
+                  <p className="text-xs font-semibold text-zinc-100 truncate">
+                    {cell.label}
+                  </p>
+                  <p className="text-[11px] text-zinc-400 truncate">
+                    {cell.occasionLabel} · {cell.tempLabel}
+                  </p>
+                  {cell.isBottleneck && (
+                    <p className="text-[11px] text-amber-300 font-medium">
+                      {cell.weather === 'rain_wet'
+                        ? 'Tipp: Regenjacke oder wasserfeste Schuhe ergänzen'
+                        : cell.temperatureC <= 10
+                        ? 'Tipp: Warme Jacke oder Pullover ergänzen'
+                        : 'Hier hast du noch wenig Auswahl'}
+                    </p>
+                  )}
+                </div>
+
+                <div className="text-right font-mono tabular-nums shrink-0">
+                  <span
+                    className={`text-lg font-bold ${
+                      cell.validOutfitCount >= 6
+                        ? 'text-emerald-400'
+                        : cell.validOutfitCount >= 3
+                        ? 'text-zinc-200'
+                        : 'text-amber-400'
+                    }`}
+                  >
+                    {cell.validOutfitCount}
+                  </span>
+                  <span className="block text-[10px] text-zinc-500">Outfits</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Section 3: Orphan Pieces ("Einzelstücke / Schrankleichen") */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-zinc-100">
-              2. Einzelstücke im Schrank, zu denen dir ein Partner fehlt
+              3. Einzelstücke im Schrank, zu denen dir ein Partner fehlt
             </h2>
             <p className="text-xs text-zinc-400">
               Diese Kleidungsstücke stehen dir gut, lassen sich aber aktuell kaum mit deinen anderen Sachen kombinieren.
@@ -186,6 +426,9 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                           colorHex={garment.colorHex}
                           texture={garment.texture}
                           neckline={garment.neckline}
+                          hasPrint={garment.hasPrint}
+                          hasLogo={garment.hasLogo}
+                          wornOpen={garment.wornOpen}
                           className="w-13 h-13"
                         />
                       </div>
@@ -220,126 +463,6 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
             })}
           </div>
         )}
-      </section>
-
-      {/* Section 3: Shopping / Missing Pieces ("Welche neuen Teile bringen am meisten?") */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-100">
-            3. Welche neuen Teile bringen dir am meisten neue Outfits?
-          </h2>
-          <p className="text-xs text-zinc-400">
-            Diese klassischen Alltags-Teile passen am besten zu deinen vorhandenen Sachen und ermöglichen sofort viele neue Kombinationen:
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          {report.recommendations.map((rec, idx) => {
-            const { virtualGarment, newOutfitsUnlocked, orphansRescued, unlockedCombinationsPreview, rationale } = rec;
-            const isAlreadyInSandbox = garments.some((g) => g.id === virtualGarment.id);
-
-            return (
-              <article
-                key={rec.archetypeId}
-                className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-4 transition-colors hover:border-zinc-700"
-              >
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex items-start sm:items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
-                      <GarmentVector
-                        type={virtualGarment.subcategory}
-                        colorHex={virtualGarment.colorHex}
-                        texture={virtualGarment.texture}
-                        neckline={virtualGarment.neckline}
-                        className="w-13 h-13"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                        <span className="text-zinc-200 font-semibold">Empfehlung #{idx + 1}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="text-emerald-400 font-semibold">
-                          +{newOutfitsUnlocked} neue Outfits möglich
-                        </span>
-                        {orphansRescued.length > 0 && (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="text-amber-300 font-semibold">
-                              Passt perfekt zu {orphansRescued.length}{' '}
-                              {orphansRescued.length === 1 ? 'Einzelstück' : 'Einzelstücken'}
-                            </span>
-                          </>
-                        )}
-                      </div>
-
-                      <h3 className="text-base font-semibold text-zinc-100">
-                        {virtualGarment.name}
-                      </h3>
-
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                        <span
-                          className="w-3 h-3 rounded-full border border-white/20 inline-block"
-                          style={{ backgroundColor: virtualGarment.colorHex }}
-                        />
-                        <span>{virtualGarment.colorName}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{SUBCATEGORY_LABELS[virtualGarment.subcategory].split(' (')[0]}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{FIT_LABELS[virtualGarment.fit].split(' (')[0]}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{TEXTURE_LABELS[virtualGarment.texture].split(' (')[0]}</span>
-                      </div>
-
-                      <p className="text-xs text-zinc-300 pt-1 leading-relaxed">{rationale}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setPopupRec(rec)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 cursor-pointer whitespace-nowrap"
-                    >
-                      <Layers className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Beispiel-Outfits ({unlockedCombinationsPreview.length})</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onToggleSandboxGarment(virtualGarment)}
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                        isAlreadyInSandbox
-                          ? 'bg-sky-500/20 border border-sky-500/50 text-sky-200 hover:bg-sky-500/30'
-                          : 'bg-zinc-100 text-zinc-950 hover:bg-white'
-                      }`}
-                    >
-                      {isAlreadyInSandbox ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-sky-400" />
-                          <span>Wird im Schrank getestet (Entfernen)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Probeweise in den Schrank legen</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Rescued Orphans Line */}
-                {orphansRescued.length > 0 && (
-                  <div className="text-xs text-amber-200/90 bg-amber-950/20 border border-amber-500/20 rounded-lg px-3.5 py-2">
-                    Damit kannst du endlich kombinieren:{' '}
-                    <strong>{orphansRescued.map((o) => o.name).join(', ')}</strong>
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
       </section>
 
       {/* Small Closable Popup Modal for Orphan Explanation (Mobile-friendly Bottom-Sheet) */}
