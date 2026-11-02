@@ -21,6 +21,7 @@ const VALID_CATEGORIES: GarmentCategory[] = [
   'outerwear',
   'bottom',
   'footwear',
+  'accessory',
 ];
 
 const VALID_SUBCATEGORIES: GarmentSubcategory[] = Object.values(

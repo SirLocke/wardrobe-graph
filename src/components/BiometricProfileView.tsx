@@ -11,7 +11,12 @@ import {
   Upload,
   Wand2,
 } from 'lucide-react';
-import { WARDROBE_SCOPE_META } from '../data/seedData';
+import {
+  deriveScopeFromTargets,
+  normalizeWardrobeScopes,
+  WARDROBE_MULTI_SCOPE_META,
+  WARDROBE_SCOPE_META,
+} from '../data/seedData';
 import { deriveSeasonPalette, hexToHsl } from '../engine/colorMath';
 import {
   BiometricProfile,
@@ -23,6 +28,7 @@ import {
   Undertone,
   ValueLevel,
   WardrobeScope,
+  WardrobeScopeTarget,
 } from '../types/wardrobe';
 
 interface BiometricProfileViewProps {
@@ -350,41 +356,74 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
             </button>
           </div>
 
-          {/* Wardrobe Scope (Frauen / Männer / Unisex / Beides) */}
+          {/* Wardrobe Scope (Mehrfachauswahl: Frauen / Männer / Unisex) */}
           <div className="space-y-2">
-            <label className="block text-xs font-semibold text-zinc-200">
-              Für wen stellen wir Outfits zusammen?
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {(['womenswear', 'menswear', 'unisex', 'all'] as WardrobeScope[]).map((sc) => {
-                const active = (profile.wardrobeScope || 'all') === sc;
-                const meta = WARDROBE_SCOPE_META[sc];
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-zinc-200">
+                Welche Kleidungsstücke möchtest du nutzen? (Mehrfachauswahl)
+              </label>
+              <span className="text-[11px] text-amber-400 font-medium">
+                {normalizeWardrobeScopes(profile)
+                  .map((s) => WARDROBE_MULTI_SCOPE_META[s].shortDe)
+                  .join(' + ')}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(['womenswear', 'menswear', 'unisex'] as WardrobeScopeTarget[]).map((sc) => {
+                const currentScopes = normalizeWardrobeScopes(profile);
+                const isChecked = currentScopes.includes(sc);
+                const meta = WARDROBE_MULTI_SCOPE_META[sc];
                 return (
                   <button
                     key={sc}
                     type="button"
-                    onClick={() => onUpdateProfile({ ...profile, wardrobeScope: sc })}
-                    className={`px-3 py-2.5 min-h-[42px] rounded-xl border text-xs font-medium transition-all cursor-pointer touch-manipulation active:scale-95 ${
-                      active
-                        ? 'border-amber-400 bg-amber-500/10 text-zinc-100 font-semibold'
+                    onClick={() => {
+                      let next: WardrobeScopeTarget[];
+                      if (currentScopes.includes(sc)) {
+                        if (currentScopes.length === 1) return; // Mindestens eine Kategorie aktiv halten
+                        next = currentScopes.filter((s) => s !== sc);
+                      } else {
+                        next = [...currentScopes, sc];
+                      }
+                      const derived = deriveScopeFromTargets(next);
+                      onUpdateProfile({
+                        ...profile,
+                        wardrobeScopes: next,
+                        wardrobeScope: derived,
+                      });
+                    }}
+                    className={`px-3 py-2.5 min-h-[42px] rounded-xl border text-xs font-medium transition-all cursor-pointer touch-manipulation active:scale-95 flex items-center justify-between gap-2 ${
+                      isChecked
+                        ? 'border-amber-400 bg-amber-500/10 text-zinc-100 font-semibold ring-1 ring-amber-400/30'
                         : 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    {meta.shortDe}
+                    <span>{meta.labelDe}</span>
+                    <div
+                      className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                        isChecked
+                          ? 'bg-amber-400 text-zinc-950 font-bold'
+                          : 'border border-zinc-600 bg-zinc-900'
+                      }`}
+                    >
+                      {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* 1. Skin Undertone with Jewelry & Sun Check */}
+          {/* 1. Skin Undertone with Veins, Sun & T-Shirt Checks (Unisex) */}
           <div className="space-y-2.5">
             <div>
               <label className="block text-xs font-semibold text-zinc-200">
-                1. Dein Hautton – Steht dir eher Gold- oder Silberschmuck?
+                1. Dein Hautton &amp; Unterton (3 einfache Alltags-Checks – kein Schmuck nötig)
               </label>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                Kleiner Alltags-Check: Wem Goldschmuck besser steht und wer schnell braun wird, hat meist einen warmen/oliven Ton. Wem Silberschmuck besser steht, hat einen kühlen Ton. Wenn beides passt: Neutral.
+              <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
+                <strong>Adern am Handgelenk:</strong> Grünlich = Warm/Oliv · Bläulich/Violett = Kühl · Blaugrün = Neutral.<br />
+                <strong>Sonnen-Check:</strong> Wirst du schnell braun (Warm/Oliv) oder schnell rot/Sonnenbrand (Kühl)?<br />
+                <strong>T-Shirt-Check:</strong> Steht dir Off-White/Creme besser als Reinweiß (Warm/Oliv) oder strahlendes Reinweiß (Kühl)?
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -393,26 +432,30 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                   {
                     id: 'olive',
                     title: 'Leicht gebräunt / Oliv (Warm-Neutral)',
-                    jewelry: 'Gold- & Kupferschmuck stehen dir gut',
-                    hint: 'Du wirst im Sommer schnell braun; Naturtöne wie Olivgrün, Salbei, Beige & Braun sehen super aus.',
+                    testHint: '🌿 Adern wirken grünlich · bräunt sehr schnell',
+                    hint: 'Dir stehen Naturtöne wie Olivgrün, Salbei, Khaki, Beige & warmes Braun besonders gut.',
+                    metalHint: 'Gold, Bronze oder mattes Titan',
                   },
                   {
                     id: 'warm',
                     title: 'Warm / Goldig',
-                    jewelry: 'Goldschmuck steht dir deutlich besser als Silber',
-                    hint: 'Warme Farben wie Kamel, Beige, Creme, Terrakotta & Braun lassen dich frisch wirken.',
+                    testHint: '☀️ Goldiger Teint · Creme/Off-White schmeichelt',
+                    hint: 'Creme, Kamel, Senfgelb, Terrakotta & warme Holztöne lassen dich sofort frisch aussehen.',
+                    metalHint: 'Gold, Messing oder warme Lederbänder',
                   },
                   {
                     id: 'cool',
                     title: 'Kühl / Rosig-Hell',
-                    jewelry: 'Silberschmuck steht dir besonders gut',
-                    hint: 'Klare, kühle Farben wie Dunkelblau, Grau, Schwarz, Weiß & Weinrot stehen dir perfekt.',
+                    testHint: '❄️ Adern wirken bläulich/violett · neigt zu Sonnenbrand',
+                    hint: 'Dir stehen klare Farben wie Dunkelblau, Steingrau, kühles Weiß, Schwarz & Weinrot.',
+                    metalHint: 'Silber, Edelstahl, Weißgold oder Chrom',
                   },
                   {
                     id: 'neutral',
-                    title: 'Ausgewogen Neutral („Beides passt“)',
-                    jewelry: 'Gold- und Silberschmuck sehen gleich gut aus',
-                    hint: 'Du kannst sowohl Dunkelblau & Grau als auch Beige & Olivgrün problemlos tragen.',
+                    title: 'Ausgewogen Neutral („Mir steht beides“)',
+                    testHint: '⚖️ Adern blaugrün · wird nach leichter Rötung braun',
+                    hint: 'Weder stark warm noch kühl: Dunkelblau & Anthrazit passen genauso wie Oliv & Sand.',
+                    metalHint: 'Sowohl Edelstahl/Silber als auch Gold passen super',
                   },
                 ] as const
               ).map((u) => {
@@ -429,8 +472,9 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                     }`}
                   >
                     <p className="text-xs font-semibold text-zinc-100">{u.title}</p>
-                    <p className="text-[11px] text-amber-300 font-medium mt-0.5">{u.jewelry}</p>
+                    <p className="text-[11px] text-amber-300 font-medium mt-0.5">{u.testHint}</p>
                     <p className="text-[11px] text-zinc-400 mt-1 leading-snug">{u.hint}</p>
+                    <p className="text-[10px] text-zinc-500 mt-1">Metalle/Uhren: {u.metalHint}</p>
                   </button>
                 );
               })}

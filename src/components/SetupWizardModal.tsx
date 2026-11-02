@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
+  Camera,
   Check,
+  CheckCheck,
+  Copy,
+  FileText,
   HelpCircle,
   Plus,
   Ruler,
@@ -14,17 +19,22 @@ import {
   X,
 } from 'lucide-react';
 import {
+  deriveScopeFromTargets,
   getAllColorPresets,
+  getQuickItemsForScopes,
+  normalizeWardrobeScopes,
   SMART_SUBCATEGORY_DEFAULTS,
   STYLE_VIBE_META,
   SUBCATEGORY_LABELS,
   TextileColorPreset,
+  WARDROBE_MULTI_SCOPE_META,
   WARDROBE_PRESETS,
   WARDROBE_SCOPE_META,
   WardrobePresetKey,
 } from '../data/seedData';
 import { suggestSizeForGarment } from '../engine/brandSizeMatcher';
 import { classifyColorTemp, deriveSeasonPalette, hexToHsl } from '../engine/colorMath';
+import { parseAndNormalizeWardrobeImport } from '../engine/wardrobeFormatter';
 import {
   AppLocale,
   BiometricProfile,
@@ -36,6 +46,7 @@ import {
   StyleVibe,
   Undertone,
   WardrobeScope,
+  WardrobeScopeTarget,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 
@@ -57,64 +68,119 @@ interface SetupWizardModalProps {
   }) => Promise<void>;
 }
 
-const WIZARD_QUICK_ITEMS_BY_SCOPE: Record<WardrobeScope, GarmentSubcategory[]> = {
-  womenswear: [
-    't_shirt',
-    'hoodie',
-    'blouse',
-    'knit_sweater',
-    'cardigan',
-    'blazer',
-    'trenchcoat',
-    'denim',
-    'wide_leg_trousers',
-    'midi_skirt',
-    'sneaker_clean',
-    'heeled_ankle_boot',
-  ],
-  menswear: [
-    't_shirt',
-    'heavyweight_tee',
-    'hoodie',
-    'crewneck_sweater',
-    'knit_sweater',
-    'button_down_shirt',
-    'overshirt',
-    'blazer',
-    'denim',
-    'chino',
-    'sneaker_clean',
-    'boots',
-  ],
-  unisex: [
-    't_shirt',
-    'heavyweight_tee',
-    'hoodie',
-    'crewneck_sweater',
-    'knit_sweater',
-    'overshirt',
-    'trenchcoat',
-    'puffer_jacket',
-    'denim',
-    'wide_leg_trousers',
-    'sneaker_clean',
-    'boots',
-  ],
-  all: [
-    't_shirt',
-    'hoodie',
-    'blouse',
-    'knit_sweater',
-    'cardigan',
-    'blazer',
-    'overshirt',
-    'trenchcoat',
-    'denim',
-    'wide_leg_trousers',
-    'sneaker_clean',
-    'heeled_ankle_boot',
-  ],
-};
+export const AI_AGENT_ANALYSIS_PROMPT = `Du bist ein professioneller Farb- und Stilbiometrie-Experte für das Kapsel-Garderoben-System „Atelier Biometric“.
+Ich habe ein Foto von mir (Portrait / Selfie / Gesicht und/oder Kleidung) angehängt.
+
+Analysiere anhand des Fotos meine Farb- und Stilwerte und antworte AUSSCHLIESSLICH mit einem validen JSON-Code-Block (ohne einleitenden oder erklärenden Text davor oder danach), exakt in dieser Struktur:
+
+\`\`\`json
+{
+  "undertone": "warm",
+  "skinHex": "#D4A38B",
+  "hairColorName": "Kupferblond / Goldbraun",
+  "hairHex": "#8C6244",
+  "eyeColorName": "Blau-Grau",
+  "eyeHex": "#526878",
+  "contrastLevel": "medium",
+  "chromaLevel": "moderate",
+  "haircutStyle": "medium_textured_flow",
+  "wardrobeScopes": ["menswear", "unisex"],
+  "styleVibe": "minimal_capsule",
+  "reasoningDe": "Erklärung in 1-2 Sätzen, warum diese Farbpalette und Kontraste zu Teint, Augen und Haaren passen."
+}
+\`\`\`
+
+Erklärungen & Erlaubte Werte:
+- undertone: "warm" (goldig/warm, Creme/Kamel/Off-White), "olive" (Adern grünlich, bräunt schnell, Salbei/Khaki), "cool" (rosig/kühl, Sonnenbrand-anfällig, Reinweiß/Navy), "neutral" (ausgewogen).
+- skinHex, hairHex, eyeHex: Reelle 6-stellige Hex-Farbcodes (#RRGGBB) aus dem Foto entnommen.
+- contrastLevel: "low" (Haar & Haut ähnlich hell/dunkel), "medium" (normal), "high" (z.B. dunkle Haare auf heller Haut).
+- chromaLevel: "muted" (sanfte Naturtöne), "moderate" (normale Alltagsfarben), "bright" (klare Farben & starkes Reinweiß/Schwarz).
+- haircutStyle: "short_fade_structured_top" | "medium_textured_flow" | "long_hair" | "buzz_very_short".
+- wardrobeScopes: ["womenswear", "unisex"] oder ["menswear", "unisex"] oder alle drei ["womenswear", "menswear", "unisex"].
+- styleVibe: "minimal_capsule" | "statement_editorial" | "tailored_chic" | "street_relaxed".`;
+
+export const CLOTHES_AI_AGENT_PROMPT = `Du bist ein professioneller Kapsel-Garderoben-Experte für „Atelier Biometric“.
+Ich habe ein Foto meines Kleiderschranks / meiner Kleidung angehängt (oder hier ist eine Liste meiner Kleidungsstücke).
+
+Erstelle daraus eine vollständige, strukturierte Liste meiner Kleidungsstücke & Accessoires als valides JSON-Array (ohne zusätzlichen Text davor oder danach).
+
+Unterstützte Kategorien & Schnitte:
+- base_top: t_shirt, heavyweight_tee, polo, longsleeve, blouse, tank_camisole, crop_top, bodysuit
+- mid_layer: overshirt, button_down_shirt, crewneck_sweater, knit_sweater, turtleneck, hoodie, cardigan, blazer, vest_gilet
+- outerwear: light_jacket, coat, parka, blouson, trenchcoat, leather_jacket, puffer_jacket
+- bottom: denim, chino, trousers, wide_leg_trousers, midi_skirt, mini_skirt, cargo, shorts
+- footwear: sneaker_clean, sneaker_chunky, boots, loafer_derby, runner, heeled_ankle_boot, ballet_flat, sandal_strappy
+- accessory: watch (Uhr), sunglasses (Sonnenbrille), glasses (Brille), necklace (Kette), bracelet (Armband), belt (Gürtel), bag_backpack (Tasche), scarf (Schal), cap_beanie (Mütze), socks (Socken)
+
+Antworte exakt in dieser JSON-Struktur:
+\`\`\`json
+[
+  {
+    "name": "Kupferfarbene Chronograph-Uhr",
+    "category": "accessory",
+    "subcategory": "watch",
+    "colorName": "Kupfer",
+    "colorHex": "#8C6244",
+    "brand": "Seiko",
+    "size": "40 mm",
+    "formality": 3
+  },
+  {
+    "name": "Schwarze Wayfarer Sonnenbrille",
+    "category": "accessory",
+    "subcategory": "sunglasses",
+    "colorName": "Schwarz",
+    "colorHex": "#141414",
+    "brand": "Ray-Ban",
+    "size": "OneSize",
+    "formality": 2
+  },
+  {
+    "name": "Off-White Heavyweight T-Shirt",
+    "category": "base_top",
+    "subcategory": "heavyweight_tee",
+    "colorName": "Off-White",
+    "colorHex": "#F4F1EA",
+    "brand": "Uniqlo",
+    "size": "M",
+    "formality": 2
+  },
+  {
+    "name": "Salbeigrüner Hoodie",
+    "category": "mid_layer",
+    "subcategory": "hoodie",
+    "colorName": "Salbeigrün",
+    "colorHex": "#8F9779",
+    "brand": "Carhartt",
+    "size": "M",
+    "formality": 2
+  },
+  {
+    "name": "Dunkelblaue Raw Denim Jeans",
+    "category": "bottom",
+    "subcategory": "denim",
+    "colorName": "Raw Indigo",
+    "colorHex": "#24344D",
+    "brand": "Levi's",
+    "size": "W32/L32",
+    "formality": 2
+  },
+  {
+    "name": "Weiße Leder-Sneaker",
+    "category": "footwear",
+    "subcategory": "sneaker_clean",
+    "colorName": "Off-White",
+    "colorHex": "#F4F1EA",
+    "brand": "Adidas",
+    "size": "42",
+    "formality": 3
+  }
+]
+\`\`\`
+Regeln:
+- colorHex: 6-stelliger Hex-Code (#RRGGBB).
+- formality: 1 (Sport/Lounge), 2 (Casual/Alltag), 3 (Smart Casual), 4 (Business/Chic), 5 (Formal).
+- Alle fehlenden Felder werden automatisch passend vorbelegt.`;
 
 const SKIN_PRESETS: {
   undertone: Undertone;
@@ -123,52 +189,83 @@ const SKIN_PRESETS: {
   labelEn: string;
   descDe: string;
   descEn: string;
-  jewelryHintDe: string;
+  veinAndSunHintDe: string;
+  metalHintDe: string;
 }[] = [
   {
     undertone: 'olive',
     skinHex: '#C8A98E',
     labelDe: 'Leicht gebräunt / Oliv (Warm-Neutral)',
     labelEn: 'Olive / Light Tan (Warm-Neutral)',
-    descDe: 'Du wirst im Sommer schnell braun. Dir stehen Naturtöne wie Olivgrün, Salbei, Beige & Braun besonders gut.',
-    descEn: 'You tan easily. Earth tones like olive, sage, beige & brown suit you best.',
-    jewelryHintDe: 'Gold- & Kupferschmuck sehen meistens sehr harmonisch aus',
+    descDe: 'Adern schimmern am Handgelenk grünlich. In der Sonne wirst du schnell braun ohne Sonnenbrand. Naturtöne wie Olivgrün, Salbei, Khaki, Sand & Braun stehen dir herausragend.',
+    descEn: 'Veins appear greenish. You tan quickly in the sun. Earth tones like olive, sage, khaki, sand & brown look outstanding on you.',
+    veinAndSunHintDe: '🌿 Adern grünlich · Bräunt schnell · Salbei, Khaki & Erdfarben',
+    metalHintDe: 'Bronze, Gold, Messing & warme Uhren/Metalle passen super',
   },
   {
     undertone: 'warm',
-    skinHex: '#D6AC88',
-    labelDe: 'Warm / Goldig',
-    labelEn: 'Warm / Golden',
-    descDe: 'Warmer Teint (oft mit warmbraunen, goldblonden oder rötlichen Haaren). Creme, Kamel & warme Töne lassen dich strahlen.',
-    descEn: 'Warm complexion. Cream, camel & warm tones make you glow.',
-    jewelryHintDe: 'Goldschmuck steht dir deutlich besser als kühles Silber',
+    skinHex: '#D4A38B',
+    labelDe: 'Warm / Goldig & Pfirsich',
+    labelEn: 'Warm / Golden & Peach',
+    descDe: 'Warmer, goldener Grundton. Bräunt gut in der Sonne. Cremeweiß, Off-White, Kamel & warme Naturtöne lassen dich frisch wirken (grelles Reinweiß wirkt oft zu hart).',
+    descEn: 'Warm, golden undertone. Tans well in the sun. Cream, camel & warm earthy tones give you a fresh, radiant look.',
+    veinAndSunHintDe: '☀️ Adern eher grün · Off-White/Creme besser als Reinweiß · Warme Töne',
+    metalHintDe: 'Gold, Kupfer & warme Uhren/Metalle harmonieren am besten',
   },
   {
     undertone: 'cool',
     skinHex: '#DFC2B8',
     labelDe: 'Kühl / Hell & Rosig',
     labelEn: 'Cool / Fair & Rosy',
-    descDe: 'Eher helle oder rosige Haut. Dir stehen klare, kühle Farben wie Dunkelblau, Grau, Schwarz, Weiß & Weinrot.',
-    descEn: 'Fair or rosy skin. Navy, grey, black, crisp white & burgundy suit you best.',
-    jewelryHintDe: 'Silberschmuck oder Weißgold steht dir besonders gut',
+    descDe: 'Kühler oder leicht rosiger Teint. Adern am Handgelenk schimmern bläulich/violett. In der Sonne bekommst du eher Sonnenbrand. Kühle, klare Farben wie Dunkelblau, Grau, Tiefschwarz, Reinweiß & Weinrot stehen dir perfekt.',
+    descEn: 'Cool or rosy skin. Veins appear blue or purple. Burns easily in the sun. Crisp, cool colors like navy, charcoal, black, crisp white & burgundy suit you best.',
+    veinAndSunHintDe: '❄️ Adern bläulich · Sonnenbrand-anfällig · Strahlendes Reinweiß & Navy',
+    metalHintDe: 'Silber, Edelstahl, Titan & Platin passen besonders gut',
   },
   {
     undertone: 'neutral',
     skinHex: '#C9A892',
     labelDe: 'Ausgewogen Neutral („Mir steht beides“)',
     labelEn: 'Balanced Neutral ("Both suit me")',
-    descDe: 'Weder stark warm noch stark kühl. Du kannst sowohl Dunkelblau & Grau als auch Beige & Olivgrün super tragen.',
-    descEn: 'Balanced skin tone. Both cool classics and warm earth tones work well.',
-    jewelryHintDe: 'Dir stehen sowohl Gold- als auch Silberschmuck gut',
+    descDe: 'Weder stark warm noch stark kühl. Adern wirken blau-grün. Du bräunst nach leichten Rötungen gleichmäßig. Du kannst sowohl kühle Basics (Dunkelblau, Grau) als auch warme Töne (Salbei, Sand) tragen.',
+    descEn: 'Neither distinctly warm nor cool. Veins look blue-green. Tans evenly after slight pinkness. You can wear cool classics and warm tones with ease.',
+    veinAndSunHintDe: '⚖️ Adern blau-grün · Bräunt nach kurzer Rötung · Reinweiß & Creme gehen beides',
+    metalHintDe: 'Sowohl Edelstahl/Silber als auch Gold passen harmonisch',
   },
 ];
 
+const HAIR_PRESETS = [
+  { name: 'Kupferblond / Goldbraun', hex: '#8C6244' },
+  { name: 'Dunkelblond / Aschbraun', hex: '#5A4D41' },
+  { name: 'Mittelbraun / Kastanie', hex: '#4A3222' },
+  { name: 'Dunkelbraun / Schwarzbraun', hex: '#231C18' },
+  { name: 'Schwarz', hex: '#121214' },
+  { name: 'Blond / Honigblond', hex: '#9C7A4C' },
+  { name: 'Hellblond / Platin', hex: '#D8C39D' },
+  { name: 'Grau / Silbergrau', hex: '#7A7D82' },
+  { name: 'Kupfer / Rotbraun', hex: '#8C3D26' },
+];
+
 const EYE_PRESETS = [
+  { name: 'Blau-Grau', hex: '#526878' },
   { name: 'Grün-Braun / Haselnuss', hex: '#6E7D4E' },
   { name: 'Dunkelbraun', hex: '#4A3525' },
   { name: 'Blau / Blaugrau', hex: '#5B7C99' },
   { name: 'Grün / Graugrün', hex: '#6B7B6E' },
   { name: 'Hellbraun / Bernstein', hex: '#8B6528' },
+];
+
+const ACCESSORY_QUICK_ITEMS: GarmentSubcategory[] = [
+  'watch',
+  'sunglasses',
+  'glasses',
+  'belt',
+  'necklace',
+  'bracelet',
+  'bag_backpack',
+  'scarf',
+  'cap_beanie',
+  'socks',
 ];
 
 const HAIRCUT_OPTIONS: {
@@ -222,6 +319,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
   const [selectedStartMode, setSelectedStartMode] = useState<WizardStartMode>('own_empty');
   const [draftProfile, setDraftProfile] = useState<BiometricProfile>(currentProfile);
+  const [selectedScopes, setSelectedScopes] = useState<WardrobeScopeTarget[]>(() =>
+    normalizeWardrobeScopes(currentProfile)
+  );
+  const [showExamplePresets, setShowExamplePresets] = useState<boolean>(false);
   const [selectedVibe, setSelectedVibe] = useState<StyleVibe>(
     currentStyleVibe === 'balanced' ? 'minimal_capsule' : currentStyleVibe
   );
@@ -233,10 +334,163 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   const [wizardAddedGarments, setWizardAddedGarments] = useState<Garment[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  // AI Agent Prompt & JSON Importer (Biometrie & Kleidung)
+  const [showAgentModal, setShowAgentModal] = useState<boolean>(false);
+  const [agentModalTab, setAgentModalTab] = useState<'biometrics' | 'clothes'>('biometrics');
+  const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
+  const [agentJsonInput, setAgentJsonInput] = useState<string>('');
+  const [agentJsonError, setAgentJsonError] = useState<string | null>(null);
+  const [agentJsonSuccess, setAgentJsonSuccess] = useState<string | null>(null);
+
+  const handleCopyAgentPrompt = async () => {
+    try {
+      const textToCopy =
+        agentModalTab === 'clothes' ? CLOTHES_AI_AGENT_PROMPT : AI_AGENT_ANALYSIS_PROMPT;
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      }
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 3000);
+    } catch {
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 3000);
+    }
+  };
+
+  const handleApplyAgentJson = () => {
+    setAgentJsonError(null);
+    setAgentJsonSuccess(null);
+    if (!agentJsonInput.trim()) {
+      setAgentJsonError('Bitte füge zuerst die JSON-Antwort des KI-Agenten ein.');
+      return;
+    }
+    try {
+      let raw = agentJsonInput.trim();
+      if (raw.includes('```json')) {
+        raw = raw.split('```json')[1].split('```')[0].trim();
+      } else if (raw.includes('```')) {
+        raw = raw.split('```')[1].split('```')[0].trim();
+      }
+      const parsed = JSON.parse(raw);
+
+      // 1. Check if clothes/garments were imported (JSON array or { garments: [...] })
+      const isClothesArray = Array.isArray(parsed);
+      const hasGarmentsArray =
+        parsed && typeof parsed === 'object' && Array.isArray((parsed as any).garments);
+
+      if (agentModalTab === 'clothes' || isClothesArray || hasGarmentsArray) {
+        const clothesResult = parseAndNormalizeWardrobeImport(raw);
+        if (clothesResult.ok && clothesResult.garments.length > 0) {
+          setWizardAddedGarments((prev) => [...prev, ...clothesResult.garments]);
+          setAgentJsonSuccess(
+            `✓ ${clothesResult.garments.length} Kleidungsstücke & Accessoires erfolgreich importiert!`
+          );
+          setTimeout(() => {
+            setShowAgentModal(false);
+            setAgentJsonSuccess(null);
+            setAgentJsonInput('');
+            setStep(4);
+          }, 1500);
+          return;
+        } else if (agentModalTab === 'clothes') {
+          setAgentJsonError(clothesResult.error || 'Keine gültigen Kleidungsstücke gefunden.');
+          return;
+        }
+      }
+
+      // 2. Biometrics Profile import
+      const nextProfile: BiometricProfile = { ...draftProfile };
+      if (parsed.undertone && ['warm', 'cool', 'neutral', 'olive'].includes(parsed.undertone)) {
+        nextProfile.undertone = parsed.undertone;
+      }
+      if (parsed.skinHex && /^#[0-9A-Fa-f]{6}$/.test(parsed.skinHex)) {
+        nextProfile.skinHex = parsed.skinHex;
+      }
+      if (parsed.hairHex && /^#[0-9A-Fa-f]{6}$/.test(parsed.hairHex)) {
+        nextProfile.hairHex = parsed.hairHex;
+      }
+      if (parsed.hairColorName) {
+        nextProfile.hairColorName = String(parsed.hairColorName);
+      }
+      if (parsed.eyeHex && /^#[0-9A-Fa-f]{6}$/.test(parsed.eyeHex)) {
+        nextProfile.eyeHex = parsed.eyeHex;
+      }
+      if (parsed.eyeColorName) {
+        nextProfile.eyeColorName = String(parsed.eyeColorName);
+      }
+      if (parsed.contrastLevel && ['low', 'medium', 'high'].includes(parsed.contrastLevel)) {
+        nextProfile.contrastLevel = parsed.contrastLevel;
+      }
+      if (parsed.chromaLevel && ['muted', 'moderate', 'bright'].includes(parsed.chromaLevel)) {
+        nextProfile.chromaLevel = parsed.chromaLevel;
+      }
+      if (parsed.haircutStyle) {
+        nextProfile.haircutStyle = parsed.haircutStyle;
+      }
+      if (Array.isArray(parsed.wardrobeScopes) && parsed.wardrobeScopes.length > 0) {
+        const validScopes = parsed.wardrobeScopes.filter((s: string) =>
+          ['womenswear', 'menswear', 'unisex'].includes(s)
+        );
+        if (validScopes.length > 0) {
+          setSelectedScopes(validScopes);
+          nextProfile.wardrobeScopes = validScopes;
+          nextProfile.wardrobeScope = deriveScopeFromTargets(validScopes);
+        }
+      }
+      if (
+        parsed.styleVibe &&
+        ['minimal_capsule', 'statement_editorial', 'tailored_chic', 'street_relaxed'].includes(
+          parsed.styleVibe
+        )
+      ) {
+        setSelectedVibe(parsed.styleVibe);
+      }
+
+      setDraftProfile(nextProfile);
+      setAgentJsonSuccess('✓ Farb- & Stilwerte aus dem KI-Ergebnis erfolgreich übernommen!');
+      setTimeout(() => {
+        setShowAgentModal(false);
+        setAgentJsonSuccess(null);
+        setAgentJsonInput('');
+        setStep(2);
+      }, 1500);
+    } catch (err: any) {
+      setAgentJsonError(`JSON konnte nicht gelesen werden: ${err.message || 'Ungültiges Format'}`);
+    }
+  };
+
+  const handleSelectSkin = (sp: (typeof SKIN_PRESETS)[number]) => {
+    const skinL = hexToHsl(sp.skinHex).l;
+    const hairL = hexToHsl(draftProfile.hairHex || '#5A4D41').l;
+    const deltaL = Math.abs(skinL - hairL);
+    const derivedContrast: ContrastLevel = deltaL < 25 ? 'low' : deltaL <= 52 ? 'medium' : 'high';
+    setDraftProfile({
+      ...draftProfile,
+      undertone: sp.undertone,
+      skinHex: sp.skinHex,
+      contrastLevel: derivedContrast,
+    });
+  };
+
+  const handleSelectHair = (hair: (typeof HAIR_PRESETS)[number]) => {
+    const skinL = hexToHsl(draftProfile.skinHex).l;
+    const hairL = hexToHsl(hair.hex).l;
+    const deltaL = Math.abs(skinL - hairL);
+    const derivedContrast: ContrastLevel = deltaL < 25 ? 'low' : deltaL <= 52 ? 'medium' : 'high';
+    setDraftProfile({
+      ...draftProfile,
+      hairHex: hair.hex,
+      hairColorName: hair.name,
+      contrastLevel: derivedContrast,
+    });
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     setStep(1);
     setDraftProfile(currentProfile);
+    setSelectedScopes(normalizeWardrobeScopes(currentProfile));
+    setShowExamplePresets(false);
     const colors = getAllColorPresets();
     setAllColors(colors);
     setQuickColor(colors[0]);
@@ -253,10 +507,49 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
     [draftProfile]
   );
 
+  const quickItems = useMemo(
+    () => getQuickItemsForScopes(selectedScopes),
+    [selectedScopes]
+  );
+
   if (!isOpen) return null;
 
-  const activeScope: WardrobeScope = draftProfile.wardrobeScope || 'all';
-  const quickItems = WIZARD_QUICK_ITEMS_BY_SCOPE[activeScope];
+  const handleToggleScope = (scope: WardrobeScopeTarget) => {
+    setSelectedScopes((prev) => {
+      let next: WardrobeScopeTarget[];
+      if (prev.includes(scope)) {
+        // Keep at least one selected so the user always has choices
+        if (prev.length === 1) return prev;
+        next = prev.filter((s) => s !== scope);
+      } else {
+        next = [...prev, scope];
+      }
+      const derived = deriveScopeFromTargets(next);
+      setDraftProfile((dp) => ({
+        ...dp,
+        wardrobeScopes: next,
+        wardrobeScope: derived,
+      }));
+      return next;
+    });
+  };
+
+  const handleSelectPreset = (presetKey: WardrobePresetKey) => {
+    setSelectedStartMode(presetKey);
+    const preset = WARDROBE_PRESETS[presetKey];
+    let targetScopes: WardrobeScopeTarget[];
+    if (preset.scope === 'womenswear') targetScopes = ['womenswear', 'unisex'];
+    else if (preset.scope === 'menswear') targetScopes = ['menswear', 'unisex'];
+    else if (preset.scope === 'unisex') targetScopes = ['unisex'];
+    else targetScopes = ['womenswear', 'menswear', 'unisex'];
+
+    setSelectedScopes(targetScopes);
+    setDraftProfile((prev) => ({
+      ...prev,
+      wardrobeScopes: targetScopes,
+      wardrobeScope: preset.scope,
+    }));
+  };
 
   const handleAddWizardGarment = (subcategory: GarmentSubcategory) => {
     const defaults = SMART_SUBCATEGORY_DEFAULTS[subcategory];
@@ -316,21 +609,19 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
           wizardAddedGarments.length > 0 ? wizardAddedGarments : undefined;
         isDemo = false;
       } else {
-        // A preset was chosen
+        // A preset was chosen from the example list
         const presetGarments = WARDROBE_PRESETS[selectedStartMode].garments;
         garmentsToLoad = [...wizardAddedGarments, ...presetGarments];
         isDemo = wizardAddedGarments.length === 0;
       }
 
-      const updatedScope =
-        selectedStartMode !== 'own_empty' && selectedStartMode !== 'keep_current'
-          ? WARDROBE_PRESETS[selectedStartMode].scope
-          : draftProfile.wardrobeScope || 'all';
+      const derivedScope = deriveScopeFromTargets(selectedScopes);
 
       await onCompleteSetup({
         profile: {
           ...draftProfile,
-          wardrobeScope: updatedScope,
+          wardrobeScopes: selectedScopes,
+          wardrobeScope: derivedScope,
           isDemoMode: isDemo,
         },
         styleVibe: selectedVibe,
@@ -447,6 +738,24 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   </p>
                 </div>
 
+                {/* AI Agent Analysis Quick Option */}
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Bot className="w-4 h-4 text-amber-400 shrink-0" />
+                    <p className="text-xs text-zinc-300">
+                      <strong className="text-amber-200">Foto per KI analysieren lassen:</strong> Lass Hautunterton, Kontrast &amp; Farben direkt aus einem Selfie ermitteln.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAgentModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-semibold shrink-0 cursor-pointer transition-colors shadow-sm"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    <span>KI-Prompt</span>
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-1 gap-2.5">
                   {/* Option 1: Exit Demo Mode & Start Own Empty Closet */}
                   <button
@@ -506,85 +815,136 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                     )}
                   </button>
 
-                  {/* Option 3: Or pick an example preset */}
+                  {/* Collapsible Example Wardrobe Loader (Optional) */}
                   <div className="pt-2">
-                    <p className="text-[11px] font-medium text-zinc-400 mb-2">
-                      {isEn
-                        ? 'Or load an example wardrobe for testing:'
-                        : 'Oder eine Beispiel-Garderobe zum Ausprobieren laden:'}
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {(
-                        [
-                          'womenswear_capsule',
-                          'menswear_unisex',
-                          'unisex_essentials',
-                          'combined_atelier',
-                        ] as WardrobePresetKey[]
-                      ).map((presetKey) => {
-                        const preset = WARDROBE_PRESETS[presetKey];
-                        const isSelected = selectedStartMode === presetKey;
-                        return (
-                          <button
-                            key={presetKey}
-                            type="button"
-                            onClick={() => {
-                              setSelectedStartMode(presetKey);
-                              setDraftProfile((prev) => ({
-                                ...prev,
-                                wardrobeScope: preset.scope,
-                              }));
-                            }}
-                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-amber-500/15 border-amber-400 text-zinc-100'
-                                : 'bg-zinc-900/40 border-zinc-800 hover:border-zinc-700 text-zinc-400'
-                            }`}
-                          >
-                            <p className="text-xs font-semibold text-zinc-200">
-                              {isEn ? preset.labelEn : preset.labelDe}
-                            </p>
-                            <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
-                              {isEn ? preset.descriptionEn : preset.descriptionDe}
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowExamplePresets((prev) => !prev)}
+                      className="text-xs text-zinc-400 hover:text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer py-1"
+                    >
+                      <span className="text-[10px]">{showExamplePresets ? '▲' : '▼'}</span>
+                      <span>
+                        {isEn
+                          ? 'Or load an example wardrobe for testing (Optional)'
+                          : 'Möchtest du stattdessen eine Beispiel-Garderobe zum Testen laden? (Optional)'}
+                      </span>
+                    </button>
+
+                    {showExamplePresets && (
+                      <div className="mt-2.5 p-3 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-2">
+                        <p className="text-[11px] text-zinc-400">
+                          {isEn
+                            ? 'Select a curated sample wardrobe if you want to explore the app with pre-filled items:'
+                            : 'Wähle eine fertige Beispiel-Garderobe, falls du die App erst einmal mit Test-Kleidung ausprobieren möchtest:'}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {(
+                            [
+                              'womenswear_capsule',
+                              'menswear_unisex',
+                              'unisex_essentials',
+                              'combined_atelier',
+                            ] as WardrobePresetKey[]
+                          ).map((presetKey) => {
+                            const preset = WARDROBE_PRESETS[presetKey];
+                            const isSelected = selectedStartMode === presetKey;
+                            return (
+                              <button
+                                key={presetKey}
+                                type="button"
+                                onClick={() => handleSelectPreset(presetKey)}
+                                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-amber-500/15 border-amber-400 text-zinc-100 ring-1 ring-amber-400/40'
+                                    : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 text-zinc-400'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <p className="text-xs font-semibold text-zinc-200">
+                                    {isEn ? preset.labelEn : preset.labelDe}
+                                  </p>
+                                  {isSelected && (
+                                    <span className="text-[10px] text-amber-400 font-medium">
+                                      ✓ Aktiv
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
+                                  {isEn ? preset.descriptionEn : preset.descriptionDe}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* 1B: Für wen? (Frauen / Männer / Unisex / Beides) */}
+              {/* 1B: Für wen? Multi-Select (Frauen / Männer / Unisex) */}
               <div className="space-y-2.5 pt-4 border-t border-zinc-800/80">
-                <label className="block text-xs font-semibold text-zinc-100">
-                  {isEn
-                    ? '2. Which clothing selection should we show you?'
-                    : '2. Welche Kleidungsstücke möchtest du nutzen? (Bei „Frauen“ sind auch Hoodies, Shirts & Sneaker dabei)'}
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {(['womenswear', 'menswear', 'unisex', 'all'] as WardrobeScope[]).map((sc) => {
-                    const active = (draftProfile.wardrobeScope || 'all') === sc;
-                    const meta = WARDROBE_SCOPE_META[sc];
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-100">
+                    {isEn
+                      ? '2. Which clothing types do you wear? (Multi-Select)'
+                      : '2. Welche Kleidungsstücke möchtest du nutzen? (Mehrfachauswahl möglich)'}
+                  </label>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    {isEn
+                      ? 'Select all categories you want to include. Selecting all 3 unlocks the complete range of clothing.'
+                      : 'Wähle alle Kategorien aus, die du tragen möchtest. Wenn du alle 3 anklickst, steht dir die komplette Auswahl an Kleidung zur Verfügung.'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {(['womenswear', 'menswear', 'unisex'] as WardrobeScopeTarget[]).map((scopeKey) => {
+                    const isChecked = selectedScopes.includes(scopeKey);
+                    const meta = WARDROBE_MULTI_SCOPE_META[scopeKey];
                     return (
                       <button
-                        key={sc}
+                        key={scopeKey}
                         type="button"
-                        onClick={() =>
-                          setDraftProfile({ ...draftProfile, wardrobeScope: sc })
-                        }
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                          active
-                            ? 'bg-amber-500/15 border-amber-400 text-zinc-100 font-semibold'
-                            : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        onClick={() => handleToggleScope(scopeKey)}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                          isChecked
+                            ? 'bg-amber-500/15 border-amber-400 text-zinc-100 ring-1 ring-amber-400/30'
+                            : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                         }`}
                       >
-                        <p className="text-xs font-semibold text-zinc-100">
-                          {isEn ? meta.shortEn : meta.shortDe}
+                        <div className="flex items-center justify-between gap-2 w-full">
+                          <span className="text-xs font-semibold text-zinc-100">
+                            {isEn ? meta.labelEn : meta.labelDe}
+                          </span>
+                          <div
+                            className={`w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors ${
+                              isChecked
+                                ? 'bg-amber-400 text-zinc-950 font-bold'
+                                : 'border border-zinc-600 bg-zinc-950/60'
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-zinc-400 leading-snug">
+                          {isEn ? meta.descEn : meta.descDe}
                         </p>
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Scope selection summary badge */}
+                <div className="text-[11px] text-zinc-400 pt-1 flex items-center gap-1.5">
+                  <span className="text-zinc-500">Ausgewählt:</span>
+                  <span className="text-amber-300 font-medium">
+                    {selectedScopes.map((s) => WARDROBE_MULTI_SCOPE_META[s].shortDe).join(' + ')}
+                  </span>
+                  {selectedScopes.length === 3 && (
+                    <span className="text-emerald-400 text-[10px] font-semibold bg-emerald-950/40 border border-emerald-500/30 px-1.5 py-0.5 rounded ml-1">
+                      Komplette Auswahl aktiv
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -665,41 +1025,53 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
           {/* STEP 2: EINFACH ERKLÄRTE FARB- & TYP-FRAGEN */}
           {step === 2 && (
             <div className="space-y-6">
-              {/* Top helper banner for people who don't know their color type */}
+              {/* Top helper banner with AI Agent Prompt & Neutral Fallback */}
               <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <p className="text-xs font-semibold text-amber-200 flex items-center gap-1.5">
-                    <HelpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    Keine Ahnung von Farbtypen? Kein Problem!
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    Keine Lust auf manuelles Durchklicken?
                   </p>
                   <p className="text-[11px] text-zinc-300">
-                    Beantworte die 5 kurzen Alltags-Fragen nach Bauchgefühl – oder klicke rechts auf „Neutral-Standard“, wenn du dir unsicher bist.
+                    Lass deine Farbwerte anhand eines Fotos von einem KI-Agenten (ChatGPT, Gemini, Claude) bestimmen – oder klicke die 5 Alltagsfragen schnell durch.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDraftProfile({
-                      ...draftProfile,
-                      undertone: 'neutral',
-                      contrastLevel: 'medium',
-                      chromaLevel: 'muted',
-                    })
-                  }
-                  className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-amber-400/50 text-xs font-medium text-amber-200 hover:bg-zinc-800 shrink-0 cursor-pointer whitespace-nowrap"
-                >
-                  Unsicher? „Neutral“ wählen
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAgentModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-semibold shrink-0 cursor-pointer transition-colors shadow-sm"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    <span>KI-Agent Prompt kopieren</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraftProfile({
+                        ...draftProfile,
+                        undertone: 'neutral',
+                        contrastLevel: 'medium',
+                        chromaLevel: 'muted',
+                      })
+                    }
+                    className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 shrink-0 cursor-pointer whitespace-nowrap"
+                  >
+                    Neutral setzen
+                  </button>
+                </div>
               </div>
 
-              {/* 1. Skin Undertone explained with Jewelry & Sun test */}
+              {/* 1. Skin Undertone explained with Veins, Sun & T-Shirt (No jewelry bias!) */}
               <div className="space-y-2">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-100">
-                    1. Dein Hautton – Welcher Schmuck &amp; welche Farben lassen dich frisch aussehen?
+                    1. Dein Hautton &amp; Unterton (3 einfache Alltags-Checks – kein Schmuck nötig)
                   </label>
                   <p className="text-[11px] text-zinc-400 mt-0.5">
-                    Alltags-Test: Schau, ob dir an dir selbst eher Goldschmuck (warm) oder Silberschmuck (kühl) gefällt – oder beides gleich gut (neutral).
+                    <strong>1. Adern-Check am Handgelenk:</strong> Grünlich = Warm/Oliv · Bläulich/Violett = Kühl · Blaugrün = Neutral.<br />
+                    <strong>2. Sonnen-Check:</strong> Wirst du schnell braun (Warm/Oliv) oder bekommst du schnell Sonnenbrand (Kühl)?<br />
+                    <strong>3. T-Shirt-Check:</strong> Steht dir Off-White/Creme besser als grelles Reinweiß (Warm/Oliv) oder strahlendes Reinweiß (Kühl)?
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -709,13 +1081,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       <button
                         key={sp.undertone}
                         type="button"
-                        onClick={() =>
-                          setDraftProfile({
-                            ...draftProfile,
-                            undertone: sp.undertone,
-                            skinHex: sp.skinHex,
-                          })
-                        }
+                        onClick={() => handleSelectSkin(sp)}
                         className={`p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
                           active
                             ? 'bg-amber-500/15 border-amber-400 text-zinc-100 ring-1 ring-amber-400/30'
@@ -730,11 +1096,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                           <p className="text-xs font-semibold text-zinc-100">
                             {isEn ? sp.labelEn : sp.labelDe}
                           </p>
-                          <p className="text-[11px] text-amber-300/90 font-medium">
-                            {sp.jewelryHintDe}
+                          <p className="text-[11px] text-amber-300 font-medium">
+                            {sp.veinAndSunHintDe}
                           </p>
                           <p className="text-[11px] text-zinc-400 leading-relaxed">
                             {isEn ? sp.descEn : sp.descDe}
+                          </p>
+                          <p className="text-[10px] text-zinc-500">
+                            Metalle / Uhren: {sp.metalHintDe}
                           </p>
                         </div>
                       </button>
@@ -743,31 +1112,142 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 </div>
               </div>
 
-              {/* 2. Contrast & 3. Chroma with plain explanations */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* 2. Haarfarbe (Warum beachten wir das?) */}
+              <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-100">
+                    2. Deine Haarfarbe (Warum beachten wir das?)
+                  </label>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Zusammen mit deiner Haut bestimmt deine Haarfarbe deinen natürlichen Hell-Dunkel-Kontrast: Dunkle Haare auf heller Haut brauchen kräftige Kontraste (z. B. weißes Shirt unter dunkler Jacke), während ähnliche Töne (z. B. braune Haare &amp; gebräunte Haut) sanfte Ton-in-Ton-Outfits lieben.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {HAIR_PRESETS.map((hair) => {
+                    const active =
+                      draftProfile.hairHex?.toLowerCase() === hair.hex.toLowerCase();
+                    return (
+                      <button
+                        key={hair.hex}
+                        type="button"
+                        onClick={() => handleSelectHair(hair)}
+                        className={`inline-flex items-center gap-2 p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                          active
+                            ? 'bg-amber-500/15 border-amber-400 text-zinc-100 font-semibold ring-1 ring-amber-400/30'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full border border-white/20 shrink-0"
+                          style={{ backgroundColor: hair.hex }}
+                        />
+                        <span className="truncate">{hair.name.split(' / ')[0]}</span>
+                      </button>
+                    );
+                  })}
+                  {/* Dynamic chip if custom / KI hair color does not match any preset */}
+                  {!HAIR_PRESETS.some(
+                    (h) => h.hex.toLowerCase() === draftProfile.hairHex?.toLowerCase()
+                  ) && draftProfile.hairHex && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 p-2.5 rounded-lg border text-xs bg-amber-500/15 border-amber-400 text-zinc-100 font-semibold ring-1 ring-amber-400/30 cursor-pointer"
+                    >
+                      <span
+                        className="w-4 h-4 rounded-full border border-white/20 shrink-0"
+                        style={{ backgroundColor: draftProfile.hairHex }}
+                      />
+                      <span className="truncate">{draftProfile.hairColorName || 'Eigene Haarfarbe'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Eye Color Presets */}
+              <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+                <div>
+                  <span className="block text-xs font-semibold text-zinc-100">
+                    3. Deine Augenfarbe (Warum fragen wir das?)
+                  </span>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Kleiner Styling-Trick: Wenn ein Pullover oder Shirt deine Augenfarbe aufgreift (z. B. Olivgrün bei grün-braunen Augen oder Blaugrau bei blauen Augen), wirken deine Augen sofort wacher und lebendiger.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {EYE_PRESETS.map((eye) => {
+                    const active =
+                      draftProfile.eyeHex?.toLowerCase() === eye.hex.toLowerCase();
+                    return (
+                      <button
+                        key={eye.hex}
+                        type="button"
+                        onClick={() =>
+                          setDraftProfile({
+                            ...draftProfile,
+                            eyeColorName: eye.name,
+                            eyeHex: eye.hex,
+                          })
+                        }
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                          active
+                            ? 'bg-amber-500/15 border-amber-400 text-zinc-100 font-semibold ring-1 ring-amber-400/30'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-white/25"
+                          style={{ backgroundColor: eye.hex }}
+                        />
+                        <span>{eye.name}</span>
+                      </button>
+                    );
+                  })}
+                  {/* Dynamic chip if custom / KI eye color does not match any preset */}
+                  {!EYE_PRESETS.some(
+                    (e) => e.hex.toLowerCase() === draftProfile.eyeHex?.toLowerCase()
+                  ) && draftProfile.eyeHex && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs bg-amber-500/15 border-amber-400 text-zinc-100 font-semibold ring-1 ring-amber-400/30 cursor-pointer"
+                    >
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-white/25"
+                        style={{ backgroundColor: draftProfile.eyeHex }}
+                      />
+                      <span>{draftProfile.eyeColorName || 'Eigene Augenfarbe'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 4. Contrast & Chroma with automatic hair-skin hint */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-zinc-800/80">
                 <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-2.5">
-                  <div>
+                  <div className="flex items-center justify-between">
                     <span className="block text-xs font-semibold text-zinc-100">
-                      2. Unterschied zwischen Haarfarbe &amp; Haut
+                      4. Kontrast (Hell-Dunkel-Unterschied)
                     </span>
-                    <p className="text-[11px] text-zinc-400 mt-0.5">
-                      Bestimmt, ob dir eher sanfte Ton-in-Ton-Outfits oder starke Hell-Dunkel-Kontraste (z. B. weißes Shirt + dunkle Jacke) stehen.
-                    </p>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                      Auto-berechnet
+                    </span>
                   </div>
+                  <p className="text-[11px] text-zinc-400">
+                    Wird automatisch aus deiner gewählten Haar- und Hautfarbe abgeleitet. Du kannst es hier nach deinen Wünschen anpassen.
+                  </p>
                   <div className="space-y-1.5">
                     {(
                       [
                         {
                           id: 'low',
-                          label: 'Sanft / Ähnlich (z. B. helle Haut & blonde/hellbraune Haare)',
+                          label: 'Sanft / Ähnlich (Haut & Haare haben ähnliche Helligkeit)',
                         },
                         {
                           id: 'medium',
-                          label: 'Mittel / Normal (z. B. mittlere Haut & braune/dunkelblonde Haare)',
+                          label: 'Mittel / Normal (Ausgewogener Alltagskontrast)',
                         },
                         {
                           id: 'high',
-                          label: 'Stark (z. B. sehr dunkle/schwarze Haare & helle Haut)',
+                          label: 'Stark (z. B. dunkle Haare auf heller Haut)',
                         },
                       ] as const
                     ).map((c) => (
@@ -795,10 +1275,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-2.5">
                   <div>
                     <span className="block text-xs font-semibold text-zinc-100">
-                      3. Welche Farben magst du lieber an dir?
+                      5. Welche Farb-Intensität magst du lieber?
                     </span>
                     <p className="text-[11px] text-zinc-400 mt-0.5">
-                      Manchen stehen ruhige, unaufdringliche Töne besser, anderen kräftige, leuchtende Farben.
+                      Manchen stehen ruhige, unaufdringliche Naturtöne besser, anderen leuchtende Farben.
                     </p>
                   </div>
                   <div className="space-y-1.5">
@@ -806,7 +1286,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                       [
                         {
                           id: 'muted',
-                          label: 'Ruhige, sanfte Töne (Salbei, Beige, Dunkelblau, Grau – nichts Grelles)',
+                          label: 'Ruhige, sanfte Naturtöne (Salbei, Beige, Navy, Grau – nichts Grelles)',
                         },
                         {
                           id: 'moderate',
@@ -814,7 +1294,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                         },
                         {
                           id: 'bright',
-                          label: 'Kräftige, klare Farben (Reines Weiß, Tiefschwarz, leuchtendes Rot/Blau)',
+                          label: 'Kräftige Farben (Reines Weiß, Tiefschwarz, leuchtendes Rot/Blau)',
                         },
                       ] as const
                     ).map((ch) => (
@@ -840,47 +1320,6 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 </div>
               </div>
 
-              {/* 4. Eye Color Presets */}
-              <div className="space-y-2">
-                <div>
-                  <span className="block text-xs font-semibold text-zinc-100">
-                    4. Deine Augenfarbe (Warum fragen wir das?)
-                  </span>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">
-                    Kleiner Styling-Trick: Wenn ein Pullover oder Shirt deine Augenfarbe leicht aufgreift (z. B. Olivgrün bei grün-braunen Augen oder Blaugrau bei blauen Augen), wirken deine Augen sofort wacher.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {EYE_PRESETS.map((eye) => {
-                    const active =
-                      draftProfile.eyeHex.toLowerCase() === eye.hex.toLowerCase();
-                    return (
-                      <button
-                        key={eye.hex}
-                        type="button"
-                        onClick={() =>
-                          setDraftProfile({
-                            ...draftProfile,
-                            eyeColorName: eye.name,
-                            eyeHex: eye.hex,
-                          })
-                        }
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs cursor-pointer ${
-                          active
-                            ? 'bg-amber-500/15 border-amber-400 text-zinc-100 font-semibold'
-                            : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
-                        }`}
-                      >
-                        <span
-                          className="w-3.5 h-3.5 rounded-full border border-white/25"
-                          style={{ backgroundColor: eye.hex }}
-                        />
-                        <span>{eye.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
               {/* 5. Haircut / Framing */}
               <div className="space-y-2">
@@ -1007,15 +1446,41 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                     <Shirt className="w-4 h-4 text-amber-400" />
                     {isEn
-                      ? '4. Click Together Your Own Clothes (1-Click Builder)'
-                      : '4. Klicke jetzt direkt deine eigenen Kleidungsstücke zusammen'}
+                      ? '4. Click Together Your Own Clothes & Accessories'
+                      : '4. Klicke jetzt deine eigenen Kleidungsstücke & Accessoires zusammen'}
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     {isEn
-                      ? '1. Tap a color (and optional brand) · 2. Tap a garment to add it to your closet. Add at least 1 top, 1 bottom & 1 pair of shoes!'
-                      : '1. Farbe (und optional Marke) wählen · 2. Kleidungsstück antippen. Tipp: Lege mindestens 1 Oberteil, 1 Hose/Rock und 1 Paar Schuhe an!'}
+                      ? '1. Tap a color (and optional brand) · 2. Tap a garment or accessory to add it. You can also import everything via AI prompt!'
+                      : '1. Farbe & Marke wählen · 2. Kleidungsstück oder Accessoire antippen. Du kannst auch die gesamte Garderobe per KI importieren!'}
                   </p>
                 </div>
+              </div>
+
+              {/* KI-Import Quick Banner for Clothes & Accessories */}
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start sm:items-center gap-2.5">
+                  <Bot className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-zinc-100">
+                      Ganze Garderobe &amp; Accessoires per KI importieren?
+                    </p>
+                    <p className="text-[11px] text-zinc-400">
+                      Foto von Schrank/Kleidung machen oder Stichwortliste einfügen → Prompt kopieren und alle Teile (inkl. Uhren, Brillen, Schmuck) mit 1 Klick anlegen.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAgentModalTab('clothes');
+                    setShowAgentModal(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-semibold shrink-0 cursor-pointer transition-colors shadow-sm"
+                >
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>Kleider-KI öffnen</span>
+                </button>
               </div>
 
               {/* Readiness Bar for First Outfit */}
@@ -1106,7 +1571,55 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   2. Tippe auf ein Kleidungsstück, um es in deinen Schrank zu legen:
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {quickItems.map((sub) => {
+                  {quickItems
+                    .filter((sub) => SMART_SUBCATEGORY_DEFAULTS[sub]?.category !== 'accessory')
+                    .map((sub) => {
+                      const cleanLabel = SUBCATEGORY_LABELS[sub].split(' (')[0];
+                      const defaults = SMART_SUBCATEGORY_DEFAULTS[sub];
+                      const autoSize = suggestSizeForGarment(defaults.category, quickBrand, draftProfile).suggestedSize;
+                      return (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => handleAddWizardGarment(sub)}
+                          className="group flex items-center gap-2.5 p-2.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition-all text-left cursor-pointer"
+                        >
+                          <div className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800/80 flex items-center justify-center shrink-0">
+                            <GarmentVector
+                              type={sub}
+                              colorHex={quickColor.hex}
+                              texture={defaults.texture}
+                              className="w-8 h-8"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-zinc-200 group-hover:text-amber-300 truncate">
+                              + {cleanLabel}
+                            </p>
+                            <p className="text-[10px] text-zinc-500 truncate">
+                              {quickBrand ? `${quickBrand} · ` : ''}
+                              {autoSize ? `Gr. ${autoSize}` : quickColor.name.replace(' (Test)', '')}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* 1-Click Accessories & Jewelry Grid */}
+              <div className="space-y-1.5 pt-2 border-t border-zinc-800/80">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    3. Accessoires, Uhren &amp; Schmuck antippen:
+                  </span>
+                  <span className="text-[10px] text-zinc-500">
+                    Farbe {quickColor.name.replace(' (Test)', '')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {ACCESSORY_QUICK_ITEMS.map((sub) => {
                     const cleanLabel = SUBCATEGORY_LABELS[sub].split(' (')[0];
                     const defaults = SMART_SUBCATEGORY_DEFAULTS[sub];
                     const autoSize = suggestSizeForGarment(defaults.category, quickBrand, draftProfile).suggestedSize;
@@ -1115,14 +1628,14 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                         key={sub}
                         type="button"
                         onClick={() => handleAddWizardGarment(sub)}
-                        className="group flex items-center gap-2.5 p-2.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition-all text-left cursor-pointer"
+                        className="group flex items-center gap-2 p-2.5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition-all text-left cursor-pointer"
                       >
-                        <div className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800/80 flex items-center justify-center shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-zinc-950 border border-zinc-800/80 flex items-center justify-center shrink-0">
                           <GarmentVector
                             type={sub}
                             colorHex={quickColor.hex}
                             texture={defaults.texture}
-                            className="w-8 h-8"
+                            className="w-7 h-7"
                           />
                         </div>
                         <div className="min-w-0 flex-1">
@@ -1253,6 +1766,218 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* AI AGENT PROMPT & JSON IMPORT DIALOG */}
+      {showAgentModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="agent-modal-title"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
+        >
+          <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="shrink-0 px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between gap-3 bg-zinc-900/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-400/15 border border-amber-400/40 flex items-center justify-center text-amber-400">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 id="agent-modal-title" className="text-sm font-semibold text-zinc-100">
+                    {agentModalTab === 'clothes'
+                      ? 'KI-Agent: Kleidung & Accessoires per Foto / Liste'
+                      : 'KI-Agent: Farb- & Stil-Analyse per Selfie'}
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">
+                    {agentModalTab === 'clothes'
+                      ? 'Kleiderschrank fotografieren oder Liste eingeben → Alle Teile auf einmal importieren'
+                      : 'Prompt für ChatGPT, Google Gemini oder Claude kopieren und Werte direkt einfügen'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAgentModal(false);
+                  setAgentJsonError(null);
+                  setAgentJsonSuccess(null);
+                }}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 cursor-pointer"
+                aria-label="Schließen"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Tab Switcher: Biometrics vs Clothes */}
+            <div className="shrink-0 px-5 pt-3 pb-2.5 bg-zinc-900/40 border-b border-zinc-800 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAgentModalTab('biometrics');
+                  setAgentJsonError(null);
+                  setAgentJsonSuccess(null);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                  agentModalTab === 'biometrics'
+                    ? 'bg-amber-400 text-zinc-950 border-amber-400 shadow-sm'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>1. Farb-Biometrie (Selfie)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAgentModalTab('clothes');
+                  setAgentJsonError(null);
+                  setAgentJsonSuccess(null);
+                }}
+                className={`flex-1 py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                  agentModalTab === 'clothes'
+                    ? 'bg-amber-400 text-zinc-950 border-amber-400 shadow-sm'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Shirt className="w-3.5 h-3.5" />
+                <span>2. Kleidung &amp; Accessoires (Garderobe)</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs text-zinc-300">
+              {/* Step A: Copy Prompt */}
+              <div className="space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="font-semibold text-zinc-100 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-amber-400 text-zinc-950 text-[11px] font-bold flex items-center justify-center">
+                      1
+                    </span>
+                    {agentModalTab === 'clothes'
+                      ? 'Prompt für deine Kleidung & Accessoires kopieren:'
+                      : 'Prompt für deine Selfie-Farbanalyse kopieren:'}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleCopyAgentPrompt}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                      copiedPrompt
+                        ? 'bg-emerald-500 text-zinc-950 shadow'
+                        : 'bg-amber-400 hover:bg-amber-300 text-zinc-950'
+                    }`}
+                  >
+                    {copiedPrompt ? (
+                      <>
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        <span>Prompt kopiert!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Prompt kopieren</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800 text-[11px] text-zinc-400 space-y-1">
+                  <p>
+                    <strong>So einfach geht&apos;s:</strong>
+                  </p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-zinc-300 pl-1">
+                    <li>Klicke oben auf <strong className="text-amber-300">„Prompt kopieren“</strong>.</li>
+                    <li>Öffne <strong>ChatGPT</strong>, <strong>Google Gemini</strong> oder <strong>Claude</strong>.</li>
+                    {agentModalTab === 'clothes' ? (
+                      <>
+                        <li>Hänge ein Foto deines Schranks / deiner Kleidung an oder tippe kurz deine Lieblingsteile als Text ein.</li>
+                        <li>Sende den Prompt ab. Die KI antwortet mit einem sauberen JSON-Array inkl. Farben, Schnitten &amp; Accessoires (Uhren, Brillen, Schmuck etc.).</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>Hänge ein Selfie von dir an (am besten bei Tageslicht ohne Farbfilter).</li>
+                        <li>Sende den Prompt ab. Die KI ermittelt Unterton, Kontrast, Haar- &amp; Augenfarbe.</li>
+                      </>
+                    )}
+                  </ol>
+                </div>
+
+                {/* Prompt Preview Code Box */}
+                <div className="relative">
+                  <pre className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11px] font-mono text-zinc-300 max-h-44 overflow-y-auto whitespace-pre-wrap leading-relaxed select-all">
+                    {agentModalTab === 'clothes' ? CLOTHES_AI_AGENT_PROMPT : AI_AGENT_ANALYSIS_PROMPT}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Step B: Paste & Apply */}
+              <div className="space-y-2.5 pt-4 border-t border-zinc-800">
+                <label className="font-semibold text-zinc-100 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-amber-400 text-zinc-950 text-[11px] font-bold flex items-center justify-center">
+                    2
+                  </span>
+                  KI-Antwort (JSON) hier einfügen:
+                </label>
+                <textarea
+                  value={agentJsonInput}
+                  onChange={(e) => {
+                    setAgentJsonInput(e.target.value);
+                    if (agentJsonError) setAgentJsonError(null);
+                  }}
+                  rows={6}
+                  placeholder={
+                    agentModalTab === 'clothes'
+                      ? `[\n  {\n    "name": "Kupferfarbene Chronograph-Uhr",\n    "category": "accessory",\n    "subcategory": "watch",\n    "colorName": "Kupfer",\n    "colorHex": "#8C6244",\n    "brand": "Seiko",\n    "formality": 3\n  },\n  {\n    "name": "Schwarze Wayfarer Sonnenbrille",\n    "category": "accessory",\n    "subcategory": "sunglasses",\n    "colorName": "Schwarz",\n    "colorHex": "#141414"\n  }\n]`
+                      : `{\n  "undertone": "warm",\n  "skinHex": "#D4A38B",\n  "hairColorName": "Kupferblond / Goldbraun",\n  "hairHex": "#8C6244",\n  "eyeColorName": "Blau-Grau",\n  "eyeHex": "#526878",\n  "contrastLevel": "medium",\n  "chromaLevel": "moderate",\n  "haircutStyle": "medium_textured_flow",\n  "wardrobeScopes": ["menswear", "unisex"],\n  "styleVibe": "minimal_capsule"\n}`
+                  }
+                  className="w-full p-3 rounded-xl bg-zinc-900/80 border border-zinc-700/80 text-xs font-mono text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+
+                {agentJsonError && (
+                  <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+                    <span className="font-bold">Fehler:</span>
+                    <span>{agentJsonError}</span>
+                  </div>
+                )}
+
+                {agentJsonSuccess && (
+                  <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+                    <CheckCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{agentJsonSuccess}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="shrink-0 px-5 py-3.5 border-t border-zinc-800 bg-zinc-900/40 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAgentModal(false);
+                  setAgentJsonError(null);
+                  setAgentJsonSuccess(null);
+                }}
+                className="px-3.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyAgentJson}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-semibold cursor-pointer transition-colors shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>
+                  {agentModalTab === 'clothes'
+                    ? 'Kleidung & Accessoires importieren'
+                    : 'Werte übernehmen'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -10,6 +10,7 @@ import {
   StyleVibe,
   TextureType,
   WardrobeScope,
+  WardrobeScopeTarget,
   WeatherCondition,
   WornOutfitRecord,
 } from '../types/wardrobe';
@@ -56,6 +57,7 @@ export const CATEGORY_LABELS: Record<GarmentCategory, string> = {
   outerwear: 'Jacken & Mäntel',
   bottom: 'Hosen & Röcke',
   footwear: 'Schuhe',
+  accessory: 'Accessoires (Uhren, Brillen & Schmuck)',
 };
 
 export const CATEGORY_LABELS_EN: Record<GarmentCategory, string> = {
@@ -64,34 +66,35 @@ export const CATEGORY_LABELS_EN: Record<GarmentCategory, string> = {
   outerwear: 'Jackets & Coats',
   bottom: 'Trousers, Jeans & Skirts',
   footwear: 'Shoes',
+  accessory: 'Accessories (Watches, Glasses & Jewelry)',
 };
 
 export const SUBCATEGORY_LABELS: Record<GarmentSubcategory, string> = {
   // Base Tops
-  t_shirt: 'Klassisches T-Shirt',
-  heavyweight_tee: 'Dickes Baumwoll-T-Shirt',
+  t_shirt: 'T-Shirt',
+  heavyweight_tee: 'Dickes T-Shirt',
   polo: 'Poloshirt',
   longsleeve: 'Langarmshirt',
-  blouse: 'Bluse / Hemdbluse',
+  blouse: 'Bluse',
   tank_camisole: 'Top / Trägertop',
   crop_top: 'Kurzes Shirt',
-  bodysuit: 'Figurbetontes Langarmshirt',
+  bodysuit: 'Enges Langarmshirt',
   // Mid Layers
-  overshirt: 'Hemdjacke (Overshirt)',
-  button_down_shirt: 'Klassisches Hemd',
+  overshirt: 'Hemdjacke',
+  button_down_shirt: 'Hemd',
   crewneck_sweater: 'Sweatshirt',
   knit_sweater: 'Strickpullover',
   turtleneck: 'Rollkragenpullover',
-  hoodie: 'Hoodie (Kapuzenpullover)',
-  cardigan: 'Strickjacke (Cardigan)',
+  hoodie: 'Hoodie',
+  cardigan: 'Strickjacke',
   blazer: 'Blazer / Sakko',
-  vest_gilet: 'Pullunder / Strickweste',
+  vest_gilet: 'Pullunder / Weste',
   wrap_top: 'Feinstrick-Jacke',
   // Outerwear
   light_jacket: 'Übergangsjacke',
   coat: 'Wollmantel',
   parka: 'Regenjacke / Parka',
-  blouson: 'Leichte Jacke / Blouson',
+  blouson: 'Leichte Jacke',
   trenchcoat: 'Trenchcoat',
   leather_jacket: 'Lederjacke',
   puffer_jacket: 'Winter- / Steppjacke',
@@ -108,11 +111,23 @@ export const SUBCATEGORY_LABELS: Record<GarmentSubcategory, string> = {
   sneaker_clean: 'Schlichte Sneaker',
   sneaker_chunky: 'Sportliche Sneaker',
   boots: 'Stiefel / Boots',
-  loafer_derby: 'Loafer / Halbschuhe',
-  runner: 'Laufschuhe / Sportschuhe',
-  heeled_ankle_boot: 'Stiefeletten (Ankle Boots)',
-  ballet_flat: 'Ballerinas / Flache Schuhe',
-  sandal_strappy: 'Sandalen / Sommerschuhe',
+  loafer_derby: 'Halbschuhe / Loafer',
+  runner: 'Sportschuhe',
+  heeled_ankle_boot: 'Stiefeletten',
+  ballet_flat: 'Ballerinas',
+  sandal_strappy: 'Sandalen',
+  // Accessories
+  watch: 'Armbanduhr',
+  glasses: 'Brille',
+  sunglasses: 'Sonnenbrille',
+  necklace: 'Halskette',
+  bracelet: 'Armband',
+  belt: 'Gürtel',
+  bag_backpack: 'Tasche / Rucksack',
+  scarf: 'Schal / Tuch',
+  cap_beanie: 'Mütze / Cap',
+  socks: 'Lange Socken',
+  socks_short: 'Kurze Socken',
 };
 
 export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcategory[]> = {
@@ -166,6 +181,19 @@ export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcatego
     'sneaker_chunky',
     'runner',
     'sandal_strappy',
+  ],
+  accessory: [
+    'socks',
+    'socks_short',
+    'watch',
+    'sunglasses',
+    'glasses',
+    'necklace',
+    'bracelet',
+    'belt',
+    'bag_backpack',
+    'scarf',
+    'cap_beanie',
   ],
 };
 
@@ -390,7 +418,7 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
   // --- MID-LAYERS (4, including Orphan #1) ---
   makeSeedGarment({
     id: 'seed_mid_1',
-    name: 'Hemdjacke (Overshirt) Olivgrün',
+    name: 'Hemdjacke Olivgrün',
     category: 'mid_layer',
     subcategory: 'overshirt',
     colorName: 'Dunkel-Oliv',
@@ -407,7 +435,7 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
   }),
   makeSeedGarment({
     id: 'seed_mid_2',
-    name: 'Klassisches Hemd Beige',
+    name: 'Hemd Beige',
     category: 'mid_layer',
     subcategory: 'button_down_shirt',
     colorName: 'Sand / Beige',
@@ -563,6 +591,122 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     isClean: true,
     brand: 'Birkenstock',
     size: '42',
+  }),
+
+  // --- ACCESSORIES (7: incl. Lange Socken & Kurze Socken) ---
+  makeSeedGarment({
+    id: 'seed_acc_1',
+    name: 'Silberne Armbanduhr',
+    category: 'accessory',
+    subcategory: 'watch',
+    colorName: 'Steingrau',
+    colorHex: '#7D8491',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'leather_suede',
+    thermalRating: 1,
+    formality: 3,
+    waterResistant: true,
+    isClean: true,
+    brand: 'Seiko',
+    size: '40 mm',
+  }),
+  makeSeedGarment({
+    id: 'seed_acc_2',
+    name: 'Schwarze Sonnenbrille',
+    category: 'accessory',
+    subcategory: 'sunglasses',
+    colorName: 'Schwarz',
+    colorHex: '#141414',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'tech_waterproof',
+    thermalRating: 1,
+    formality: 2,
+    waterResistant: true,
+    isClean: true,
+    brand: 'Ray-Ban',
+    size: 'OneSize',
+  }),
+  makeSeedGarment({
+    id: 'seed_acc_3',
+    name: 'Braunes Lederarmband',
+    category: 'accessory',
+    subcategory: 'bracelet',
+    colorName: 'Espresso',
+    colorHex: '#3B2F2F',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'leather_suede',
+    thermalRating: 1,
+    formality: 2,
+    waterResistant: true,
+    isClean: true,
+    size: 'OneSize',
+  }),
+  makeSeedGarment({
+    id: 'seed_acc_4',
+    name: 'Brauner Ledergürtel',
+    category: 'accessory',
+    subcategory: 'belt',
+    colorName: 'Espresso',
+    colorHex: '#3B2F2F',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'leather_suede',
+    thermalRating: 1,
+    formality: 3,
+    waterResistant: true,
+    isClean: true,
+    size: '90 cm',
+  }),
+  makeSeedGarment({
+    id: 'seed_acc_5',
+    name: 'Lange Socken Weiß',
+    category: 'accessory',
+    subcategory: 'socks',
+    colorName: 'Off-White',
+    colorHex: '#F4F1EA',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'fine_knit',
+    thermalRating: 2,
+    formality: 3,
+    waterResistant: false,
+    isClean: true,
+    size: '41-44',
+  }),
+  makeSeedGarment({
+    id: 'seed_acc_7',
+    name: 'Kurze Socken Weiß',
+    category: 'accessory',
+    subcategory: 'socks_short',
+    colorName: 'Off-White',
+    colorHex: '#F4F1EA',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'smooth_cotton',
+    thermalRating: 1,
+    formality: 2,
+    waterResistant: false,
+    isClean: true,
+    size: '41-44',
+  }),
+  makeSeedGarment({
+    id: 'seed_acc_6',
+    name: 'Dunkelblaue Mütze',
+    category: 'accessory',
+    subcategory: 'cap_beanie',
+    colorName: 'Navy',
+    colorHex: '#1B263B',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'fine_knit',
+    thermalRating: 3,
+    formality: 2,
+    waterResistant: false,
+    isClean: true,
+    size: 'OneSize',
   }),
 ];
 
@@ -902,6 +1046,38 @@ export const SEED_WOMENSWEAR_GARMENTS: Garment[] = [
     brand: 'Adidas',
     size: '39',
   }),
+  makeSeedGarment({
+    id: 'fem_acc_socks_long',
+    name: 'Lange Socken Cremeweiß',
+    category: 'accessory',
+    subcategory: 'socks',
+    colorName: 'Off-White',
+    colorHex: '#F4F1EA',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'fine_knit',
+    thermalRating: 2,
+    formality: 3,
+    waterResistant: false,
+    isClean: true,
+    size: '37-40',
+  }),
+  makeSeedGarment({
+    id: 'fem_acc_socks_short',
+    name: 'Kurze Socken Cremeweiß',
+    category: 'accessory',
+    subcategory: 'socks_short',
+    colorName: 'Off-White',
+    colorHex: '#F4F1EA',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'smooth_cotton',
+    thermalRating: 1,
+    formality: 2,
+    waterResistant: false,
+    isClean: true,
+    size: '37-40',
+  }),
 ];
 
 /**
@@ -1056,6 +1232,137 @@ export const WARDROBE_SCOPE_META: Record<
   },
 };
 
+export const WARDROBE_MULTI_SCOPE_META: Record<
+  WardrobeScopeTarget,
+  {
+    labelDe: string;
+    labelEn: string;
+    shortDe: string;
+    shortEn: string;
+    descDe: string;
+    descEn: string;
+    items: GarmentSubcategory[];
+  }
+> = {
+  womenswear: {
+    labelDe: 'Frauen-Kleidung',
+    labelEn: 'Womenswear',
+    shortDe: 'Frauen',
+    shortEn: 'Women',
+    descDe: 'Röcke, Blusen, Tops, Cardigans & feminine Schnitte',
+    descEn: 'Skirts, blouses, tops, cardigans & feminine silhouettes',
+    items: [
+      'blouse',
+      'tank_camisole',
+      'cardigan',
+      'blazer',
+      'midi_skirt',
+      'mini_skirt',
+      'heeled_ankle_boot',
+      'ballet_flat',
+      'trenchcoat',
+      'necklace',
+      'bracelet',
+      'sunglasses',
+      'watch',
+    ],
+  },
+  menswear: {
+    labelDe: 'Männer-Kleidung',
+    labelEn: 'Menswear',
+    shortDe: 'Männer',
+    shortEn: 'Men',
+    descDe: 'Klassische Hemden, Chinos, Overshirts, Uhren & maskuline Schnitte',
+    descEn: 'Button-down shirts, chinos, overshirts, watches & classic cuts',
+    items: [
+      'button_down_shirt',
+      'overshirt',
+      'polo',
+      'chino',
+      'boots',
+      'parka',
+      'loafer_derby',
+      'watch',
+      'sunglasses',
+      'glasses',
+      'belt',
+      'bracelet',
+    ],
+  },
+  unisex: {
+    labelDe: 'Unisex-Basics',
+    labelEn: 'Unisex Basics',
+    shortDe: 'Unisex',
+    shortEn: 'Unisex',
+    descDe: 'Hoodies, T-Shirts, Strickpullover, Jeans, Sneaker, Brillen & legere Jacken',
+    descEn: 'Hoodies, t-shirts, knit sweaters, jeans, sneakers, eyewear & casual jackets',
+    items: [
+      't_shirt',
+      'heavyweight_tee',
+      'hoodie',
+      'crewneck_sweater',
+      'knit_sweater',
+      'denim',
+      'wide_leg_trousers',
+      'sneaker_clean',
+      'sneaker_chunky',
+      'puffer_jacket',
+      'watch',
+      'sunglasses',
+      'glasses',
+      'belt',
+      'cap_beanie',
+      'scarf',
+      'socks',
+      'socks_short',
+    ],
+  },
+};
+
+export function normalizeWardrobeScopes(profile?: BiometricProfile): WardrobeScopeTarget[] {
+  if (profile?.wardrobeScopes && profile.wardrobeScopes.length > 0) {
+    return profile.wardrobeScopes;
+  }
+  const scope = profile?.wardrobeScope;
+  if (scope === 'womenswear') return ['womenswear', 'unisex'];
+  if (scope === 'menswear') return ['menswear', 'unisex'];
+  if (scope === 'unisex') return ['unisex'];
+  return ['womenswear', 'menswear', 'unisex'];
+}
+
+export function deriveScopeFromTargets(scopes: WardrobeScopeTarget[]): WardrobeScope {
+  const hasW = scopes.includes('womenswear');
+  const hasM = scopes.includes('menswear');
+  const hasU = scopes.includes('unisex');
+
+  if (hasW && hasM) return 'all';
+  if (hasW && !hasM) return 'womenswear';
+  if (hasM && !hasW) return 'menswear';
+  if (hasU) return 'unisex';
+  return 'all';
+}
+
+export function getQuickItemsForScopes(scopes: WardrobeScopeTarget[]): GarmentSubcategory[] {
+  const result: GarmentSubcategory[] = [];
+  const seen = new Set<GarmentSubcategory>();
+
+  for (const s of scopes) {
+    const meta = WARDROBE_MULTI_SCOPE_META[s];
+    if (!meta) continue;
+    for (const item of meta.items) {
+      if (!seen.has(item)) {
+        seen.add(item);
+        result.push(item);
+      }
+    }
+  }
+
+  if (result.length === 0) {
+    return WARDROBE_MULTI_SCOPE_META.unisex.items;
+  }
+  return result;
+}
+
 export const FEMININE_ONLY_SUBCATEGORIES: GarmentSubcategory[] = [
   'blouse',
   'tank_camisole',
@@ -1070,17 +1377,26 @@ export const FEMININE_ONLY_SUBCATEGORIES: GarmentSubcategory[] = [
 ];
 
 /**
- * Checks whether a garment subcategory should be offered/recommended for the selected WardrobeScope.
- * Note: 'womenswear' includes ALL unisex items (hoodies, tees, sneakers, etc.) + womenswear items!
+ * Checks whether a garment subcategory should be offered/recommended for the selected WardrobeScope(s).
  */
 export function isSubcategoryAllowedForScope(
   subcategory: GarmentSubcategory,
-  scope: WardrobeScope = 'all'
+  scope: WardrobeScope | WardrobeScopeTarget[] = 'all'
 ): boolean {
+  if (Array.isArray(scope)) {
+    const scopes = scope;
+    if (scopes.includes('womenswear') && scopes.includes('menswear')) {
+      return true;
+    }
+    if (FEMININE_ONLY_SUBCATEGORIES.includes(subcategory)) {
+      return scopes.includes('womenswear');
+    }
+    return true;
+  }
+
   if (scope === 'all' || scope === 'womenswear') {
     return true;
   }
-  // For 'menswear' and 'unisex', exclude strictly feminine silhouettes
   return !FEMININE_ONLY_SUBCATEGORIES.includes(subcategory);
 }
 
@@ -1145,6 +1461,18 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
   ballet_flat: { category: 'footwear', fit: 'regular', neckline: 'none', texture: 'leather_suede', thermalRating: 2, formality: 3, waterResistant: false },
   runner: { category: 'footwear', fit: 'regular', neckline: 'none', texture: 'tech_waterproof', thermalRating: 2, formality: 1, waterResistant: false },
   sandal_strappy: { category: 'footwear', fit: 'regular', neckline: 'none', texture: 'leather_suede', thermalRating: 1, formality: 2, waterResistant: false },
+  // Accessories (Uhren, Brillen, Sonnenbrillen, Ketten, Armbänder etc.)
+  watch: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'leather_suede', thermalRating: 1, formality: 3, waterResistant: true },
+  glasses: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'tech_waterproof', thermalRating: 1, formality: 3, waterResistant: true },
+  sunglasses: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'tech_waterproof', thermalRating: 1, formality: 2, waterResistant: true },
+  necklace: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'tech_waterproof', thermalRating: 1, formality: 3, waterResistant: true },
+  bracelet: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'leather_suede', thermalRating: 1, formality: 2, waterResistant: true },
+  belt: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'leather_suede', thermalRating: 1, formality: 3, waterResistant: true },
+  bag_backpack: { category: 'accessory', fit: 'relaxed', neckline: 'none', texture: 'leather_suede', thermalRating: 1, formality: 3, waterResistant: true },
+  scarf: { category: 'accessory', fit: 'relaxed', neckline: 'stand_collar', texture: 'flannel_wool', thermalRating: 4, formality: 3, waterResistant: false },
+  cap_beanie: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'chunky_knit', thermalRating: 4, formality: 2, waterResistant: false },
+  socks: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'fine_knit', thermalRating: 2, formality: 2, waterResistant: false },
+  socks_short: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'smooth_cotton', thermalRating: 1, formality: 2, waterResistant: false },
 };
 
 const CUSTOM_COLORS_STORAGE_KEY = 'atelier_custom_colors_v1';

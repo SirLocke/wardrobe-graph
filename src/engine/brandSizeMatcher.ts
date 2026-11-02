@@ -21,10 +21,11 @@ export const POPULAR_BRANDS: string[] = [
   'Birkenstock',
 ];
 
-export const COMMON_SIZE_SUGGESTIONS: Record<'top' | 'bottom' | 'shoes', string[]> = {
+export const COMMON_SIZE_SUGGESTIONS: Record<'top' | 'bottom' | 'shoes' | 'accessory', string[]> = {
   top: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '34', '36', '38', '40', '42'],
   bottom: ['XS', 'S', 'M', 'L', 'XL', '34', '36', '38', '40', '42', 'W28', 'W30', 'W32', 'W34'],
   shoes: ['37', '38', '39', '40', '41', '42', '42.5', '43', '44', '45', '46'],
+  accessory: ['OneSize', '85 cm', '90 cm', '95 cm', '40 mm', '42 mm'],
 };
 
 /**
@@ -57,9 +58,10 @@ export function normalizeBrandKey(raw?: string): string {
   return cleaned;
 }
 
-export function getCategorySizeGroup(category: GarmentCategory): 'top' | 'bottom' | 'shoes' {
+export function getCategorySizeGroup(category: GarmentCategory): 'top' | 'bottom' | 'shoes' | 'accessory' {
   if (category === 'bottom') return 'bottom';
   if (category === 'footwear') return 'shoes';
+  if (category === 'accessory') return 'accessory';
   return 'top';
 }
 
@@ -118,10 +120,17 @@ export function suggestSizeForGarment(
   }
 
   // 3. Fallback to standard size for this category group
-  const defaultSize = profile.defaultSizes?.[group]?.trim();
+  const defaultSize =
+    group !== 'accessory' && profile.defaultSizes ? profile.defaultSizes[group]?.trim() : undefined;
   if (defaultSize) {
     const groupLabelDe =
-      group === 'top' ? 'Oberteile' : group === 'bottom' ? 'Hosen/Röcke' : 'Schuhe';
+      group === 'top'
+        ? 'Oberteile'
+        : group === 'bottom'
+        ? 'Hosen/Röcke'
+        : group === 'shoes'
+        ? 'Schuhe'
+        : 'Accessoires';
     return {
       suggestedSize: defaultSize,
       source: 'category_default',

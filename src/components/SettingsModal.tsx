@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Palette, Plus, Ruler, Settings2, Sparkles, Tag, Trash2, X } from 'lucide-react';
 import {
+  deriveScopeFromTargets,
   getAllColorPresets,
+  getQuickItemsForScopes,
   loadCustomColors,
+  normalizeWardrobeScopes,
   saveCustomColors,
   SMART_SUBCATEGORY_DEFAULTS,
   SUBCATEGORY_LABELS,
   TextileColorPreset,
+  WARDROBE_MULTI_SCOPE_META,
   WARDROBE_PRESETS,
   WARDROBE_SCOPE_META,
   WardrobePresetKey,
@@ -24,6 +28,7 @@ import {
   Garment,
   GarmentSubcategory,
   WardrobeScope,
+  WardrobeScopeTarget,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 
@@ -38,65 +43,6 @@ interface SettingsModalProps {
   onQuickAddGarment: (garment: Garment) => Promise<void>;
 }
 
-const QUICK_ADD_ITEMS_BY_SCOPE: Record<WardrobeScope, GarmentSubcategory[]> = {
-  womenswear: [
-    'hoodie',
-    't_shirt',
-    'blouse',
-    'blazer',
-    'knit_sweater',
-    'trenchcoat',
-    'denim',
-    'wide_leg_trousers',
-    'midi_skirt',
-    'sneaker_clean',
-    'heeled_ankle_boot',
-    'ballet_flat',
-  ],
-  menswear: [
-    'hoodie',
-    'heavyweight_tee',
-    't_shirt',
-    'overshirt',
-    'button_down_shirt',
-    'knit_sweater',
-    'blazer',
-    'parka',
-    'chino',
-    'denim',
-    'sneaker_clean',
-    'boots',
-  ],
-  unisex: [
-    'hoodie',
-    'heavyweight_tee',
-    't_shirt',
-    'crewneck_sweater',
-    'knit_sweater',
-    'overshirt',
-    'trenchcoat',
-    'puffer_jacket',
-    'denim',
-    'wide_leg_trousers',
-    'sneaker_clean',
-    'boots',
-  ],
-  all: [
-    'hoodie',
-    't_shirt',
-    'blouse',
-    'blazer',
-    'overshirt',
-    'knit_sweater',
-    'trenchcoat',
-    'denim',
-    'wide_leg_trousers',
-    'midi_skirt',
-    'sneaker_clean',
-    'heeled_ankle_boot',
-  ],
-};
-
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -108,7 +54,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onQuickAddGarment,
 }) => {
   const isEn = locale === 'en';
-  const activeScope: WardrobeScope = profile.wardrobeScope || 'all';
+  const activeScopes: WardrobeScopeTarget[] = normalizeWardrobeScopes(profile);
 
   const [customColors, setCustomColors] = useState<TextileColorPreset[]>(() => loadCustomColors());
   const [allColors, setAllColors] = useState<TextileColorPreset[]>(() => getAllColorPresets());
@@ -149,26 +95,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }, 3200);
   };
 
-  const handleScopeChange = async (newScope: WardrobeScope, alsoLoadStarter: boolean) => {
+  const handleToggleScope = async (targetScope: WardrobeScopeTarget) => {
+    let next: WardrobeScopeTarget[];
+    if (activeScopes.includes(targetScope)) {
+      if (activeScopes.length === 1) return; // Keep at least one category selected
+      next = activeScopes.filter((s) => s !== targetScope);
+    } else {
+      next = [...activeScopes, targetScope];
+    }
+    const derived = deriveScopeFromTargets(next);
     await onSaveProfile({
       ...profile,
-      wardrobeScope: newScope,
+      wardrobeScopes: next,
+      wardrobeScope: derived,
     });
-    if (alsoLoadStarter) {
-      const presetKey = WARDROBE_SCOPE_META[newScope].defaultPreset;
-      await onLoadPreset(presetKey);
-      showToast(
-        isEn
-          ? `Switched to "${WARDROBE_SCOPE_META[newScope].shortEn}" and loaded starter wardrobe!`
-          : `Auf „${WARDROBE_SCOPE_META[newScope].shortDe}“ umgestellt & passende Garderobe geladen!`
-      );
-    } else {
-      showToast(
-        isEn
-          ? `Style filter set to "${WARDROBE_SCOPE_META[newScope].shortEn}".`
-          : `Kleidungs-Ausrichtung auf „${WARDROBE_SCOPE_META[newScope].shortDe}“ gesetzt.`
-      );
-    }
+    showToast(
+      isEn
+        ? `Clothing selection updated: ${next.map((s) => WARDROBE_MULTI_SCOPE_META[s].shortEn).join(' + ')}`
+        : `Kleidungs-Bereiche aktualisiert: ${next.map((s) => WARDROBE_MULTI_SCOPE_META[s].shortDe).join(' + ')}`
+    );
+  };
+
+  const handleLoadMatchingStarter = async () => {
+    const derived = deriveScopeFromTargets(activeScopes);
+    const presetKey = WARDROBE_SCOPE_META[derived].defaultPreset;
+    await onLoadPreset(presetKey);
+    showToast(
+      isEn
+        ? `Loaded sample clothes for "${WARDROBE_SCOPE_META[derived].shortEn}"!`
+        : `Passende Beispiel-Kleidung für „${WARDROBE_SCOPE_META[derived].shortDe}“ geladen!`
+    );
   };
 
   const handleSaveDefaultSizes = async (nextTop: string, nextBottom: string, nextShoes: string) => {
@@ -296,7 +252,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     profile
   );
 
-  const quickItems = QUICK_ADD_ITEMS_BY_SCOPE[activeScope];
+  const quickItems = getQuickItemsForScopes(activeScopes);
   const savedBrandRules = profile.brandSizeRules || [];
 
   return (
@@ -346,50 +302,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         )}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-7">
-          {/* SECTION 1: Frauen / Männer / Unisex / Beides */}
+          {/* SECTION 1: Multi-Select (Frauen / Männer / Unisex) */}
           <section className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-zinc-100">
                 {isEn
-                  ? '1. Who are we putting outfits together for?'
-                  : '1. Für wen stellen wir Outfits zusammen?'}
+                  ? '1. Which clothing categories do you wear? (Multi-Select)'
+                  : '1. Welche Kleidungsstücke möchtest du nutzen? (Mehrfachauswahl möglich)'}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isEn
-                  ? 'Tap a box to choose which clothing types are suggested (Women automatically includes cozy Hoodies, T-Shirts, Jeans & Sneakers).'
-                  : 'Tippe einfach auf ein Feld, um festzulegen, welche Kleidungsstücke vorgeschlagen werden (bei „Frauen“ sind selbstverständlich auch Hoodies, T-Shirts, Pullover, Jeans & Sneaker dabei).'}
+                  ? 'Choose freely which categories you wear. Select all 3 to have the complete wardrobe range available.'
+                  : 'Wähle alle Bereiche aus, die du trägst. Wenn du alle 3 anklickst, steht dir die vollständige Auswahl an Kleidung zur Verfügung.'}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {(['womenswear', 'menswear', 'unisex', 'all'] as WardrobeScope[]).map((scopeKey) => {
-                const meta = WARDROBE_SCOPE_META[scopeKey];
-                const isSelected = activeScope === scopeKey;
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {(['womenswear', 'menswear', 'unisex'] as WardrobeScopeTarget[]).map((scopeKey) => {
+                const isChecked = activeScopes.includes(scopeKey);
+                const meta = WARDROBE_MULTI_SCOPE_META[scopeKey];
                 return (
                   <button
                     key={scopeKey}
                     type="button"
-                    onClick={() => handleScopeChange(scopeKey, false)}
-                    className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
-                      isSelected
-                        ? 'bg-amber-500/15 border-amber-400 ring-1 ring-amber-400/30'
-                        : 'bg-zinc-900/40 border-zinc-800/80 hover:border-zinc-700'
+                    onClick={() => handleToggleScope(scopeKey)}
+                    className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between gap-2.5 cursor-pointer ${
+                      isChecked
+                        ? 'bg-amber-500/15 border-amber-400 text-zinc-100 ring-1 ring-amber-400/30'
+                        : 'bg-zinc-900/40 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 w-full">
                       <span className="text-sm font-semibold text-zinc-100">
                         {isEn ? meta.labelEn : meta.labelDe}
                       </span>
-                      {isSelected ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-400 text-zinc-950 text-[11px] font-semibold shrink-0">
-                          <Check className="w-3 h-3" />
-                          {isEn ? 'Selected' : 'Ausgewählt'}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-zinc-500 shrink-0">
-                          {isEn ? 'Tap to select' : 'Antippen zum Wählen'}
-                        </span>
-                      )}
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors ${
+                          isChecked
+                            ? 'bg-amber-400 text-zinc-950 font-bold'
+                            : 'border border-zinc-600 bg-zinc-950/60'
+                        }`}
+                      >
+                        {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
                     </div>
                     <p className="text-xs text-zinc-400 leading-relaxed">
                       {isEn ? meta.descEn : meta.descDe}
@@ -399,28 +354,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               })}
             </div>
 
-            {/* Separate, unmistakable box to optionally fill closet with normal example clothes */}
+            {/* Scope selection summary badge */}
+            <div className="text-[11px] text-zinc-400 pt-0.5 flex items-center gap-1.5">
+              <span className="text-zinc-500">Aktiv:</span>
+              <span className="text-amber-300 font-medium">
+                {activeScopes.map((s) => WARDROBE_MULTI_SCOPE_META[s].shortDe).join(' + ')}
+              </span>
+              {activeScopes.length === 3 && (
+                <span className="text-emerald-400 text-[10px] font-semibold bg-emerald-950/40 border border-emerald-500/30 px-1.5 py-0.5 rounded ml-1">
+                  Komplette Auswahl aktiv
+                </span>
+              )}
+            </div>
+
+            {/* Separate, optional box to load sample clothes */}
             <div className="p-3.5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-0.5">
                 <p className="text-xs font-semibold text-zinc-200">
                   {isEn
                     ? 'Want to test with normal everyday example clothes?'
-                    : 'Möchtest du direkt mit typischen Alltags-Kleidungsstücken testen?'}
+                    : 'Möchtest du passende Alltags-Beispielkleidung laden?'}
                 </p>
                 <p className="text-[11px] text-zinc-400">
                   {isEn
-                    ? WARDROBE_PRESETS[WARDROBE_SCOPE_META[activeScope].defaultPreset].descriptionEn
-                    : WARDROBE_PRESETS[WARDROBE_SCOPE_META[activeScope].defaultPreset].descriptionDe}
+                    ? 'Loads a curated sample wardrobe matching your selected categories.'
+                    : 'Lädt eine abgestimmte Beispiel-Garderobe passend zu deiner aktuellen Auswahl.'}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => handleScopeChange(activeScope, true)}
+                onClick={handleLoadMatchingStarter}
                 className="px-3.5 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shrink-0 cursor-pointer whitespace-nowrap"
               >
-                {isEn
-                  ? `Load ${WARDROBE_PRESETS[WARDROBE_SCOPE_META[activeScope].defaultPreset].garments.length} example items (${WARDROBE_SCOPE_META[activeScope].shortEn})`
-                  : `Beispiel-Kleidung für „${WARDROBE_SCOPE_META[activeScope].shortDe}“ laden (${WARDROBE_PRESETS[WARDROBE_SCOPE_META[activeScope].defaultPreset].garments.length} Teile)`}
+                {isEn ? 'Load Matching Sample Clothes' : 'Passende Beispiel-Kleidung laden'}
               </button>
             </div>
           </section>

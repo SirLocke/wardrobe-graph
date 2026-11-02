@@ -63,9 +63,13 @@ const TAILORED_SUBCATEGORIES: GarmentSubcategory[] = [
   'button_down_shirt',
   'blouse',
   'turtleneck',
+  'cardigan',
+  'polo',
+  'chino',
   'trousers',
   'wide_leg_trousers',
   'midi_skirt',
+  'boots',
   'loafer_derby',
   'heeled_ankle_boot',
   'ballet_flat',
@@ -125,11 +129,19 @@ export function passesHardContextFilter(
   if (!isLocked) {
     const [minFormality, maxFormality] = FORMALITY_WINDOWS[context.occasion] ?? [2, 4];
     const effectiveMin =
-      garment.category === 'base_top' && context.temperatureC <= 20
+      garment.category === 'accessory'
+        ? Math.max(1, minFormality - 1)
+        : garment.category === 'base_top' && context.temperatureC <= 20
         ? Math.max(1, minFormality - 1)
         : minFormality;
+    const effectiveMax =
+      garment.category === 'accessory'
+        ? Math.min(5, maxFormality + 1)
+        : context.styleVibe === 'tailored_chic'
+        ? Math.max(maxFormality, 4)
+        : maxFormality;
 
-    if (garment.formality < effectiveMin || garment.formality > maxFormality) {
+    if (garment.formality < effectiveMin || garment.formality > effectiveMax) {
       return false;
     }
 
@@ -144,9 +156,12 @@ export function passesHardContextFilter(
   // 4. Temperature Thermal Rating filter per slot
   if (!isLocked) {
     const temp = context.temperatureC;
-    if (temp >= 21) {
+    if (temp >= 27) {
       if (garment.category === 'base_top' && garment.thermalRating > 2) return false;
       if (garment.category === 'bottom' && garment.thermalRating > 2) return false;
+    } else if (temp >= 21) {
+      if (garment.category === 'base_top' && garment.thermalRating > 2) return false;
+      if (garment.category === 'bottom' && garment.thermalRating > 3) return false;
     } else if (temp >= 14 && temp <= 20) {
       if (garment.category === 'base_top' && garment.thermalRating > 3) return false;
       if (garment.category === 'mid_layer' && (garment.thermalRating < 2 || garment.thermalRating > 3)) {
@@ -161,6 +176,16 @@ export function passesHardContextFilter(
       if (garment.subcategory === 'shorts' || garment.subcategory === 'mini_skirt' || garment.subcategory === 'sandal_strappy') {
         return false;
       }
+    }
+
+    // Accessory weather & user configuration logic
+    if (garment.category === 'accessory') {
+      if (context.includeAccessories === false) return false;
+      if (context.excludedAccessorySubcategories?.includes(garment.subcategory)) {
+        return false;
+      }
+      if (garment.subcategory === 'sunglasses' && context.weather === 'rain_wet') return false;
+      if (garment.subcategory === 'scarf' && temp >= 22) return false;
     }
   }
 
@@ -177,13 +202,16 @@ export function scoreOutfitCombination(
 ): GeneratedOutfit {
   const traces: string[] = [];
 
-  const upperItems = items.filter(
+  const coreItems = items.filter((i) => i.category !== 'accessory');
+  const accessoryItems = items.filter((i) => i.category === 'accessory');
+
+  const upperItems = coreItems.filter(
     (i) => i.category === 'base_top' || i.category === 'mid_layer' || i.category === 'outerwear'
   );
-  const bottomItem = items.find((i) => i.category === 'bottom');
-  const baseTop = items.find((i) => i.category === 'base_top');
-  const midLayer = items.find((i) => i.category === 'mid_layer');
-  const outerwear = items.find((i) => i.category === 'outerwear');
+  const bottomItem = coreItems.find((i) => i.category === 'bottom');
+  const baseTop = coreItems.find((i) => i.category === 'base_top');
+  const midLayer = coreItems.find((i) => i.category === 'mid_layer');
+  const outerwear = coreItems.find((i) => i.category === 'outerwear');
 
   // 1. Biometric Base (35% weight)
   let weightedBioSum = 0;
@@ -259,8 +287,8 @@ export function scoreOutfitCombination(
     }
   }
 
-  // 3. Color Harmony Rule (20% weight, or -35 penalty for 3+ competing non-neutral hues)
-  const nonNeutralItems = items.filter((item) => !isWardrobeNeutral(item.hsl, item.colorTemp));
+  // 3. Color Harmony Rule (20% weight, or -35 penalty for 3+ competing non-neutral hues across core garments)
+  const nonNeutralItems = coreItems.filter((item) => !isWardrobeNeutral(item.hsl, item.colorTemp));
   const distinctNonNeutralHues: Garment[] = [];
   for (const item of nonNeutralItems) {
     const alreadyRepresented = distinctNonNeutralHues.some(
@@ -302,12 +330,14 @@ export function scoreOutfitCombination(
     traces.push('Zu viele konkurrierende Buntfarben im Outfit (-35 Pkt. Farbharmonie-Abzug)');
   }
 
-  // Check formality coherence across visible items
-  const visibleFormalities = items
-    .filter((i) => i.category !== 'base_top' || items.length === 3)
+  // Check formality coherence across visible core items
+  const visibleFormalities = coreItems
+    .filter((i) => i.category !== 'base_top' || coreItems.length === 3)
     .map((i) => i.formality);
   const formalitySpread =
-    Math.max(...visibleFormalities) - Math.min(...visibleFormalities);
+    visibleFormalities.length > 0
+      ? Math.max(...visibleFormalities) - Math.min(...visibleFormalities)
+      : 0;
   let formalityPenalty = 0;
   if (formalitySpread >= 2) {
     formalityPenalty = -14;
@@ -351,9 +381,9 @@ export function scoreOutfitCombination(
 
   // 5. Texture Contrast Bonus (10% weight)
   let textureContrast = 5;
-  const uniqueTextures = Array.from(new Set(items.map((i) => i.texture)));
-  const hasSmooth = items.some((i) => SMOOTH_TEXTURES.includes(i.texture));
-  const hasStructured = items.some((i) => STRUCTURED_TEXTURES.includes(i.texture));
+  const uniqueTextures = Array.from(new Set(coreItems.map((i) => i.texture)));
+  const hasSmooth = coreItems.some((i) => SMOOTH_TEXTURES.includes(i.texture));
+  const hasStructured = coreItems.some((i) => STRUCTURED_TEXTURES.includes(i.texture));
 
   if (hasSmooth && hasStructured && uniqueTextures.length >= 3) {
     textureContrast = 10;
@@ -371,67 +401,164 @@ export function scoreOutfitCombination(
   let styleVibeBonus = 0;
 
   if (vibe === 'minimal_capsule') {
-    if (distinctNonNeutralHues.length <= 1 && items.every((i) => i.hsl.s <= 45)) {
-      styleVibeBonus += 8;
+    const avgSat =
+      coreItems.length > 0
+        ? coreItems.reduce((acc, i) => acc + i.hsl.s, 0) / coreItems.length
+        : 20;
+    if (distinctNonNeutralHues.length === 0 && coreItems.every((i) => i.hsl.s <= 40)) {
+      styleVibeBonus += 14;
       traces.push(
-        'Stil-Fokus [Minimal Capsule]: Tonal-ruhige Quiet-Luxury-Komposition ohne laute Farbbrüche'
+        'Stil-Fokus [Schlicht & Zeitlos / Capsule]: Ruhige, zeitlose Neutral-Komposition ohne laute Farbbrüche'
       );
-    } else if (distinctNonNeutralHues.length >= 2) {
-      styleVibeBonus -= 8;
+    } else if (distinctNonNeutralHues.length <= 1 && coreItems.every((i) => i.hsl.s <= 45)) {
+      styleVibeBonus += avgSat <= 22 ? 9 : 4;
+      traces.push(
+        'Stil-Fokus [Schlicht & Zeitlos / Capsule]: Dezenter Akzent auf ruhiger Capsule-Basis'
+      );
+    } else {
+      styleVibeBonus -= 14;
     }
   } else if (vibe === 'statement_editorial') {
-    const hasRichTexture = items.some(
+    const hasRichTexture = coreItems.some(
       (i) =>
         i.texture === 'leather_suede' ||
         i.texture === 'chunky_knit' ||
         i.subcategory === 'trenchcoat' ||
         i.subcategory === 'blazer' ||
+        i.subcategory === 'overshirt' ||
         i.subcategory === 'midi_skirt' ||
         i.subcategory === 'wide_leg_trousers'
     );
+    const hasStatementFootwearOrLayer = coreItems.some(
+      (i) =>
+        i.subcategory === 'boots' ||
+        i.subcategory === 'heeled_ankle_boot' ||
+        i.subcategory === 'overshirt' ||
+        i.subcategory === 'turtleneck' ||
+        i.subcategory === 'leather_jacket'
+    );
     if (distinctNonNeutralHues.length >= 1 && (hasRichTexture || silhouetteBalance === 15)) {
-      styleVibeBonus += 9;
+      styleVibeBonus += hasStatementFootwearOrLayer ? 14 : 9;
       traces.push(
-        'Stil-Fokus [Statement / Editorial]: Architektonischer Silhouetten- & Power-Color-Akzent'
+        'Stil-Fokus [Auffälliger Hingucker / Statement]: Markanter Farbakzent mit ausdrucksstarker Textur'
       );
     } else if (distinctNonNeutralHues.length === 0) {
-      styleVibeBonus -= 6;
+      styleVibeBonus -= 15;
     }
   } else if (vibe === 'tailored_chic') {
-    const tailoredMatches = items.filter((i) =>
+    const tailoredMatches = coreItems.filter((i) =>
       TAILORED_SUBCATEGORIES.includes(i.subcategory)
     ).length;
-    if (tailoredMatches >= 2) {
-      styleVibeBonus += 9;
+    const hasSmartLead = coreItems.some(
+      (i) =>
+        i.subcategory === 'button_down_shirt' ||
+        i.subcategory === 'blazer' ||
+        i.subcategory === 'turtleneck' ||
+        i.subcategory === 'trenchcoat' ||
+        i.subcategory === 'coat' ||
+        i.subcategory === 'blouse' ||
+        i.subcategory === 'cardigan'
+    );
+    const hasCasualStreet = coreItems.some(
+      (i) =>
+        i.subcategory === 'hoodie' ||
+        i.subcategory === 'crewneck_sweater' ||
+        i.subcategory === 'denim' ||
+        i.subcategory === 'cargo' ||
+        i.subcategory === 'shorts'
+    );
+    if (tailoredMatches >= 2 && hasSmartLead) {
+      styleVibeBonus += hasCasualStreet ? 6 : 15;
       traces.push(
-        `Stil-Fokus [Tailored Chic]: ${tailoredMatches} klassisch-geschnittene Atelier-Komponenten kombiniert`
+        `Stil-Fokus [Schick & Gepflegt]: ${tailoredMatches} klassisch-gepflegte Teile kombiniert`
+      );
+    } else if (tailoredMatches >= 2) {
+      styleVibeBonus += 8;
+      traces.push(
+        `Stil-Fokus [Schick & Gepflegt]: ${tailoredMatches} gepflegte Klassiker kombiniert`
       );
     } else {
-      styleVibeBonus -= 5;
+      styleVibeBonus -= 14;
     }
   } else if (vibe === 'street_relaxed') {
-    const streetMatches = items.filter(
+    const streetMatches = coreItems.filter(
       (i) =>
         STREET_RELAXED_SUBCATEGORIES.includes(i.subcategory) ||
         i.fit === 'relaxed' ||
         i.fit === 'boxy_oversized'
     ).length;
-    if (streetMatches >= 3) {
-      styleVibeBonus += 9;
+    const hasRelaxedCasualPiece = coreItems.some(
+      (i) =>
+        i.subcategory === 'hoodie' ||
+        i.subcategory === 'overshirt' ||
+        i.subcategory === 'crewneck_sweater' ||
+        i.subcategory === 'denim' ||
+        i.subcategory === 'sneaker_clean' ||
+        i.subcategory === 'sneaker_chunky'
+    );
+    const hasFormalShirtOrBlazer = coreItems.some(
+      (i) =>
+        i.subcategory === 'button_down_shirt' ||
+        i.subcategory === 'blazer' ||
+        i.subcategory === 'turtleneck'
+    );
+    if (streetMatches >= 3 && hasRelaxedCasualPiece && !hasFormalShirtOrBlazer) {
+      styleVibeBonus += 14;
       traces.push(
-        'Stil-Fokus [Street / Relaxed]: Entspannte Proportionen & urbane Layering-Struktur'
+        'Stil-Fokus [Locker & Bequem]: Entspannte Schnitte & lässiges Alltags-Layering'
+      );
+    } else if (streetMatches >= 3) {
+      styleVibeBonus += 6;
+      traces.push(
+        'Stil-Fokus [Locker & Bequem]: Lässige Proportionen für den Alltag'
       );
     } else {
-      styleVibeBonus -= 5;
+      styleVibeBonus -= 12;
     }
   }
 
   if (context.weather === 'rain_wet') {
-    const wetReady = items
+    const wetReady = coreItems
       .filter((i) => i.category === 'outerwear' || i.category === 'footwear')
       .every((i) => i.waterResistant);
     if (wetReady) {
       traces.push('Wetterfest: Wasserabweisende Materialien für Regen & Nässe');
+    }
+  }
+
+  // Accessory synergy & styling traces (incl. short vs long socks explanation)
+  if (accessoryItems.length > 0) {
+    const accNames = accessoryItems.map((a) => a.name).join(', ');
+    traces.push(`Abgestimmte Accessoires im Look: ${accNames}`);
+    for (const accessoryItem of accessoryItems) {
+      if (accessoryItem.subcategory === 'socks_short') {
+        traces.push(
+          `Kurze Socken (${accessoryItem.name}): Dezent im Schuh passend zu Sneakern & Temperatur`
+        );
+      } else if (accessoryItem.subcategory === 'socks') {
+        traces.push(
+          `Lange Socken (${accessoryItem.name}): Passend zu Schuhhöhe & Hose abgestimmt`
+        );
+      } else if (accessoryItem.subcategory === 'sunglasses' && context.weather === 'sunny_dry') {
+        traces.push('Sonnenbrille schützt vor Blendung & setzt einen markanten Akzent');
+      } else if (
+        accessoryItem.subcategory === 'watch' ||
+        accessoryItem.subcategory === 'necklace' ||
+        accessoryItem.subcategory === 'bracelet'
+      ) {
+        const isWarmProfile = profile.undertone === 'warm' || profile.undertone === 'olive';
+        const isMetalWarm =
+          accessoryItem.colorTemp === 'warm' ||
+          accessoryItem.colorName.toLowerCase().includes('gold') ||
+          accessoryItem.colorName.toLowerCase().includes('bronze') ||
+          accessoryItem.colorName.toLowerCase().includes('kupfer') ||
+          accessoryItem.colorName.toLowerCase().includes('espresso');
+        if (isWarmProfile && isMetalWarm) {
+          traces.push(`Accessoire (${accessoryItem.name}): Warmer Ton harmoniert edel mit deinem Hautunterton`);
+        } else if (!isWarmProfile && !isMetalWarm) {
+          traces.push(`Accessoire (${accessoryItem.name}): Kühle Optik unterstreicht deinen Teint`);
+        }
+      }
     }
   }
 
@@ -558,38 +685,146 @@ export function generateOutfitsForContext(
     }
   }
 
-  const validLockedCombos = candidateCombos.filter((combo) => {
-    if (lockedSet.size === 0) return true;
+  const accessories = eligible.filter((g) => g.category === 'accessory');
+  const lockedAccessories = accessories.filter((g) => lockedSet.has(g.id));
+  const lockedCoreIds = Array.from(lockedSet).filter(
+    (id) => !lockedAccessories.some((a) => a.id === id)
+  );
+
+  const validCoreCombos = candidateCombos.filter((combo) => {
+    if (lockedCoreIds.length === 0) return true;
     const ids = new Set(combo.map((c) => c.id));
-    for (const lockedId of lockedSet) {
+    for (const lockedId of lockedCoreIds) {
       if (!ids.has(lockedId)) return false;
     }
     return true;
   });
 
-  const scored = validLockedCombos
-    .map((combo) => scoreOutfitCombination(combo, profile, context))
-    .sort((a, b) => b.totalScore - a.totalScore);
-
-  if (limit <= 0 || scored.length === 0) {
-    return scored;
+  // If a locked item could not be satisfied at all (e.g. missing from eligible), return empty
+  if (lockedSet.size > 0 && lockedCoreIds.length + lockedAccessories.length < lockedSet.size) {
+    return [];
   }
 
-  // Deterministic Maximal Marginal Relevance (MMR) Diversity Selection:
+  // Compute a deterministic style-vibe alignment tie-breaker so switching 'Stil' in the UI
+  // visibly re-orders and surfaces outfits matching the chosen style direction.
+  const getVibeAlignmentPriority = (outfit: GeneratedOutfit): number => {
+    const vibe = context.styleVibe || 'balanced';
+    if (vibe === 'balanced') return 0;
+
+    const core = outfit.items.filter((i) => i.category !== 'accessory');
+    const nonNeutrals = core.filter((i) => !isWardrobeNeutral(i.hsl, i.colorTemp));
+    const avgSat =
+      core.length > 0 ? core.reduce((s, i) => s + i.hsl.s, 0) / core.length : 20;
+
+    if (vibe === 'minimal_capsule') {
+      let score = nonNeutrals.length === 0 ? 40 : nonNeutrals.length === 1 ? 10 : -25;
+      score += Math.max(0, 30 - avgSat);
+      if (core.some((i) => i.subcategory === 'knit_sweater')) score += 12;
+      if (core.some((i) => i.subcategory === 'sneaker_clean')) score += 8;
+      if (core.some((i) => i.subcategory === 'chino' || i.subcategory === 'wide_leg_trousers')) score += 8;
+      return score;
+    }
+
+    if (vibe === 'statement_editorial') {
+      let score = nonNeutrals.length >= 1 ? 35 : -30;
+      score += Math.min(25, avgSat);
+      if (core.some((i) => i.subcategory === 'overshirt' || i.subcategory === 'blazer' || i.subcategory === 'trenchcoat')) score += 15;
+      if (core.some((i) => i.subcategory === 'boots' || i.subcategory === 'heeled_ankle_boot')) score += 12;
+      if (core.some((i) => i.colorName === 'Espresso' || i.colorName === 'Salbeigrün' || i.colorName === 'Burgunder')) score += 10;
+      return score;
+    }
+
+    if (vibe === 'tailored_chic') {
+      let score = 0;
+      for (const item of core) {
+        if (
+          item.subcategory === 'button_down_shirt' ||
+          item.subcategory === 'blazer' ||
+          item.subcategory === 'turtleneck' ||
+          item.subcategory === 'trenchcoat' ||
+          item.subcategory === 'coat' ||
+          item.subcategory === 'blouse'
+        ) {
+          score += 28;
+        } else if (TAILORED_SUBCATEGORIES.includes(item.subcategory)) {
+          score += 12;
+        }
+        if (
+          item.subcategory === 'hoodie' ||
+          item.subcategory === 'crewneck_sweater' ||
+          item.subcategory === 'denim' ||
+          item.subcategory === 'cargo' ||
+          item.subcategory === 'shorts'
+        ) {
+          score -= 18;
+        }
+      }
+      return score;
+    }
+
+    if (vibe === 'street_relaxed') {
+      let score = 0;
+      for (const item of core) {
+        if (item.fit === 'relaxed' || item.fit === 'boxy_oversized') score += 12;
+        if (
+          item.subcategory === 'hoodie' ||
+          item.subcategory === 'crewneck_sweater' ||
+          item.subcategory === 'overshirt' ||
+          item.subcategory === 'heavyweight_tee' ||
+          item.subcategory === 'denim' ||
+          item.subcategory === 'cargo' ||
+          item.subcategory === 'sneaker_clean' ||
+          item.subcategory === 'sneaker_chunky'
+        ) {
+          score += 10;
+        }
+        if (
+          item.subcategory === 'button_down_shirt' ||
+          item.subcategory === 'blazer' ||
+          item.subcategory === 'turtleneck' ||
+          item.subcategory === 'loafer_derby'
+        ) {
+          score -= 22;
+        }
+      }
+      return score;
+    }
+
+    return 0;
+  };
+
+  const scoredCore = validCoreCombos
+    .map((combo) => scoreOutfitCombination(combo, profile, context))
+    .sort((a, b) => {
+      const scoreA = a.totalScore + getVibeAlignmentPriority(a) * 0.35;
+      const scoreB = b.totalScore + getVibeAlignmentPriority(b) * 0.35;
+      return scoreB - scoreA;
+    });
+
+  if (limit <= 0 || scoredCore.length === 0) {
+    if (lockedAccessories.length > 0) {
+      return scoredCore.map((o) =>
+        scoreOutfitCombination([...o.items, ...lockedAccessories], profile, context)
+      );
+    }
+    return scoredCore;
+  }
+
+  // Deterministic Maximal Marginal Relevance (MMR) Diversity Selection on Core Outfits:
   // Ensures the Top N recommended outfits on the start page do not repeat the same
   // visible Mid-Layer, Outerwear, Bottom, Base-Top, or Footwear combination.
-  const selected: GeneratedOutfit[] = [scored[0]];
-  const selectedIds = new Set<string>([scored[0].id]);
+  const selected: GeneratedOutfit[] = [scoredCore[0]];
+  const selectedIds = new Set<string>([scoredCore[0].id]);
 
-  while (selected.length < limit && selected.length < scored.length) {
+  while (selected.length < limit && selected.length < scoredCore.length) {
     let bestCandidate: GeneratedOutfit | null = null;
     let bestDiversityScore = -Infinity;
 
-    for (const candidate of scored) {
+    for (const candidate of scoredCore) {
       if (selectedIds.has(candidate.id)) continue;
 
       let penalty = 0;
-      let bonus = 0;
+      let bonus = getVibeAlignmentPriority(candidate) * 0.25;
 
       const candMid = candidate.items.find((i) => i.category === 'mid_layer');
       const candOut = candidate.items.find((i) => i.category === 'outerwear');
@@ -681,5 +916,97 @@ export function generateOutfitsForContext(
     selectedIds.add(bestCandidate.id);
   }
 
-  return selected;
+  // Attach configured / enabled accessories (incl. context-aware short vs. long socks)
+  if (accessories.length === 0) {
+    return selected;
+  }
+
+  // Group unlocked eligible accessories by subcategory so each enabled accessory type can be represented
+  const unlockedBySubcategory = new Map<GarmentSubcategory, Garment[]>();
+  if (context.includeAccessories !== false) {
+    for (const acc of accessories) {
+      if (lockedSet.has(acc.id)) continue;
+      const list = unlockedBySubcategory.get(acc.subcategory) || [];
+      list.push(acc);
+      unlockedBySubcategory.set(acc.subcategory, list);
+    }
+  }
+
+  return selected.map((coreOutfit, outfitIdx) => {
+    const attachedAccessories: Garment[] = [...lockedAccessories];
+    const attachedSubcategories = new Set<GarmentSubcategory>(
+      lockedAccessories.map((a) => a.subcategory)
+    );
+
+    if (context.includeAccessories !== false) {
+      const shoe = coreOutfit.items.find((i) => i.category === 'footwear');
+      const bottom = coreOutfit.items.find((i) => i.category === 'bottom');
+      const isSandal = shoe?.subcategory === 'sandal_strappy';
+      const isBoot =
+        shoe?.subcategory === 'boots' || shoe?.subcategory === 'heeled_ankle_boot';
+      const isShortBottom =
+        bottom?.subcategory === 'shorts' || bottom?.subcategory === 'mini_skirt';
+
+      // 1. Handle Socks (choose EITHER 'socks' [Lange Socken] OR 'socks_short' [Kurze Socken], never both!)
+      const hasLockedSock =
+        attachedSubcategories.has('socks') || attachedSubcategories.has('socks_short');
+      if (!hasLockedSock && !isSandal) {
+        const longSockCandidates = unlockedBySubcategory.get('socks') || [];
+        const shortSockCandidates = unlockedBySubcategory.get('socks_short') || [];
+
+        // Recommend short socks for low-top shoes with shorts/skirts, warm weather (>=20°C),
+        // or alternating sneaker outfits in mild weather (16-19°C)
+        const prefersShortSocks =
+          !isBoot &&
+          (isShortBottom ||
+            context.temperatureC >= 20 ||
+            (context.temperatureC >= 16 &&
+              outfitIdx % 2 === 1 &&
+              context.styleVibe !== 'tailored_chic'));
+
+        const primaryPool = prefersShortSocks ? shortSockCandidates : longSockCandidates;
+        const fallbackPool = isBoot
+          ? [] // Never recommend short sneaker socks inside high boots unless explicitly locked
+          : prefersShortSocks
+          ? longSockCandidates
+          : shortSockCandidates;
+
+        const activePool = primaryPool.length > 0 ? primaryPool : fallbackPool;
+        if (activePool.length > 0) {
+          const sortedSocks = [...activePool].sort((a, b) => {
+            const scoreA = scoreGarmentBiometrics(a, profile).score;
+            const scoreB = scoreGarmentBiometrics(b, profile).score;
+            return scoreB - scoreA;
+          });
+          const chosenSock = sortedSocks[outfitIdx % sortedSocks.length];
+          attachedAccessories.push(chosenSock);
+          attachedSubcategories.add(chosenSock.subcategory);
+        }
+      }
+
+      // 2. Attach remaining enabled non-sock accessories
+      for (const [subcat, candidates] of unlockedBySubcategory.entries()) {
+        if (subcat === 'socks' || subcat === 'socks_short') continue;
+        if (attachedSubcategories.has(subcat) || candidates.length === 0) continue;
+        const sortedCandidates = [...candidates].sort((a, b) => {
+          const scoreA = scoreGarmentBiometrics(a, profile).score;
+          const scoreB = scoreGarmentBiometrics(b, profile).score;
+          return scoreB - scoreA;
+        });
+        const chosen = sortedCandidates[outfitIdx % sortedCandidates.length];
+        attachedAccessories.push(chosen);
+        attachedSubcategories.add(subcat);
+      }
+    }
+
+    if (attachedAccessories.length === 0) {
+      return coreOutfit;
+    }
+
+    return scoreOutfitCombination(
+      [...coreOutfit.items, ...attachedAccessories],
+      profile,
+      context
+    );
+  });
 }

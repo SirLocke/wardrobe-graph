@@ -37,6 +37,7 @@ import {
   BiometricProfile,
   Garment,
   GarmentCategory,
+  GarmentSubcategory,
   GeneratedOutfit,
   OccasionType,
   OutfitContext,
@@ -58,6 +59,7 @@ interface DailyStylistViewProps {
   onDeleteWornRecord?: (recordId: string) => Promise<void>;
   onWashAllGarments: () => Promise<void>;
   onOpenAddModal: () => void;
+  onEditGarment?: (garment: Garment) => void;
   onOpenSetupWizard?: () => void;
   onOpenSettings?: () => void;
 }
@@ -69,12 +71,32 @@ const TEMP_PRESETS = [
   { labelDe: 'Warm (>22°C)', labelEn: 'Warm (>22°C)', temp: 24 },
 ];
 
+const ACCESSORY_SUGGESTION_CHIPS: Array<{
+  subcategory: GarmentSubcategory;
+  labelDe: string;
+  labelEn: string;
+  alwaysShow?: boolean;
+}> = [
+  { subcategory: 'socks', labelDe: 'Lange Socken', labelEn: 'Long Socks', alwaysShow: true },
+  { subcategory: 'socks_short', labelDe: 'Kurze Socken', labelEn: 'Short Socks', alwaysShow: true },
+  { subcategory: 'cap_beanie', labelDe: 'Mütze / Cap', labelEn: 'Cap / Beanie', alwaysShow: true },
+  { subcategory: 'bracelet', labelDe: 'Armband', labelEn: 'Bracelet', alwaysShow: true },
+  { subcategory: 'watch', labelDe: 'Uhr', labelEn: 'Watch', alwaysShow: true },
+  { subcategory: 'sunglasses', labelDe: 'Sonnenbrille', labelEn: 'Sunglasses', alwaysShow: true },
+  { subcategory: 'belt', labelDe: 'Gürtel', labelEn: 'Belt', alwaysShow: true },
+  { subcategory: 'glasses', labelDe: 'Brille', labelEn: 'Glasses' },
+  { subcategory: 'necklace', labelDe: 'Kette', labelEn: 'Necklace' },
+  { subcategory: 'scarf', labelDe: 'Schal', labelEn: 'Scarf' },
+  { subcategory: 'bag_backpack', labelDe: 'Tasche', labelEn: 'Bag' },
+];
+
 const ANATOMICAL_CATEGORY_ORDER: Record<GarmentCategory, number> = {
   outerwear: 1,
   mid_layer: 2,
   base_top: 3,
   bottom: 4,
   footwear: 5,
+  accessory: 6,
 };
 
 const CUSTOM_OUTFIT_NAMES_KEY = 'atelier_custom_outfit_names_v1';
@@ -123,6 +145,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   onDeleteWornRecord,
   onWashAllGarments,
   onOpenAddModal,
+  onEditGarment,
   onOpenSetupWizard,
   onOpenSettings,
 }) => {
@@ -153,6 +176,69 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     () => garments.filter((g) => context.lockedGarmentIds.includes(g.id)),
     [garments, context.lockedGarmentIds]
   );
+
+  const accessorySubcategoriesInCloset = useMemo(() => {
+    const counts = new Map<GarmentSubcategory, number>();
+    for (const g of garments) {
+      if (g.category === 'accessory') {
+        counts.set(g.subcategory, (counts.get(g.subcategory) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [garments]);
+
+  const isAccessorySubcategoryEnabled = (subcat: GarmentSubcategory): boolean => {
+    if (context.includeAccessories === false) return false;
+    return !(context.excludedAccessorySubcategories || []).includes(subcat);
+  };
+
+  const toggleAccessorySubcategory = (subcat: GarmentSubcategory) => {
+    if (context.includeAccessories === false) {
+      // Turn accessories back on with only this subcategory enabled
+      const allOthers = ACCESSORY_SUGGESTION_CHIPS.map((c) => c.subcategory).filter(
+        (s) => s !== subcat
+      );
+      onChangeContext({
+        ...context,
+        includeAccessories: true,
+        excludedAccessorySubcategories: allOthers,
+      });
+      return;
+    }
+
+    const currentExcluded = context.excludedAccessorySubcategories || [];
+    const isExcluded = currentExcluded.includes(subcat);
+    const nextExcluded = isExcluded
+      ? currentExcluded.filter((s) => s !== subcat)
+      : [...currentExcluded, subcat];
+
+    onChangeContext({
+      ...context,
+      includeAccessories: true,
+      excludedAccessorySubcategories: nextExcluded,
+    });
+  };
+
+  const toggleAllAccessories = () => {
+    const allDisabled =
+      context.includeAccessories === false ||
+      ACCESSORY_SUGGESTION_CHIPS.every((c) =>
+        (context.excludedAccessorySubcategories || []).includes(c.subcategory)
+      );
+
+    if (allDisabled) {
+      onChangeContext({
+        ...context,
+        includeAccessories: true,
+        excludedAccessorySubcategories: [],
+      });
+    } else {
+      onChangeContext({
+        ...context,
+        includeAccessories: false,
+      });
+    }
+  };
 
   const toggleLockGarment = (id: string) => {
     const exists = context.lockedGarmentIds.includes(id);
@@ -497,162 +583,84 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             })}
           </div>
         </div>
-      </section>
 
-      {/* Worn Outfit History ("Trage-Historie") */}
-      <section
-        aria-label={isEn ? 'Wear History' : 'Zuletzt getragene Outfits'}
-        className="rounded-2xl bg-zinc-900/40 border border-zinc-800/80 p-4 sm:p-5 space-y-3.5"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
-              <History className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-zinc-100 truncate">
-                  {isEn ? 'Wear History' : 'Zuletzt getragen'}
-                </h2>
-                {wornHistory && wornHistory.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] text-zinc-300 font-mono">
-                    {wornHistory.length}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-zinc-400 truncate">
-                {isEn
-                  ? 'Track your wear habits & see which pieces you actually wear.'
-                  : 'Verfolge deine Tragegewohnheiten & sieh, welche Teile du wirklich trägst.'}
-              </p>
-            </div>
+        {/* Configurable Accessory Suggestions Bar ("Mütze, Socke, Armband, Uhr etc. als Vorschlag") */}
+        <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-medium text-zinc-300">
+              {isEn ? 'Accessories in suggestions:' : 'Accessoires als Vorschlag:'}
+            </span>
           </div>
 
-          {wornHistory && wornHistory.length > 2 && (
+          <div className="flex flex-wrap items-center gap-1.5 flex-1 sm:justify-end">
             <button
               type="button"
-              onClick={() => setIsHistoryExpanded((prev) => !prev)}
-              className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors cursor-pointer touch-manipulation px-2 py-1 rounded-md hover:bg-zinc-800/50 shrink-0"
+              onClick={toggleAllAccessories}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                context.includeAccessories !== false &&
+                (!context.excludedAccessorySubcategories ||
+                  context.excludedAccessorySubcategories.length === 0)
+                  ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                  : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+              }`}
             >
-              <span>
-                {isHistoryExpanded
-                  ? isEn
-                    ? 'Show less'
-                    : 'Weniger anzeigen'
-                  : isEn
-                  ? `Show all (${wornHistory.length})`
-                  : `Alle (${wornHistory.length}) anzeigen`}
-              </span>
-              {isHistoryExpanded ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
+              {context.includeAccessories === false
+                ? isEn
+                  ? 'Enable all'
+                  : 'Alle einblenden'
+                : isEn
+                ? 'Hide all'
+                : 'Alle ausblenden'}
             </button>
-          )}
-        </div>
 
-        {!wornHistory || wornHistory.length === 0 ? (
-          <div className="text-center py-4 px-3 rounded-xl bg-zinc-950/40 border border-dashed border-zinc-800/80 space-y-1">
-            <p className="text-xs text-zinc-300 font-medium">
-              {isEn ? 'No outfits logged as worn yet' : 'Noch keine Outfits in der Historie'}
-            </p>
-            <p className="text-[11px] text-zinc-500 max-w-md mx-auto">
-              {isEn
-                ? 'Tap "Wear Today" on any outfit below to record it in your history and track how often you wear your clothes.'
-                : 'Klicke bei einem Outfit unten auf „Heute anziehen“, um es festzuhalten und die Tragehäufigkeit deiner Kleidung zu zählen.'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {(isHistoryExpanded ? wornHistory : wornHistory.slice(0, 2)).map((record) => {
-              const recordDateLabel = formatWornDate(record.wornDate, locale);
+            {ACCESSORY_SUGGESTION_CHIPS.filter(
+              (chip) =>
+                chip.alwaysShow ||
+                (accessorySubcategoriesInCloset.get(chip.subcategory) || 0) > 0
+            ).map((chip) => {
+              const isEnabled = isAccessorySubcategoryEnabled(chip.subcategory);
+              const count = accessorySubcategoriesInCloset.get(chip.subcategory) || 0;
               return (
-                <div
-                  key={record.id}
-                  className="rounded-xl bg-zinc-950/70 border border-zinc-800/80 p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700/80 transition-colors"
+                <button
+                  key={chip.subcategory}
+                  type="button"
+                  onClick={() => toggleAccessorySubcategory(chip.subcategory)}
+                  title={
+                    isEnabled
+                      ? `${chip.labelDe} in Outfit-Vorschlägen aktiv (${count} im Schrank) – Klicken zum Ausblenden`
+                      : `${chip.labelDe} in Outfit-Vorschlägen ausgeblendet (${count} im Schrank) – Klicken zum Einblenden`
+                  }
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                    isEnabled
+                      ? 'bg-amber-400/15 border-amber-400/50 text-amber-200'
+                      : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+                  }`}
                 >
-                  <div className="space-y-1.5 min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-semibold text-amber-300 inline-flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 opacity-80" />
-                        {recordDateLabel}
-                      </span>
-                      {record.contextSummary?.temperatureC !== undefined && (
-                        <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
-                          {record.contextSummary.temperatureC}°C
-                        </span>
-                      )}
-                      {record.contextSummary?.occasion && (
-                        <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400">
-                          {isEn
-                            ? OCCASION_LABELS_EN[record.contextSummary.occasion]
-                            : OCCASION_LABELS[record.contextSummary.occasion]}
-                        </span>
-                      )}
-                      {record.totalScore && (
-                        <span className="text-[10px] text-emerald-400 font-mono">
-                          {record.totalScore}%
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-xs font-medium text-zinc-200 truncate">
-                      {record.outfitTitle}
-                    </p>
-
-                    {/* Miniature pieces in this worn outfit */}
-                    <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
-                      {record.garments.map((g) => (
-                        <div
-                          key={g.id}
-                          title={`${g.name} (${g.wearCount || 0}× getragen)`}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800/80 shrink-0 text-[11px]"
-                        >
-                          <GarmentVector
-                            type={g.subcategory}
-                            colorHex={g.colorHex}
-                            texture={g.texture}
-                            neckline={g.neckline}
-                            className="w-5 h-5 shrink-0"
-                          />
-                          <span className="text-zinc-300 max-w-[100px] truncate">{g.name}</span>
-                          {(g.wearCount || 0) > 0 && (
-                            <span className="text-[10px] text-amber-400 font-mono font-medium">
-                              {g.wearCount}×
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {onDeleteWornRecord && (
-                    <div className="flex items-center justify-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-900">
-                      <button
-                        type="button"
-                        onClick={() => onDeleteWornRecord(record.id)}
-                        title={
-                          isEn
-                            ? 'Remove this history entry & revert wear counts'
-                            : 'Eintrag aus Historie entfernen & Zähler korrigieren'
-                        }
-                        aria-label={isEn ? 'Remove history entry' : 'Eintrag löschen'}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-rose-400 hover:bg-rose-950/20 border border-transparent hover:border-rose-900/40 transition-colors cursor-pointer touch-manipulation active:scale-95"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span className="sm:hidden">{isEn ? 'Remove' : 'Eintrag löschen'}</span>
-                      </button>
-                    </div>
+                  <GarmentVector
+                    type={chip.subcategory}
+                    colorHex={isEnabled ? '#FBBF24' : '#71717A'}
+                    texture="smooth_cotton"
+                    className="w-3.5 h-3.5 shrink-0"
+                  />
+                  <span>{isEn ? chip.labelEn : chip.labelDe}</span>
+                  {count > 0 && (
+                    <span
+                      className={`text-[10px] font-mono ${
+                        isEnabled ? 'text-amber-300/90' : 'text-zinc-600'
+                      }`}
+                    >
+                      ({count})
+                    </span>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
-        )}
+        </div>
       </section>
 
-      {/* Generated Outfits Feed */}
+      {/* Generated Outfits Feed (Immediately below filter controls) */}
       {outfits.length === 0 ? (
         <div className="rounded-2xl bg-zinc-900/40 border border-zinc-800 p-10 text-center space-y-4">
           <SlidersHorizontal className="w-8 h-8 text-amber-400 mx-auto" />
@@ -712,6 +720,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               (a, b) =>
                 ANATOMICAL_CATEGORY_ORDER[a.category] -
                 ANATOMICAL_CATEGORY_ORDER[b.category]
+            );
+            const coreAnatomicalItems = sortedAnatomicalItems.filter(
+              (i) => i.category !== 'accessory'
             );
             const outfitTitle =
               customOutfitNames[outfit.id] || getShortOutfitTitle(outfit.items);
@@ -816,109 +827,147 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                         profile={profile}
                         lockedGarmentIds={context.lockedGarmentIds}
                         onToggleLock={toggleLockGarment}
+                        onEditGarment={onEditGarment}
                       />
                     </div>
 
                     {/* Head-to-Toe Vertical Layer Breakdown ("Von Kopf bis Fuß") */}
                     <div className="md:col-span-7 flex flex-col justify-between gap-2.5">
-                      {sortedAnatomicalItems.map((item, layerIdx) => {
-                        const isLocked = context.lockedGarmentIds.includes(item.id);
-                        return (
-                          <div
-                            key={item.id}
-                            className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 hover:border-zinc-700/90 p-3 flex items-center gap-3.5 transition-colors"
-                          >
-                            {/* Layer index + Miniature Garment Vector */}
-                            <div className="relative flex items-center justify-center w-12 h-12 rounded-lg bg-zinc-900/70 border border-zinc-800/60 shrink-0">
-                              {item.imageDataUrl ? (
-                                <img
-                                  src={item.imageDataUrl}
-                                  alt={item.name}
-                                  referrerPolicy="no-referrer"
-                                  className="w-10 h-10 object-cover rounded"
-                                />
-                              ) : (
-                                <GarmentVector
-                                  type={item.subcategory}
-                                  colorHex={item.colorHex}
-                                  texture={item.texture}
-                                  neckline={item.neckline}
-                                  className="w-10 h-10"
-                                />
-                              )}
-                              <span className="absolute -top-1 -left-1 w-4 h-4 rounded bg-zinc-900 border border-zinc-700 text-[9px] font-mono text-zinc-400 flex items-center justify-center">
-                                {layerIdx + 1}
-                              </span>
-                            </div>
-
-                            {/* Item Details */}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-                                <span>{SUBCATEGORY_LABELS[item.subcategory]}</span>
-                                {item.brand && (
-                                  <>
-                                    <span aria-hidden="true">·</span>
-                                    <span className="text-zinc-300 font-medium">{item.brand}</span>
-                                  </>
+                      <div className="space-y-2.5">
+                        {coreAnatomicalItems.map((item, layerIdx) => {
+                          const isLocked = context.lockedGarmentIds.includes(item.id);
+                          return (
+                            <div
+                              key={item.id}
+                              className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 hover:border-zinc-700/90 p-3 flex items-center gap-3.5 transition-colors"
+                            >
+                              {/* Layer index + Miniature Garment Vector */}
+                              <div className="relative flex items-center justify-center w-12 h-12 rounded-lg bg-zinc-900/70 border border-zinc-800/60 shrink-0">
+                                {item.imageDataUrl ? (
+                                  <img
+                                    src={item.imageDataUrl}
+                                    alt={item.name}
+                                    referrerPolicy="no-referrer"
+                                    className="w-10 h-10 object-cover rounded"
+                                  />
+                                ) : (
+                                  <GarmentVector
+                                    type={item.subcategory}
+                                    colorHex={item.colorHex}
+                                    texture={item.texture}
+                                    neckline={item.neckline}
+                                    className="w-10 h-10"
+                                  />
                                 )}
-                                {item.size && (
-                                  <>
-                                    <span aria-hidden="true">·</span>
-                                    <span>Gr. {item.size}</span>
-                                  </>
-                                )}
-                                {item.isWishlistSandbox && (
-                                  <>
-                                    <span aria-hidden="true">·</span>
-                                    <span className="text-sky-300">Test-Stück</span>
-                                  </>
-                                )}
-                                {item.wearCount !== undefined && item.wearCount > 0 && (
-                                  <>
-                                    <span aria-hidden="true">·</span>
-                                    <span className="text-amber-400 font-mono font-medium">
-                                      {item.wearCount}× getragen
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                              <p className="text-sm font-semibold text-zinc-100 truncate mt-0.5">
-                                {item.name}
-                              </p>
-                              <div className="flex items-center gap-1.5 text-xs text-zinc-400 mt-0.5">
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
-                                  style={{ backgroundColor: item.colorHex }}
-                                />
-                                <span className="truncate">{item.colorName}</span>
-                                <span aria-hidden="true">·</span>
-                                <span className="truncate">
-                                  {TEXTURE_LABELS[item.texture]}
+                                <span className="absolute -top-1 -left-1 w-4 h-4 rounded bg-zinc-900 border border-zinc-700 text-[9px] font-mono text-zinc-400 flex items-center justify-center">
+                                  {layerIdx + 1}
                                 </span>
                               </div>
-                            </div>
 
-                            {/* Lock Anchor Action */}
-                            <button
-                              type="button"
-                              onClick={() => toggleLockGarment(item.id)}
-                              title={
-                                isLocked
-                                  ? 'Auswahl aufheben'
-                                  : 'Dieses Teil festhalten und andere Teile dazu kombinieren'
-                              }
-                              aria-label={`${item.name} ${isLocked ? 'lösen' : 'festhalten'}`}
-                              className="min-w-[42px] min-h-[42px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-zinc-900 transition-colors cursor-pointer shrink-0 touch-manipulation active:scale-95"
-                            >
-                              {isLocked ? (
-                                <Lock className="w-4 h-4 text-amber-400" />
-                              ) : (
-                                <Unlock className="w-4 h-4 opacity-60 group-hover:opacity-100" />
-                              )}
-                            </button>
-                          </div>
-                        );
-                      })}
+                              {/* Item Details */}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                                  <span>{SUBCATEGORY_LABELS[item.subcategory]}</span>
+                                  {item.brand && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span className="text-zinc-300 font-medium">{item.brand}</span>
+                                    </>
+                                  )}
+                                  {item.size && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span>Gr. {item.size}</span>
+                                    </>
+                                  )}
+                                  {item.isWishlistSandbox && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span className="text-sky-300">Test-Stück</span>
+                                    </>
+                                  )}
+                                  {item.wearCount !== undefined && item.wearCount > 0 && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span className="text-amber-400 font-mono font-medium">
+                                        {item.wearCount}× getragen
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                                <p className="text-sm font-semibold text-zinc-100 truncate mt-0.5">
+                                  {item.name}
+                                </p>
+                                <div className="flex items-center gap-1.5 text-xs text-zinc-400 mt-0.5">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
+                                    style={{ backgroundColor: item.colorHex }}
+                                  />
+                                  <span className="truncate">{item.colorName}</span>
+                                  <span aria-hidden="true">·</span>
+                                  <span className="truncate">
+                                    {TEXTURE_LABELS[item.texture]}
+                                  </span>
+                                  {item.category === 'footwear' &&
+                                    (() => {
+                                      const pairedSock = outfit.items.find(
+                                        (a) =>
+                                          a.category === 'accessory' &&
+                                          (a.subcategory === 'socks' ||
+                                            a.subcategory === 'socks_short')
+                                      );
+                                      if (!pairedSock) return null;
+                                      return (
+                                        <>
+                                          <span aria-hidden="true">·</span>
+                                          <span className="text-amber-300/90 font-medium truncate">
+                                            mit {SUBCATEGORY_LABELS[pairedSock.subcategory]}
+                                          </span>
+                                        </>
+                                      );
+                                    })()}
+                                </div>
+                              </div>
+
+                              {/* Edit & Lock Actions */}
+                              <div className="flex items-center gap-1 shrink-0">
+                                {onEditGarment && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditGarment(item)}
+                                    title={
+                                      isEn
+                                        ? `Edit ${item.name}`
+                                        : `${item.name} bearbeiten`
+                                    }
+                                    aria-label={`${item.name} bearbeiten`}
+                                    className="min-w-[38px] min-h-[38px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors cursor-pointer touch-manipulation active:scale-95"
+                                  >
+                                    <Edit3 className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLockGarment(item.id)}
+                                  title={
+                                    isLocked
+                                      ? 'Auswahl aufheben'
+                                      : 'Dieses Teil festhalten und andere Teile dazu kombinieren'
+                                  }
+                                  aria-label={`${item.name} ${isLocked ? 'lösen' : 'festhalten'}`}
+                                  className="min-w-[38px] min-h-[38px] flex items-center justify-center p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-zinc-900 transition-colors cursor-pointer touch-manipulation active:scale-95"
+                                >
+                                  {isLocked ? (
+                                    <Lock className="w-4 h-4 text-amber-400" />
+                                  ) : (
+                                    <Unlock className="w-4 h-4 opacity-60 group-hover:opacity-100" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -930,29 +979,46 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                           key={item.id}
                           className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 p-3 flex flex-col justify-between"
                         >
-                          <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-2">
+                          <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 mb-2">
                             <span className="truncate">
                               {(isEn ? CATEGORY_LABELS_EN : CATEGORY_LABELS)[
                                 item.category
                               ].split(',')[0]}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => toggleLockGarment(item.id)}
-                              title={
-                                isLocked
-                                  ? 'Auswahl aufheben'
-                                  : 'Dieses Teil festhalten'
-                              }
-                              aria-label={`${item.name} ${isLocked ? 'lösen' : 'festhalten'}`}
-                              className="text-zinc-500 hover:text-amber-400 transition-colors cursor-pointer"
-                            >
-                              {isLocked ? (
-                                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                              ) : (
-                                <Unlock className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {onEditGarment && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEditGarment(item)}
+                                  title={
+                                    isEn
+                                      ? `Edit ${item.name}`
+                                      : `${item.name} bearbeiten`
+                                  }
+                                  aria-label={`${item.name} bearbeiten`}
+                                  className="p-1 rounded-md text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900 transition-colors cursor-pointer"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100" />
+                                </button>
                               )}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleLockGarment(item.id)}
+                                title={
+                                  isLocked
+                                    ? 'Auswahl aufheben'
+                                    : 'Dieses Teil festhalten'
+                                }
+                                aria-label={`${item.name} ${isLocked ? 'lösen' : 'festhalten'}`}
+                                className="p-1 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-900 transition-colors cursor-pointer"
+                              >
+                                {isLocked ? (
+                                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                                ) : (
+                                  <Unlock className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
+                                )}
+                              </button>
+                            </div>
                           </div>
 
                           <div className="my-2 flex items-center justify-center h-20">
@@ -1001,6 +1067,159 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           })}
         </div>
       )}
+
+      {/* Worn Outfit History ("Zuletzt getragen" placed below the outfit recommendations) */}
+      <section
+        aria-label={isEn ? 'Wear History' : 'Zuletzt getragene Outfits'}
+        className="rounded-2xl bg-zinc-900/40 border border-zinc-800/80 p-4 sm:p-5 space-y-3.5"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+              <History className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-zinc-100 truncate">
+                  {isEn ? 'Wear History' : 'Zuletzt getragen'}
+                </h2>
+                {wornHistory && wornHistory.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] text-zinc-300 font-mono">
+                    {wornHistory.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400 truncate">
+                {isEn
+                  ? 'Track your wear habits & see which pieces you actually wear.'
+                  : 'Verfolge deine Tragegewohnheiten & sieh, welche Teile du wirklich trägst.'}
+              </p>
+            </div>
+          </div>
+
+          {wornHistory && wornHistory.length > 2 && (
+            <button
+              type="button"
+              onClick={() => setIsHistoryExpanded((prev) => !prev)}
+              className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors cursor-pointer touch-manipulation px-2 py-1 rounded-md hover:bg-zinc-800/50 shrink-0"
+            >
+              <span>
+                {isHistoryExpanded
+                  ? isEn
+                    ? 'Show less'
+                    : 'Weniger anzeigen'
+                  : isEn
+                  ? `Show all (${wornHistory.length})`
+                  : `Alle (${wornHistory.length}) anzeigen`}
+              </span>
+              {isHistoryExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {!wornHistory || wornHistory.length === 0 ? (
+          <div className="text-center py-4 px-3 rounded-xl bg-zinc-950/40 border border-dashed border-zinc-800/80 space-y-1">
+            <p className="text-xs text-zinc-300 font-medium">
+              {isEn ? 'No outfits logged as worn yet' : 'Noch keine Outfits in der Historie'}
+            </p>
+            <p className="text-[11px] text-zinc-500 max-w-md mx-auto">
+              {isEn
+                ? 'Tap "Wear Today" on any outfit above to record it in your history and track how often you wear your clothes.'
+                : 'Klicke bei einem Outfit oben auf „Heute anziehen“, um es festzuhalten und die Tragehäufigkeit deiner Kleidung zu zählen.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {(isHistoryExpanded ? wornHistory : wornHistory.slice(0, 2)).map((record) => {
+              const recordDateLabel = formatWornDate(record.wornDate, locale);
+              return (
+                <div
+                  key={record.id}
+                  className="rounded-xl bg-zinc-950/70 border border-zinc-800/80 p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700/80 transition-colors"
+                >
+                  <div className="space-y-1.5 min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-semibold text-amber-300 inline-flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 opacity-80" />
+                        {recordDateLabel}
+                      </span>
+                      {record.contextSummary?.temperatureC !== undefined && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
+                          {record.contextSummary.temperatureC}°C
+                        </span>
+                      )}
+                      {record.contextSummary?.occasion && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400">
+                          {isEn
+                            ? OCCASION_LABELS_EN[record.contextSummary.occasion]
+                            : OCCASION_LABELS[record.contextSummary.occasion]}
+                        </span>
+                      )}
+                      {record.totalScore && (
+                        <span className="text-[10px] text-emerald-400 font-mono">
+                          {record.totalScore}%
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs font-medium text-zinc-200 truncate">
+                      {record.outfitTitle}
+                    </p>
+
+                    {/* Miniature pieces in this worn outfit */}
+                    <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+                      {record.garments.map((g) => (
+                        <div
+                          key={g.id}
+                          title={`${g.name} (${g.wearCount || 0}× getragen)`}
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800/80 shrink-0 text-[11px]"
+                        >
+                          <GarmentVector
+                            type={g.subcategory}
+                            colorHex={g.colorHex}
+                            texture={g.texture}
+                            neckline={g.neckline}
+                            className="w-5 h-5 shrink-0"
+                          />
+                          <span className="text-zinc-300 max-w-[100px] truncate">{g.name}</span>
+                          {(g.wearCount || 0) > 0 && (
+                            <span className="text-[10px] text-amber-400 font-mono font-medium">
+                              {g.wearCount}×
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {onDeleteWornRecord && (
+                    <div className="flex items-center justify-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-900">
+                      <button
+                        type="button"
+                        onClick={() => onDeleteWornRecord(record.id)}
+                        title={
+                          isEn
+                            ? 'Remove this history entry & revert wear counts'
+                            : 'Eintrag aus Historie entfernen & Zähler korrigieren'
+                        }
+                        aria-label={isEn ? 'Remove history entry' : 'Eintrag löschen'}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-rose-400 hover:bg-rose-950/20 border border-transparent hover:border-rose-900/40 transition-colors cursor-pointer touch-manipulation active:scale-95"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="sm:hidden">{isEn ? 'Remove' : 'Eintrag löschen'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Small Closable Explanation Popup Modal (Mobile Bottom-Sheet on small screens) */}
       {popupOutfit && (

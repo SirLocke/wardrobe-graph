@@ -867,6 +867,402 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
           </g>
         );
 
+      case 'watch':
+        return (
+          <g>
+            {/* Left horizontal strap (rotated 90 deg for 2D wrist view) */}
+            <rect
+              x="8"
+              y="40"
+              width="24"
+              height="20"
+              rx="2"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2"
+            />
+            {/* Right horizontal strap */}
+            <rect
+              x="68"
+              y="40"
+              width="24"
+              height="20"
+              rx="2"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2"
+            />
+            {/* Horizontal strap stitching */}
+            <line x1="11" y1="43" x2="30" y2="43" stroke={seamStroke} strokeWidth="1" strokeDasharray="2,2" />
+            <line x1="11" y1="57" x2="30" y2="57" stroke={seamStroke} strokeWidth="1" strokeDasharray="2,2" />
+            <line x1="70" y1="43" x2="89" y2="43" stroke={seamStroke} strokeWidth="1" strokeDasharray="2,2" />
+            <line x1="70" y1="57" x2="89" y2="57" stroke={seamStroke} strokeWidth="1" strokeDasharray="2,2" />
+            {/* Watch Case & Bezel (2D top-down view) */}
+            <circle cx="50" cy="50" r="21" fill="#22252A" stroke={strokeColor} strokeWidth="2.4" />
+            <circle cx="50" cy="50" r="16.5" fill={fillUrl} stroke={detailStroke} strokeWidth="1.5" />
+            {/* Watch Crown at top (since rotated 90 deg) */}
+            <rect x="47.5" y="25.5" width="5" height="3.5" rx="1" fill="#A1A1AA" stroke={strokeColor} strokeWidth="1.2" />
+            {/* Dial Hour markers */}
+            <line x1="50" y1="36" x2="50" y2="39" stroke={detailStroke} strokeWidth="1.6" />
+            <line x1="50" y1="61" x2="50" y2="64" stroke={detailStroke} strokeWidth="1.6" />
+            <line x1="36" y1="50" x2="39" y2="50" stroke={detailStroke} strokeWidth="1.6" />
+            <line x1="61" y1="50" x2="64" y2="50" stroke={detailStroke} strokeWidth="1.6" />
+            {/* Hands */}
+            <line x1="50" y1="50" x2="43" y2="43" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />
+            <line x1="50" y1="50" x2="59" y2="44" stroke={strokeColor} strokeWidth="1.6" strokeLinecap="round" />
+            <circle cx="50" cy="50" r="2" fill="#F4F4F5" />
+          </g>
+        );
+
+      case 'glasses':
+        return (
+          <g>
+            {/* Temple arms */}
+            <path d="M16 45 Q12 40 10 32" fill="none" stroke={strokeColor} strokeWidth="2" />
+            <path d="M84 45 Q88 40 90 32" fill="none" stroke={strokeColor} strokeWidth="2" />
+            {/* Left Rim */}
+            <rect
+              x="16"
+              y="37"
+              width="30"
+              height="25"
+              rx="8"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.4"
+            />
+            {/* Left Lens */}
+            <rect x="19" y="40" width="24" height="19" rx="6" fill="#F8FAFC" fillOpacity="0.25" stroke={detailStroke} strokeWidth="1" />
+            {/* Bridge */}
+            <path d="M46 44 Q50 40 54 44" fill="none" stroke={strokeColor} strokeWidth="2.5" />
+            {/* Right Rim */}
+            <rect
+              x="54"
+              y="37"
+              width="30"
+              height="25"
+              rx="8"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.4"
+            />
+            {/* Right Lens */}
+            <rect x="57" y="40" width="24" height="19" rx="6" fill="#F8FAFC" fillOpacity="0.25" stroke={detailStroke} strokeWidth="1" />
+            {/* Subtle lens glare reflection */}
+            <line x1="23" y1="44" x2="33" y2="54" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="61" y1="44" x2="71" y2="54" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4" strokeLinecap="round" />
+          </g>
+        );
+
+      case 'sunglasses':
+        return (
+          <g>
+            {/* Top brow bar */}
+            <path d="M14 36 L86 36" stroke={strokeColor} strokeWidth="2.6" strokeLinecap="round" />
+            {/* Left lens frame */}
+            <path
+              d="M16 38 L47 38 L44 60 C43 65 37 67 30 67 C23 67 18 64 17 58 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Left dark tint */}
+            <path
+              d="M19 41 L44 41 L41 58 C40 62 35 64 30 64 C25 64 21 62 20 57 Z"
+              fill="#18181B"
+              fillOpacity="0.65"
+            />
+            {/* Bridge */}
+            <path d="M47 41 Q50 38 53 41" fill="none" stroke={strokeColor} strokeWidth="2.5" />
+            {/* Right lens frame */}
+            <path
+              d="M53 38 L84 38 L83 58 C82 64 77 67 70 67 C63 67 57 65 56 60 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Right dark tint */}
+            <path
+              d="M56 41 L81 41 L80 57 C79 62 75 64 70 64 C65 64 60 62 59 58 Z"
+              fill="#18181B"
+              fillOpacity="0.65"
+            />
+            {/* Aviator / Wayfarer diagonal glare */}
+            <line x1="24" y1="44" x2="38" y2="58" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" strokeLinecap="round" />
+            <line x1="61" y1="44" x2="75" y2="58" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" strokeLinecap="round" />
+          </g>
+        );
+
+      case 'necklace':
+        return (
+          <g>
+            {/* 2D Flat Chain Curve */}
+            <path
+              d="M26 20 C26 52 40 70 50 70 C60 70 74 52 74 20"
+              fill="none"
+              stroke={fillUrl}
+              strokeWidth="3.2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M26 20 C26 52 40 70 50 70 C60 70 74 52 74 20"
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth="1.5"
+              strokeDasharray="2,3"
+            />
+            {/* Minimal 2D Pendant */}
+            <circle cx="50" cy="73" r="5" fill={fillUrl} stroke={strokeColor} strokeWidth="1.8" />
+          </g>
+        );
+
+      case 'bracelet':
+        return (
+          <g>
+            {/* Sleek 2D Horizontal Line / Thin Bar ("eher nur ein Strich als ein Lasso") */}
+            <rect
+              x="14"
+              y="46"
+              width="72"
+              height="8"
+              rx="4"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2"
+            />
+            {/* Subtle metallic link marks */}
+            <line x1="34" y1="46" x2="34" y2="54" stroke={detailStroke} strokeWidth="1.3" />
+            <line x1="50" y1="46" x2="50" y2="54" stroke={detailStroke} strokeWidth="1.5" />
+            <line x1="66" y1="46" x2="66" y2="54" stroke={detailStroke} strokeWidth="1.3" />
+          </g>
+        );
+
+      case 'belt':
+        return (
+          <g>
+            {/* Full-Width 2D Front-View Belt Strap */}
+            <rect
+              x="6"
+              y="42"
+              width="88"
+              height="16"
+              rx="2.5"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2"
+            />
+            {/* Stitching edges */}
+            <line x1="9" y1="45" x2="91" y2="45" stroke={seamStroke} strokeWidth="1" strokeDasharray="3,2" />
+            <line x1="9" y1="55" x2="91" y2="55" stroke={seamStroke} strokeWidth="1" strokeDasharray="3,2" />
+            {/* Keeper loop next to center buckle */}
+            <rect x="33" y="40.5" width="4.5" height="19" rx="1" fill="#3F3F46" stroke={strokeColor} strokeWidth="1.4" />
+            {/* Center 2D Metallic Frame Buckle */}
+            <rect
+              x="42"
+              y="39"
+              width="16"
+              height="22"
+              rx="2.5"
+              fill="#27272A"
+              stroke="#D4D4D8"
+              strokeWidth="2.4"
+            />
+            <rect
+              x="45"
+              y="42"
+              width="10"
+              height="16"
+              rx="1"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="1.2"
+            />
+            {/* Buckle prong */}
+            <line x1="50" y1="50" x2="58" y2="50" stroke="#E4E4E7" strokeWidth="2.2" strokeLinecap="round" />
+            {/* Punch holes on right side */}
+            <circle cx="67" cy="50" r="1.4" fill="#18181B" />
+            <circle cx="74" cy="50" r="1.4" fill="#18181B" />
+            <circle cx="81" cy="50" r="1.4" fill="#18181B" />
+          </g>
+        );
+
+      case 'bag_backpack':
+        return (
+          <g>
+            {/* Handles */}
+            <path
+              d="M37 38 C37 18 63 18 63 38"
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth="2.8"
+              strokeLinecap="round"
+            />
+            {/* Bag Body */}
+            <path
+              d="M26 38 L30 84 C30 87 34 89 38 89 L62 89 C66 89 70 87 70 84 L74 38 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Top opening trim */}
+            <line x1="26" y1="38" x2="74" y2="38" stroke={strokeColor} strokeWidth="2" />
+            {/* Front pocket */}
+            <rect
+              x="34"
+              y="52"
+              width="32"
+              height="24"
+              rx="3"
+              fill="none"
+              stroke={detailStroke}
+              strokeWidth="1.5"
+            />
+            <line x1="36" y1="56" x2="64" y2="56" stroke={detailStroke} strokeWidth="1.2" />
+          </g>
+        );
+
+      case 'scarf':
+        return (
+          <g>
+            {/* 2D Flat Folded Neck Wrap */}
+            <rect x="24" y="22" width="52" height="18" rx="6" fill={fillUrl} stroke={strokeColor} strokeWidth="2.2" />
+            {/* Left drape */}
+            <path
+              d="M32 38 L30 82 L45 82 L47 38 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2"
+            />
+            {/* Right drape */}
+            <path
+              d="M53 38 L55 74 L68 74 L66 38 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2"
+            />
+            {/* Fringe details */}
+            <line x1="33" y1="82" x2="33" y2="87" stroke={strokeColor} strokeWidth="1.2" />
+            <line x1="38" y1="82" x2="38" y2="87" stroke={strokeColor} strokeWidth="1.2" />
+            <line x1="43" y1="82" x2="43" y2="87" stroke={strokeColor} strokeWidth="1.2" />
+            <line x1="57" y1="74" x2="57" y2="79" stroke={strokeColor} strokeWidth="1.2" />
+            <line x1="61" y1="74" x2="61" y2="79" stroke={strokeColor} strokeWidth="1.2" />
+            <line x1="65" y1="74" x2="65" y2="79" stroke={strokeColor} strokeWidth="1.2" />
+          </g>
+        );
+
+      case 'cap_beanie':
+        return (
+          <g>
+            {/* Dome shape */}
+            <path
+              d="M24 64 C24 26 76 26 76 64 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.4"
+            />
+            {/* Top dart seam */}
+            <path d="M50 26 L50 45" stroke={detailStroke} strokeWidth="1.4" />
+            {/* Folded Ribbed Cuff */}
+            <rect
+              x="21"
+              y="58"
+              width="58"
+              height="15"
+              rx="3"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+            />
+            {/* Ribbing lines */}
+            <line x1="28" y1="59" x2="28" y2="72" stroke={seamStroke} strokeWidth="1.2" />
+            <line x1="36" y1="59" x2="36" y2="72" stroke={seamStroke} strokeWidth="1.2" />
+            <line x1="44" y1="59" x2="44" y2="72" stroke={seamStroke} strokeWidth="1.2" />
+            <line x1="52" y1="59" x2="52" y2="72" stroke={seamStroke} strokeWidth="1.2" />
+            <line x1="60" y1="59" x2="60" y2="72" stroke={seamStroke} strokeWidth="1.2" />
+            <line x1="68" y1="59" x2="68" y2="72" stroke={seamStroke} strokeWidth="1.2" />
+          </g>
+        );
+
+      case 'socks':
+        return (
+          <g>
+            {/* Back Sock (shifted slightly left/up) */}
+            <path
+              d="M30 16 L46 16 L46 54 L64 62 C69 64 70 70 67 74 C64 78 58 78 52 75 L30 65 C27 63 26 59 26 54 L30 16 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+              opacity="0.7"
+            />
+            {/* Front Main Sock */}
+            <path
+              d="M38 22 L56 22 L56 60 L74 68 C79 70 80 76 77 80 C74 84 68 84 62 81 L40 71 C37 69 36 65 36 60 L38 22 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Ribbed Cuff Band */}
+            <rect
+              x="37.5"
+              y="22"
+              width="18.5"
+              height="10"
+              rx="1.5"
+              fill="none"
+              stroke={detailStroke}
+              strokeWidth="1.4"
+            />
+            <line x1="42" y1="22" x2="42" y2="32" stroke={seamStroke} strokeWidth="1.1" />
+            <line x1="47" y1="22" x2="47" y2="32" stroke={seamStroke} strokeWidth="1.1" />
+            <line x1="52" y1="22" x2="52" y2="32" stroke={seamStroke} strokeWidth="1.1" />
+            {/* Heel & Toe Contrast Stitching */}
+            <path d="M36 58 Q46 58 46 69" fill="none" stroke={detailStroke} strokeWidth="1.4" />
+            <path d="M68 65 Q65 74 71 82" fill="none" stroke={detailStroke} strokeWidth="1.4" />
+          </g>
+        );
+
+      case 'socks_short':
+        return (
+          <g>
+            {/* Back Low-Cut Sneaker Sock */}
+            <path
+              d="M28 42 L48 42 L48 54 L66 62 C71 64 72 70 69 74 C66 78 60 78 54 75 L30 65 C26 63 25 58 26 52 L28 42 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+              opacity="0.7"
+            />
+            {/* Front Low-Cut Sneaker Sock */}
+            <path
+              d="M36 48 L56 48 L56 60 L74 68 C79 70 80 76 77 80 C74 84 68 84 62 81 L38 71 C35 69 34 64 35 58 L36 48 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Low Ankle Elastic Rim */}
+            <rect
+              x="35.5"
+              y="47"
+              width="20.5"
+              height="5"
+              rx="1.5"
+              fill="none"
+              stroke={detailStroke}
+              strokeWidth="1.4"
+            />
+            {/* Heel & Toe Contrast Stitching */}
+            <path d="M35 59 Q45 59 45 70" fill="none" stroke={detailStroke} strokeWidth="1.4" />
+            <path d="M68 65 Q65 74 71 82" fill="none" stroke={detailStroke} strokeWidth="1.4" />
+          </g>
+        );
+
       case 'sneaker_clean':
       case 'sneaker_chunky':
       case 'runner':

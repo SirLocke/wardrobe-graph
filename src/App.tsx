@@ -56,6 +56,7 @@ import {
   GeneratedOutfit,
   OutfitContext,
   StyleVibe,
+  WardrobeScopeTarget,
   WornOutfitRecord,
 } from './types/wardrobe';
 
@@ -300,7 +301,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `thread-graph-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `kleiderschrank-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -341,9 +342,19 @@ export default function App() {
   const handleLoadCollectionPreset = async (presetKey: WardrobePresetKey) => {
     const preset = WARDROBE_PRESETS[presetKey];
     if (!preset) return;
+    const targetScopes: WardrobeScopeTarget[] =
+      preset.scope === 'womenswear'
+        ? ['womenswear', 'unisex']
+        : preset.scope === 'menswear'
+        ? ['menswear', 'unisex']
+        : preset.scope === 'unisex'
+        ? ['unisex']
+        : ['womenswear', 'menswear', 'unisex'];
+
     const nextProfile: BiometricProfile = {
       ...profile,
       wardrobeScope: preset.scope,
+      wardrobeScopes: targetScopes,
       isDemoMode: true,
     };
     await handleStructuredImport(preset.garments, 'replace', nextProfile);
@@ -450,7 +461,7 @@ export default function App() {
             }}
             className="text-sm sm:text-base md:text-lg font-bold tracking-tight text-zinc-100 whitespace-nowrap shrink-0 hover:text-amber-400 transition-colors"
           >
-            ATELIER BIOMETRIC
+            {isEn ? 'OUTFIT PLANNER' : 'OUTFIT-PLANER'}
           </a>
 
           {/* Zone 2: 4 concise single-line text navigation links */}
@@ -595,6 +606,7 @@ export default function App() {
                 onDeleteWornRecord={handleDeleteWornRecord}
                 onWashAllGarments={handleWashAllGarments}
                 onOpenAddModal={openAddNewGarment}
+                onEditGarment={openEditGarment}
                 onOpenSetupWizard={handleExitDemoAndOpenWizard}
                 onOpenSettings={() => setIsSettingsOpen(true)}
               />
@@ -643,14 +655,13 @@ export default function App() {
         )}
       </main>
 
-      {/* Quiet Footer with Non-Commercial Open-Source License & Quick Actions */}
+      {/* Quiet Footer with Quick Actions */}
       <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 mt-12 pt-6 border-t border-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 text-xs text-zinc-500">
-        <div className="space-y-1">
-          <p className="text-zinc-400 font-mono">
-            thread-graph (ATELIER BIOMETRIC) · Non-Commercial Open-Source (PolyForm NC 1.0) · Free for Personal Use
-          </p>
-          <p className="text-[11px] text-zinc-500">
-            Kostenlos für den Privatgebrauch &amp; Self-Hosting. Kommerzielle Nutzung untersagt. Offline-fähige Kleiderschrank- &amp; Outfit-App.
+        <div className="space-y-0.5">
+          <p className="text-zinc-400 font-medium">
+            {isEn
+              ? 'Outfit Planner & Wardrobe · Free & works offline'
+              : 'Outfit-Planer & Kleiderschrank · Kostenlos & offline nutzbar'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">

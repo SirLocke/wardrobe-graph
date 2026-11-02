@@ -7,7 +7,7 @@ import {
   NecklineType,
   TextureType,
 } from '../types/wardrobe';
-import { isSubcategoryAllowedForScope } from '../data/seedData';
+import { isSubcategoryAllowedForScope, normalizeWardrobeScopes } from '../data/seedData';
 import { classifyColorTemp, deriveSeasonPalette, hexToHsl } from './colorMath';
 
 export interface GarmentArchetypeBlueprint {
@@ -685,10 +685,10 @@ export function instantiateCandidateArchetypes(profile: BiometricProfile): {
   const palette = deriveSeasonPalette(profile);
   const topPower = palette.powerColors.slice(0, 6);
   const topNeutrals = palette.coreNeutrals.slice(0, 4);
-  const scope = profile.wardrobeScope || 'all';
+  const scopes = normalizeWardrobeScopes(profile);
 
   return GARMENT_ARCHETYPE_BLUEPRINTS.filter((bp) =>
-    isSubcategoryAllowedForScope(bp.subcategory, scope)
+    isSubcategoryAllowedForScope(bp.subcategory, scopes)
   ).map((bp) => {
     const colorPool = bp.paletteSource === 'power' ? topPower : topNeutrals;
     const chosenColor = colorPool[bp.paletteIndex % colorPool.length] || topPower[0];

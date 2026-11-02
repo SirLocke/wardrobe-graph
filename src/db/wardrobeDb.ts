@@ -9,7 +9,10 @@ import { classifyColorTemp, hexToHsl } from '../engine/colorMath';
 import { BiometricProfile, Garment, WornOutfitRecord } from '../types/wardrobe';
 
 const SEED_META_BY_ID = new Map(
-  WARDROBE_PRESETS.combined_atelier.garments.map((g) => [g.id, { brand: g.brand, size: g.size }])
+  WARDROBE_PRESETS.combined_atelier.garments.map((g) => [
+    g.id,
+    { name: g.name, brand: g.brand, size: g.size },
+  ])
 );
 
 function backfillProfileAndGarments(
@@ -32,6 +35,7 @@ function backfillProfileAndGarments(
     const seedMeta = SEED_META_BY_ID.get(g.id);
     return {
       ...g,
+      name: seedMeta && g.id.startsWith('seed_acc_') ? seedMeta.name : g.name,
       hsl,
       colorTemp,
       brand: g.brand ?? seedMeta?.brand,
@@ -40,6 +44,16 @@ function backfillProfileAndGarments(
       lastWornDate: g.lastWornDate,
     };
   });
+
+  // Ensure existing demo wardrobes also include the new short socks ('seed_acc_7')
+  const hasSeedItems = garments.some((g) => g.id.startsWith('seed_'));
+  const hasShortSocks = garments.some((g) => g.subcategory === 'socks_short');
+  if (hasSeedItems && !hasShortSocks) {
+    const shortSocksSeed = SEED_WARDROBE_GARMENTS.find((g) => g.id === 'seed_acc_7');
+    if (shortSocksSeed) {
+      garments.push(shortSocksSeed);
+    }
+  }
 
   return { profile, garments };
 }

@@ -459,14 +459,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                       <button
                         type="button"
                         onClick={() => onEditGarment(garment)}
-                        aria-label={`${garment.name} bearbeiten`}
-                        className="p-1.5 text-zinc-400 hover:text-zinc-100 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onEditGarment(garment)}
+                        title={isEn ? 'Edit garment' : 'Kleidungsstück bearbeiten'}
                         aria-label={`${garment.name} bearbeiten`}
                         className="min-w-[38px] min-h-[38px] flex items-center justify-center p-2 text-zinc-400 hover:text-zinc-100 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer touch-manipulation active:scale-95"
                       >

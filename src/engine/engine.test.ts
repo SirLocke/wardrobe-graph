@@ -14,6 +14,10 @@ import {
 } from './wardrobeFormatter';
 import {
   DEFAULT_BIOMETRIC_PROFILE,
+  deriveScopeFromTargets,
+  getQuickItemsForScopes,
+  isSubcategoryAllowedForScope,
+  normalizeWardrobeScopes,
   SEED_WARDROBE_GARMENTS,
   SEED_WOMENSWEAR_GARMENTS,
 } from '../data/seedData';
@@ -247,7 +251,7 @@ test('mcpHandler: executes initialize, tools/list, and tools/call (add_garment +
   ).content[0].text;
   const parsedPayload = JSON.parse(contentText);
   assert.equal(parsedPayload.status, 'created');
-  assert.equal(parsedPayload.totalWardrobeCount, 15);
+  assert.equal(parsedPayload.totalWardrobeCount, 22);
   assert.ok(parsedPayload.biometricScore >= 80);
 });
 
@@ -343,4 +347,311 @@ test('wearTracking: sorts garments accurately by wear count and last worn timest
   });
   assert.deepEqual(byLastWorn.map((g) => g.id), ['t3', 't1', 't2']);
 });
+
+test('multiScope: derives scopes and quickItems accurately for single, paired, and all 3 categories', () => {
+  // Single scope
+  assert.equal(deriveScopeFromTargets(['womenswear']), 'womenswear');
+  assert.equal(deriveScopeFromTargets(['menswear']), 'menswear');
+  assert.equal(deriveScopeFromTargets(['unisex']), 'unisex');
+
+  // Pair: womenswear + unisex => womenswear (includes unisex basics)
+  assert.equal(deriveScopeFromTargets(['womenswear', 'unisex']), 'womenswear');
+
+  // Pair: menswear + unisex => menswear (includes unisex basics)
+  assert.equal(deriveScopeFromTargets(['menswear', 'unisex']), 'menswear');
+
+  // Both / All three: womenswear + menswear + unisex => all
+  assert.equal(deriveScopeFromTargets(['womenswear', 'menswear', 'unisex']), 'all');
+  assert.equal(deriveScopeFromTargets(['womenswear', 'menswear']), 'all');
+
+  // Quick items for single vs multi-selection
+  const womenItems = getQuickItemsForScopes(['womenswear']);
+  assert.ok(womenItems.includes('blouse'));
+  assert.ok(womenItems.includes('midi_skirt'));
+  assert.ok(!womenItems.includes('button_down_shirt'));
+
+  const womenAndUnisex = getQuickItemsForScopes(['womenswear', 'unisex']);
+  assert.ok(womenAndUnisex.includes('blouse'));
+  assert.ok(womenAndUnisex.includes('hoodie')); // from unisex
+  assert.ok(womenAndUnisex.includes('denim')); // from unisex
+
+  const allThree = getQuickItemsForScopes(['womenswear', 'menswear', 'unisex']);
+  assert.ok(allThree.includes('blouse')); // womenswear
+  assert.ok(allThree.includes('button_down_shirt')); // menswear
+  assert.ok(allThree.includes('hoodie')); // unisex
+
+  // Subcategory filtering allows chosen scopes
+  assert.equal(isSubcategoryAllowedForScope('blouse', ['womenswear']), true);
+  assert.equal(isSubcategoryAllowedForScope('blouse', ['menswear']), false);
+  assert.equal(isSubcategoryAllowedForScope('blouse', ['menswear', 'womenswear']), true);
+  assert.equal(isSubcategoryAllowedForScope('hoodie', ['menswear']), true);
+  assert.equal(isSubcategoryAllowedForScope('hoodie', ['womenswear']), true);
+});
+
+test('userExactProfile & accessories: handles copper hair, warm undertone, blue-gray eyes and accessory imports', () => {
+  const userProfile = {
+    ...DEFAULT_BIOMETRIC_PROFILE,
+    undertone: 'warm' as const,
+    skinHex: '#D4A38B',
+    hairColorName: 'Kupferblond / Goldbraun',
+    hairHex: '#8C6244',
+    eyeColorName: 'Blau-Grau',
+    eyeHex: '#526878',
+    contrastLevel: 'medium' as const,
+    chromaLevel: 'moderate' as const,
+    haircutStyle: 'medium_textured_flow' as const,
+    wardrobeScopes: ['menswear' as const, 'unisex' as const],
+    styleVibe: 'minimal_capsule' as const,
+    reasoningDe:
+      'Der warme, leicht pfirsichfarbene Hautunterton und die gold-kupfernen Reflexe im lockigen Haar bilden einen harmonischen, mittleren Kontrast zu den kühleren blau-grauen Augen. Warme, mittelkräftige Naturtöne wie Off-White, Salbei, Camel und Marineblau unterstreichen diese natürliche Ausstrahlung optimal, ohne den Teint zu überstrahlen.',
+  };
+
+  // Derive palette
+  const palette = deriveSeasonPalette(userProfile);
+  assert.ok(palette.seasonName.includes('Spring') || palette.seasonName.includes('Autumn'));
+  assert.ok(palette.powerColors.length >= 6);
+
+  // Test wardrobe import with accessories (watch, sunglasses, bracelet, belt)
+  const sampleImportJson = JSON.stringify([
+    {
+      name: 'Kupferfarbene Chronograph-Uhr',
+      category: 'accessory',
+      subcategory: 'watch',
+      colorName: 'Kupfer',
+      colorHex: '#8C6244',
+      brand: 'Seiko',
+      size: '40 mm',
+      formality: 3,
+    },
+    {
+      name: 'Schwarze Wayfarer Sonnenbrille',
+      category: 'accessory',
+      subcategory: 'sunglasses',
+      colorName: 'Schwarz',
+      colorHex: '#141414',
+      brand: 'Ray-Ban',
+      size: 'OneSize',
+      formality: 2,
+    },
+    {
+      name: 'Dunkelbraunes Lederarmband',
+      category: 'accessory',
+      subcategory: 'bracelet',
+      colorName: 'Espresso',
+      colorHex: '#3B2F2F',
+      brand: 'Fossil',
+      size: 'M',
+      formality: 2,
+    },
+    {
+      name: 'Off-White Heavyweight T-Shirt',
+      category: 'base_top',
+      subcategory: 'heavyweight_tee',
+      colorName: 'Off-White',
+      colorHex: '#F4F1EA',
+      brand: 'Uniqlo',
+      size: 'M',
+      formality: 2,
+    },
+    {
+      name: 'Dunkelblaue Raw Denim Jeans',
+      category: 'bottom',
+      subcategory: 'denim',
+      colorName: 'Raw Indigo',
+      colorHex: '#24344D',
+      brand: "Levi's",
+      size: 'W32/L32',
+      formality: 2,
+    },
+    {
+      name: 'Weiße Sneaker',
+      category: 'footwear',
+      subcategory: 'sneaker_clean',
+      colorName: 'Off-White',
+      colorHex: '#F4F1EA',
+      brand: 'Adidas',
+      size: '42',
+      formality: 2,
+    },
+  ]);
+
+  const importResult = parseAndNormalizeWardrobeImport(sampleImportJson);
+  assert.equal(importResult.ok, true);
+  assert.equal(importResult.garments.length, 6);
+
+  const importedAccessories = importResult.garments.filter((g) => g.category === 'accessory');
+  assert.equal(importedAccessories.length, 3);
+  assert.ok(importedAccessories.some((a) => a.subcategory === 'watch'));
+  assert.ok(importedAccessories.some((a) => a.subcategory === 'sunglasses'));
+  assert.ok(importedAccessories.some((a) => a.subcategory === 'bracelet'));
+
+  // Generate outfit with sunny weather to verify sunglasses/watch integration
+  const generatedOutfits = generateOutfitsForContext(
+    importResult.garments,
+    userProfile,
+    {
+      temperatureC: 22,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+    },
+    3
+  );
+
+  assert.ok(generatedOutfits.length > 0);
+  const bestOutfit = generatedOutfits[0];
+  const hasAccessory = bestOutfit.items.some((g) => g.category === 'accessory');
+  assert.equal(hasAccessory, true, 'Best outfit in sunny weather should include an accessory');
+
+  // Verify configurable accessory toggles (Socken, Mütze/Cap, Armband) on SEED_WARDROBE_GARMENTS
+  const defaultOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    userProfile,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+    },
+    3
+  );
+  const topDefaultSubcats = defaultOutfits[0].items.map((i) => i.subcategory);
+  assert.ok(topDefaultSubcats.includes('socks'), 'Default outfit should include socks');
+  assert.ok(topDefaultSubcats.includes('cap_beanie'), 'Default outfit should include cap_beanie');
+  assert.ok(topDefaultSubcats.includes('bracelet'), 'Default outfit should include bracelet');
+
+  // Exclude cap_beanie and bracelet, keep socks enabled
+  const filteredOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    userProfile,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+      excludedAccessorySubcategories: ['cap_beanie', 'bracelet'],
+    },
+    3
+  );
+  const topFilteredSubcats = filteredOutfits[0].items.map((i) => i.subcategory);
+  assert.ok(topFilteredSubcats.includes('socks'), 'Filtered outfit should still include socks');
+  assert.ok(!topFilteredSubcats.includes('cap_beanie'), 'Filtered outfit must NOT include excluded cap_beanie');
+  assert.ok(!topFilteredSubcats.includes('bracelet'), 'Filtered outfit must NOT include excluded bracelet');
+
+  // Master toggle includeAccessories: false disables all unlocked accessories
+  const noAccOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    userProfile,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+      includeAccessories: false,
+    },
+    3
+  );
+  assert.equal(
+    noAccOutfits[0].items.some((i) => i.category === 'accessory'),
+    false,
+    'Master toggle includeAccessories: false should exclude all accessories'
+  );
+
+  // Verify short socks ('socks_short') vs long socks ('socks') recommendations:
+  // 1) No outfit ever contains both 'socks' and 'socks_short' simultaneously
+  for (const outfit of defaultOutfits) {
+    const sockItems = outfit.items.filter(
+      (i) => i.subcategory === 'socks' || i.subcategory === 'socks_short'
+    );
+    assert.ok(sockItems.length <= 1, 'An outfit must never contain both short and long socks');
+  }
+
+  // 2) Warm weather (24°C) with sneakers recommends short socks ('socks_short')
+  const warmSneakerOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    userProfile,
+    {
+      temperatureC: 24,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: ['seed_shoe_1'],
+    },
+    3
+  );
+  assert.ok(
+    warmSneakerOutfits[0].items.some((i) => i.subcategory === 'socks_short'),
+    'Warm weather sneaker outfit should recommend short socks (socks_short)'
+  );
+
+  // 3) Boots always get long socks ('socks'), never short socks ('socks_short')
+  const bootOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    userProfile,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: ['seed_shoe_2'],
+    },
+    3
+  );
+  assert.ok(
+    bootOutfits[0].items.some((i) => i.subcategory === 'socks'),
+    'Boot outfit should recommend long socks (socks)'
+  );
+  assert.ok(
+    !bootOutfits[0].items.some((i) => i.subcategory === 'socks_short'),
+    'Boot outfit must not recommend short socks'
+  );
+
+  // 4) Switching styleVibe ('minimal_capsule', 'tailored_chic', 'street_relaxed', 'statement_editorial') visibly changes the recommended top outfit
+  const capsuleTop = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      styleVibe: 'minimal_capsule',
+      lockedGarmentIds: [],
+    },
+    5
+  )[0];
+  const tailoredTop = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      styleVibe: 'tailored_chic',
+      lockedGarmentIds: [],
+    },
+    5
+  )[0];
+  const streetTop = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      styleVibe: 'street_relaxed',
+      lockedGarmentIds: [],
+    },
+    5
+  )[0];
+  assert.notEqual(
+    capsuleTop.id,
+    tailoredTop.id,
+    'Switching between minimal_capsule and tailored_chic must produce different top outfits'
+  );
+  assert.notEqual(
+    tailoredTop.id,
+    streetTop.id,
+    'Switching between tailored_chic and street_relaxed must produce different top outfits'
+  );
+});
+
+
 

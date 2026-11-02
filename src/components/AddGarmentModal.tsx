@@ -20,6 +20,7 @@ import {
   isSubcategoryAllowedForScope,
   loadCustomColors,
   NECKLINE_LABELS,
+  normalizeWardrobeScopes,
   saveCustomColors,
   SMART_SUBCATEGORY_DEFAULTS,
   SUBCATEGORIES_BY_CATEGORY,
@@ -90,7 +91,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [newCustomColorHex, setNewCustomColorHex] = useState('#6B8E78');
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const activeScope = profile.wardrobeScope || 'all';
+  const activeScopes = normalizeWardrobeScopes(profile);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -180,7 +181,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const handleCategoryChange = (newCat: GarmentCategory) => {
     setCategory(newCat);
     const allowedSubs = SUBCATEGORIES_BY_CATEGORY[newCat].filter((sub) =>
-      isSubcategoryAllowedForScope(sub, activeScope)
+      isSubcategoryAllowedForScope(sub, activeScopes)
     );
     const defaultSub = allowedSubs[0] || SUBCATEGORIES_BY_CATEGORY[newCat][0];
     applySubcategoryDefaults(defaultSub, colorName);
@@ -292,10 +293,10 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
   const availableSubcategories = useMemo(() => {
     const filtered = SUBCATEGORIES_BY_CATEGORY[category].filter((sub) =>
-      isSubcategoryAllowedForScope(sub, activeScope)
+      isSubcategoryAllowedForScope(sub, activeScopes)
     );
     return filtered.length > 0 ? filtered : SUBCATEGORIES_BY_CATEGORY[category];
-  }, [category, activeScope]);
+  }, [category, activeScopes]);
 
   if (!isOpen) return null;
 
@@ -444,7 +445,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             </div>
 
             {/* Category Tabs */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
               {(Object.keys(CATEGORY_LABELS) as GarmentCategory[]).map((cat) => (
                 <button
                   key={cat}

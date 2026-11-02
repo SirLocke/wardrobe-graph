@@ -5,6 +5,7 @@ export type ValueLevel = 'light' | 'medium' | 'dark';
 
 export type AppLocale = 'de' | 'en';
 
+export type WardrobeScopeTarget = 'womenswear' | 'menswear' | 'unisex';
 export type WardrobeScope = 'womenswear' | 'menswear' | 'unisex' | 'all';
 
 export type HaircutStyle = 
@@ -24,7 +25,7 @@ export interface DefaultSizes {
 export interface BrandSizeRule {
   brand: string;
   size: string;
-  categoryGroup?: 'all' | 'top' | 'bottom' | 'shoes';
+  categoryGroup?: 'all' | 'top' | 'bottom' | 'shoes' | 'accessory';
 }
 
 export interface BiometricProfile {
@@ -42,12 +43,13 @@ export interface BiometricProfile {
   facialHair: FacialHair;
   preferredFit: 'slim_tapered' | 'regular_tailored' | 'relaxed_boxy';
   wardrobeScope?: WardrobeScope;
+  wardrobeScopes?: WardrobeScopeTarget[];
   defaultSizes?: DefaultSizes;
   brandSizeRules?: BrandSizeRule[];
   isDemoMode?: boolean;
 }
 
-export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear';
+export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear' | 'accessory';
 
 export type GarmentSubcategory =
   // Base Tops (Menswear, Womenswear & Unisex)
@@ -64,7 +66,9 @@ export type GarmentSubcategory =
   | 'wide_leg_trousers' | 'midi_skirt' | 'mini_skirt'
   // Footwear
   | 'sneaker_clean' | 'sneaker_chunky' | 'boots' | 'loafer_derby' | 'runner'
-  | 'heeled_ankle_boot' | 'ballet_flat' | 'sandal_strappy';
+  | 'heeled_ankle_boot' | 'ballet_flat' | 'sandal_strappy'
+  // Accessories (Uhren, Brillen, Sonnenbrillen, Ketten, Armbänder, Gürtel, Taschen, Lange & Kurze Socken etc.)
+  | 'watch' | 'glasses' | 'sunglasses' | 'necklace' | 'bracelet' | 'belt' | 'bag_backpack' | 'scarf' | 'cap_beanie' | 'socks' | 'socks_short';
 
 export type FitType = 'slim' | 'regular' | 'relaxed' | 'boxy_oversized';
 export type NecklineType = 'crewneck' | 'heavy_crewneck' | 'v_neck' | 'stand_collar' | 'shirt_collar' | 'turtleneck' | 'hooded' | 'none';
@@ -115,6 +119,16 @@ export interface OutfitContext {
   styleVibe?: StyleVibe;
   lockedGarmentIds: string[];
   ignoreCleanStatus?: boolean;
+  /**
+   * Master toggle: whether accessories (socks, cap/beanie, bracelet, watch, etc.)
+   * should be included in outfit suggestions (default: true).
+   */
+  includeAccessories?: boolean;
+  /**
+   * Specific accessory subcategories excluded from automatic outfit suggestions
+   * (e.g. ['cap_beanie', 'bracelet', 'socks']).
+   */
+  excludedAccessorySubcategories?: GarmentSubcategory[];
 }
 
 export interface ColorSwatchSpec {
