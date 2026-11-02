@@ -322,3 +322,25 @@ test('brandSizeMatcher: normalizes typos like "addidas", suggests brand sizes ("
   assert.ok(title.length < 40, `Expected short outfit title < 40 chars, got "${title}"`);
 });
 
+test('wearTracking: sorts garments accurately by wear count and last worn timestamp', () => {
+  const g1 = { ...SEED_WARDROBE_GARMENTS[0], id: 't1', wearCount: 15, lastWornDate: '2026-11-01T12:00:00Z' };
+  const g2 = { ...SEED_WARDROBE_GARMENTS[1], id: 't2', wearCount: 0, lastWornDate: undefined };
+  const g3 = { ...SEED_WARDROBE_GARMENTS[2], id: 't3', wearCount: 7, lastWornDate: '2026-11-02T08:00:00Z' };
+
+  // Sort wear_desc (most worn first)
+  const byWearDesc = [g1, g2, g3].sort((a, b) => (b.wearCount || 0) - (a.wearCount || 0));
+  assert.deepEqual(byWearDesc.map((g) => g.id), ['t1', 't3', 't2']);
+
+  // Sort wear_asc (rarely/never worn first - Schrankhüter)
+  const byWearAsc = [g1, g2, g3].sort((a, b) => (a.wearCount || 0) - (b.wearCount || 0));
+  assert.deepEqual(byWearAsc.map((g) => g.id), ['t2', 't3', 't1']);
+
+  // Sort last_worn_desc (most recently worn first)
+  const byLastWorn = [g1, g2, g3].sort((a, b) => {
+    const dateA = a.lastWornDate ? new Date(a.lastWornDate).getTime() : 0;
+    const dateB = b.lastWornDate ? new Date(b.lastWornDate).getTime() : 0;
+    return dateB - dateA;
+  });
+  assert.deepEqual(byLastWorn.map((g) => g.id), ['t3', 't1', 't2']);
+});
+

@@ -16,11 +16,11 @@ import {
   TEXTURE_LABELS,
 } from '../data/seedData';
 import {
+  ArchetypeRecommendation,
   ContextBottleneck,
   GapAnalysisReport,
   Garment,
-  OrphanGarmentDiagnosis,
-  PurchaseRecommendation,
+  OrphanPieceAnalysis,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 
@@ -39,8 +39,8 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
   onJumpToContext,
   onLockOrphanInStylist,
 }) => {
-  const [popupOrphan, setPopupOrphan] = useState<OrphanGarmentDiagnosis | null>(null);
-  const [popupRec, setPopupRec] = useState<PurchaseRecommendation | null>(null);
+  const [popupOrphan, setPopupOrphan] = useState<OrphanPieceAnalysis | null>(null);
+  const [popupRec, setPopupRec] = useState<ArchetypeRecommendation | null>(null);
 
   const sandboxItemsInCloset = garments.filter((g) => g.isWishlistSandbox);
 

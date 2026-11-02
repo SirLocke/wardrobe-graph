@@ -11,6 +11,7 @@ import {
   TextureType,
   WardrobeScope,
   WeatherCondition,
+  WornOutfitRecord,
 } from '../types/wardrobe';
 
 export interface TextileColorPreset {
@@ -1172,4 +1173,35 @@ export function saveCustomColors(colors: TextileColorPreset[]): void {
 export function getAllColorPresets(): TextileColorPreset[] {
   return [...loadCustomColors(), ...TEXTILE_COLOR_PRESETS];
 }
+
+export const SAMPLE_WORN_HISTORY: WornOutfitRecord[] = [
+  {
+    id: 'worn_seed_yesterday',
+    wornDate: new Date(Date.now() - 1000 * 60 * 60 * 22).toISOString(),
+    outfitTitle: 'Alltags-Look (T-Shirt + Strickjacke + Jeans + Sneaker)',
+    garmentIds: ['seed_top_2', 'seed_mid_2', 'seed_bot_2', 'seed_shoe_1'],
+    garments: [],
+    contextSummary: {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      styleVibe: 'balanced',
+    },
+    totalScore: 92,
+  },
+  {
+    id: 'worn_seed_3days_ago',
+    wornDate: new Date(Date.now() - 1000 * 60 * 60 * 70).toISOString(),
+    outfitTitle: 'Smart-Casual Office (Oxford-Hemd + Chino + Boots)',
+    garmentIds: ['seed_top_4', 'seed_bot_1', 'seed_shoe_2'],
+    garments: [],
+    contextSummary: {
+      temperatureC: 15,
+      weather: 'cloudy_windy',
+      occasion: 'smart_casual_office',
+      styleVibe: 'tailored_chic',
+    },
+    totalScore: 88,
+  },
+];
 

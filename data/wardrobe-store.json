@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-01T18:39:57.095Z",
+  "updatedAt": "2026-11-02T08:29:06.626Z",
   "profile": {
     "id": "default_profile",
     "undertone": "olive",
@@ -15,6 +15,34 @@
     "haircutStyle": "short_fade_structured_top",
     "facialHair": "stubble",
     "preferredFit": "regular_tailored",
+    "defaultSizes": {
+      "top": "M",
+      "bottom": "M",
+      "shoes": "42"
+    },
+    "brandSizeRules": [
+      {
+        "brand": "Nike",
+        "size": "L",
+        "categoryGroup": "all"
+      },
+      {
+        "brand": "Adidas",
+        "size": "M",
+        "categoryGroup": "all"
+      },
+      {
+        "brand": "Levi's",
+        "size": "W32/L32",
+        "categoryGroup": "bottom"
+      },
+      {
+        "brand": "Zara",
+        "size": "L",
+        "categoryGroup": "top"
+      }
+    ],
+    "isDemoMode": true,
     "wardrobeScope": "womenswear"
   },
   "garments": [
@@ -37,7 +65,10 @@
         "s": 13,
         "l": 53
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "Zara",
+      "size": "M",
+      "wearCount": 0
     },
     {
       "id": "fem_top_2",
@@ -58,7 +89,10 @@
         "s": 31,
         "l": 94
       },
-      "colorTemp": "neutral"
+      "colorTemp": "neutral",
+      "brand": "H&M",
+      "size": "S",
+      "wearCount": 0
     },
     {
       "id": "fem_top_3",
@@ -73,13 +107,17 @@
       "thermalRating": 2,
       "formality": 3,
       "waterResistant": false,
-      "isClean": true,
+      "isClean": false,
       "hsl": {
         "h": 0,
         "s": 11,
         "l": 21
       },
-      "colorTemp": "neutral"
+      "colorTemp": "neutral",
+      "brand": "COS",
+      "size": "S",
+      "wearCount": 1,
+      "lastWornDate": "2026-11-02T08:29:06.587Z"
     },
     {
       "id": "fem_top_4",
@@ -100,7 +138,10 @@
         "s": 21,
         "l": 21
       },
-      "colorTemp": "cool"
+      "colorTemp": "cool",
+      "brand": "Adidas",
+      "size": "S",
+      "wearCount": 0
     },
     {
       "id": "fem_top_5",
@@ -121,7 +162,10 @@
         "s": 31,
         "l": 94
       },
-      "colorTemp": "neutral"
+      "colorTemp": "neutral",
+      "brand": "Uniqlo",
+      "size": "S",
+      "wearCount": 0
     },
     {
       "id": "fem_mid_1",
@@ -142,7 +186,10 @@
         "s": 26,
         "l": 78
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "Mango",
+      "size": "38",
+      "wearCount": 0
     },
     {
       "id": "fem_mid_2",
@@ -157,13 +204,17 @@
       "thermalRating": 3,
       "formality": 3,
       "waterResistant": false,
-      "isClean": true,
+      "isClean": false,
       "hsl": {
         "h": 69,
         "s": 44,
         "l": 23
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "H&M",
+      "size": "S",
+      "wearCount": 1,
+      "lastWornDate": "2026-11-02T08:29:06.587Z"
     },
     {
       "id": "fem_mid_3",
@@ -184,7 +235,10 @@
         "s": 41,
         "l": 59
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "COS",
+      "size": "S",
+      "wearCount": 0
     },
     {
       "id": "fem_mid_4",
@@ -205,7 +259,10 @@
         "s": 13,
         "l": 53
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "Nike",
+      "size": "M",
+      "wearCount": 0
     },
     {
       "id": "fem_mid_5",
@@ -226,7 +283,10 @@
         "s": 21,
         "l": 21
       },
-      "colorTemp": "cool"
+      "colorTemp": "cool",
+      "brand": "Adidas",
+      "size": "S",
+      "wearCount": 0
     },
     {
       "id": "fem_orphan_1",
@@ -247,7 +307,8 @@
         "s": 48,
         "l": 25
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "wearCount": 0
     },
     {
       "id": "fem_out_1",
@@ -268,7 +329,10 @@
         "s": 44,
         "l": 23
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "Mango",
+      "size": "38",
+      "wearCount": 0
     },
     {
       "id": "fem_orphan_2",
@@ -289,7 +353,10 @@
         "s": 24,
         "l": 23
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "Zara",
+      "size": "M",
+      "wearCount": 0
     },
     {
       "id": "fem_bot_1",
@@ -310,7 +377,11 @@
         "s": 26,
         "l": 78
       },
-      "colorTemp": "warm"
+      "colorTemp": "warm",
+      "brand": "Zara",
+      "size": "38",
+      "wearCount": 1,
+      "lastWornDate": "2026-11-02T08:29:06.587Z"
     },
     {
       "id": "fem_bot_2",
@@ -331,7 +402,10 @@
         "s": 11,
         "l": 21
       },
-      "colorTemp": "neutral"
+      "colorTemp": "neutral",
+      "brand": "COS",
+      "size": "38",
+      "wearCount": 0
     },
     {
       "id": "fem_bot_3",
@@ -352,7 +426,10 @@
         "s": 36,
         "l": 22
       },
-      "colorTemp": "cool"
+      "colorTemp": "cool",
+      "brand": "Levi's",
+      "size": "W28/L30",
+      "wearCount": 0
     },
     {
       "id": "fem_shoe_1",
@@ -373,7 +450,11 @@
         "s": 11,
         "l": 21
       },
-      "colorTemp": "neutral"
+      "colorTemp": "neutral",
+      "brand": "Zara",
+      "size": "39",
+      "wearCount": 1,
+      "lastWornDate": "2026-11-02T08:29:06.587Z"
     },
     {
       "id": "fem_shoe_2",
@@ -394,7 +475,10 @@
         "s": 0,
         "l": 8
       },
-      "colorTemp": "neutral"
+      "colorTemp": "neutral",
+      "brand": "COS",
+      "size": "39",
+      "wearCount": 0
     },
     {
       "id": "fem_shoe_3",
@@ -415,7 +499,8 @@
         "s": 31,
         "l": 94
       },
-      "colorTemp": "neutral"
+      "colorTemp": "neutral",
+      "wearCount": 0
     }
   ]
 }

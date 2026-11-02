@@ -34,8 +34,11 @@ import {
 import {
   bulkUpsertGarmentsToDb,
   deleteGarmentFromDb,
+  deleteWornOutfitRecordFromDb,
+  getWornHistoryFromDb,
   importWardrobeBackup,
   loadOrSeedWardrobeData,
+  logOutfitAsWornInDb,
   pullStateFromServer,
   resetDatabaseToSeed,
   saveBiometricProfile,
@@ -50,8 +53,10 @@ import {
   BiometricProfile,
   ContextBottleneck,
   Garment,
+  GeneratedOutfit,
   OutfitContext,
   StyleVibe,
+  WornOutfitRecord,
 } from './types/wardrobe';
 
 export type ActiveTab = 'stylist' | 'closet' | 'gaps' | 'profile';
@@ -61,6 +66,7 @@ export default function App() {
   const [locale, setLocale] = useState<AppLocale>('de');
   const [profile, setProfile] = useState<BiometricProfile>(DEFAULT_BIOMETRIC_PROFILE);
   const [garments, setGarments] = useState<Garment[]>(SEED_WARDROBE_GARMENTS);
+  const [wornHistory, setWornHistory] = useState<WornOutfitRecord[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   const [context, setContext] = useState<OutfitContext>({
@@ -106,10 +112,16 @@ export default function App() {
   // Load or seed from IndexedDB / MCP Server on mount + sync on window focus
   useEffect(() => {
     let mounted = true;
-    loadOrSeedWardrobeData().then((data) => {
+    loadOrSeedWardrobeData().then(async (data) => {
       if (!mounted) return;
       setProfile(data.profile);
       setGarments(data.garments);
+      try {
+        const history = await getWornHistoryFromDb();
+        if (mounted) setWornHistory(history);
+      } catch {
+        // ignore
+      }
       setIsLoaded(true);
     });
 
@@ -158,12 +170,64 @@ export default function App() {
     );
   };
 
-  const handleMarkOutfitWorn = async (garmentIds: string[]) => {
-    await updateGarmentsCleanStatus(garmentIds, false);
-    const idSet = new Set(garmentIds);
-    setGarments((prev) =>
-      prev.map((g) => (idSet.has(g.id) ? { ...g, isClean: false } : g))
-    );
+  const handleLogOutfitWorn = async (outfit: GeneratedOutfit, outfitTitle: string) => {
+    const wornDate = new Date().toISOString();
+    const outfitItemIds = new Set(outfit.items.map((i) => i.id));
+
+    // Update wear count and lastWornDate on all items in the outfit
+    // Also mark tops/midlayers as dirty
+    const updatedGarments = garments.map((g) => {
+      if (!outfitItemIds.has(g.id)) return g;
+      const shouldMarkDirty = g.category === 'base_top' || g.category === 'mid_layer';
+      return {
+        ...g,
+        wearCount: (g.wearCount || 0) + 1,
+        lastWornDate: wornDate,
+        isClean: shouldMarkDirty ? false : g.isClean,
+      };
+    });
+
+    const wornItemsSnapshot = outfit.items.map((item) => {
+      const match = updatedGarments.find((g) => g.id === item.id);
+      return match || { ...item, wearCount: (item.wearCount || 0) + 1, lastWornDate: wornDate };
+    });
+
+    const record: WornOutfitRecord = {
+      id: `worn_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      wornDate,
+      outfitTitle,
+      garmentIds: outfit.items.map((i) => i.id),
+      garments: wornItemsSnapshot,
+      contextSummary: {
+        temperatureC: context.temperatureC,
+        weather: context.weather,
+        occasion: context.occasion,
+        styleVibe: context.styleVibe,
+      },
+      totalScore: outfit.totalScore,
+    };
+
+    await logOutfitAsWornInDb(record, updatedGarments);
+    setGarments(updatedGarments);
+    setWornHistory((prev) => [record, ...prev]);
+  };
+
+  const handleDeleteWornRecord = async (recordId: string) => {
+    const target = wornHistory.find((r) => r.id === recordId);
+    if (!target) return;
+    const itemIds = new Set(target.garmentIds);
+
+    const updatedGarments = garments.map((g) => {
+      if (!itemIds.has(g.id)) return g;
+      return {
+        ...g,
+        wearCount: Math.max(0, (g.wearCount || 1) - 1),
+      };
+    });
+
+    await deleteWornOutfitRecordFromDb(recordId, updatedGarments);
+    setGarments(updatedGarments);
+    setWornHistory((prev) => prev.filter((r) => r.id !== recordId));
   };
 
   const handleWashAllGarments = async () => {
@@ -224,10 +288,11 @@ export default function App() {
 
   const handleExportBackup = () => {
     const payload: WardrobeBackupPayload = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       profile,
       garments,
+      wornHistory,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: 'application/json',
@@ -253,13 +318,14 @@ export default function App() {
 
     if (mode === 'replace') {
       const res = await importWardrobeBackup({
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         profile: nextProfile,
         garments: importedGarments,
       });
       setProfile(res.profile);
       setGarments(res.garments);
+      setWornHistory(res.wornHistory || []);
     } else {
       const savedList = await bulkUpsertGarmentsToDb(importedGarments);
       setGarments((prev) => {
@@ -350,6 +416,7 @@ export default function App() {
     const res = await resetDatabaseToSeed();
     setProfile(res.profile);
     setGarments(res.garments);
+    setWornHistory(res.wornHistory || []);
     setContext({
       temperatureC: 18,
       weather: 'sunny_dry',
@@ -457,13 +524,12 @@ export default function App() {
             <button
               type="button"
               onClick={openAddNewGarment}
-              className="inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-950 bg-zinc-100 rounded-lg hover:bg-white transition-colors whitespace-nowrap shrink-0 cursor-pointer touch-manipulation active:scale-95"
+              title={isEn ? 'Add Garment' : 'Neues Kleidungsstück anlegen'}
+              aria-label={isEn ? 'Add Garment' : 'Neues Kleidungsstück anlegen'}
+              className="inline-flex items-center justify-center min-w-[38px] w-9 h-9 sm:w-auto sm:px-3.5 sm:py-2 text-xs font-semibold text-zinc-950 bg-zinc-100 rounded-lg hover:bg-white transition-colors whitespace-nowrap shrink-0 cursor-pointer touch-manipulation active:scale-95"
             >
-              <Plus className="w-4 h-4" />
-              <span>
-                <span className="inline sm:hidden">{isEn ? 'Add' : 'Neu'}</span>
-                <span className="hidden sm:inline">{isEn ? 'Add Garment' : 'Kleidungsstück'}</span>
-              </span>
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline sm:ml-1.5">{isEn ? 'Add Garment' : 'Kleidungsstück'}</span>
             </button>
           </div>
         </div>
@@ -486,24 +552,24 @@ export default function App() {
                   : 'Möchtest du deinen eigenen Kleiderschrank starten? Beende den Demo-Modus – der Assistent startet direkt mit deiner eigenen Kleidungs-Auswahl.'}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full md:w-auto">
               <button
                 type="button"
                 onClick={handleExitDemoAndClearDirectly}
-                className="px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer whitespace-nowrap"
+                className="w-full sm:w-auto px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer text-center touch-manipulation active:scale-95"
               >
                 {isEn ? 'Empty Closet & Add 1st Item' : 'Schrank direkt leeren & 1. Teil anlegen'}
               </button>
               <button
                 type="button"
                 onClick={handleExitDemoAndOpenWizard}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 cursor-pointer whitespace-nowrap"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 cursor-pointer text-center touch-manipulation active:scale-95"
               >
-                <Wand2 className="w-3.5 h-3.5" />
+                <Wand2 className="w-3.5 h-3.5 shrink-0" />
                 <span>
                   {isEn
-                    ? 'Exit Demo Mode & Start Setup Wizard'
-                    : 'Demo-Modus beenden & Eigenen Schrank einrichten'}
+                    ? 'Exit Demo & Start Setup'
+                    : 'Demo beenden & Eigenen Schrank starten'}
                 </span>
               </button>
             </div>
@@ -523,8 +589,10 @@ export default function App() {
                 profile={profile}
                 context={context}
                 locale={locale}
+                wornHistory={wornHistory}
                 onChangeContext={setContext}
-                onMarkOutfitWorn={handleMarkOutfitWorn}
+                onLogOutfitWorn={handleLogOutfitWorn}
+                onDeleteWornRecord={handleDeleteWornRecord}
                 onWashAllGarments={handleWashAllGarments}
                 onOpenAddModal={openAddNewGarment}
                 onOpenSetupWizard={handleExitDemoAndOpenWizard}

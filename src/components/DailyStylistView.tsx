@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Cloud,
   CloudRain,
   Edit3,
+  History,
   Info,
   Layers,
   LayoutGrid,
@@ -12,6 +16,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Sun,
+  Trash2,
   Unlock,
   Wand2,
   X,
@@ -37,6 +42,7 @@ import {
   OutfitContext,
   StyleVibe,
   WeatherCondition,
+  WornOutfitRecord,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 import { OutfitLayerStack } from './OutfitLayerStack';
@@ -46,8 +52,10 @@ interface DailyStylistViewProps {
   profile: BiometricProfile;
   context: OutfitContext;
   locale?: AppLocale;
+  wornHistory?: WornOutfitRecord[];
   onChangeContext: (next: OutfitContext) => void;
-  onMarkOutfitWorn: (garmentIds: string[]) => Promise<void>;
+  onLogOutfitWorn: (outfit: GeneratedOutfit, title: string) => Promise<void>;
+  onDeleteWornRecord?: (recordId: string) => Promise<void>;
   onWashAllGarments: () => Promise<void>;
   onOpenAddModal: () => void;
   onOpenSetupWizard?: () => void;
@@ -81,13 +89,38 @@ function loadCustomOutfitNames(): Record<string, string> {
   }
 }
 
+function formatWornDate(dateIso: string, locale: AppLocale = 'de'): string {
+  try {
+    const d = new Date(dateIso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours < 20 && now.getDate() === d.getDate()) {
+      return locale === 'en' ? 'Today' : 'Heute';
+    }
+    if (diffHours < 44 && (now.getDate() - d.getDate() === 1 || (diffHours >= 16 && diffHours < 36))) {
+      return locale === 'en' ? 'Yesterday' : 'Gestern';
+    }
+    return d.toLocaleDateString(locale === 'en' ? 'en-US' : 'de-DE', {
+      day: 'numeric',
+      month: 'short',
+      year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
+  } catch {
+    return dateIso.slice(0, 10);
+  }
+}
+
 export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   garments,
   profile,
   context,
   locale = 'de',
+  wornHistory = [],
   onChangeContext,
-  onMarkOutfitWorn,
+  onLogOutfitWorn,
+  onDeleteWornRecord,
   onWashAllGarments,
   onOpenAddModal,
   onOpenSetupWizard,
@@ -98,6 +131,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   const [wornFeedbackId, setWornFeedbackId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'stacked' | 'grid'>('stacked');
   const [popupOutfit, setPopupOutfit] = useState<GeneratedOutfit | null>(null);
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
   const [customOutfitNames, setCustomOutfitNames] = useState<Record<string, string>>(() =>
     loadCustomOutfitNames()
   );
@@ -151,11 +185,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     setEditingOutfitId(null);
   };
 
-  const handleMarkWorn = async (outfitId: string, itemIds: string[]) => {
-    await onMarkOutfitWorn(itemIds);
-    setWornFeedbackId(outfitId);
+  const handleMarkWorn = async (outfit: GeneratedOutfit, title: string) => {
+    await onLogOutfitWorn(outfit, title);
+    setWornFeedbackId(outfit.id);
     setTimeout(() => {
-      setWornFeedbackId((prev) => (prev === outfitId ? null : prev));
+      setWornFeedbackId((prev) => (prev === outfit.id ? null : prev));
     }, 2500);
   };
 
@@ -465,6 +499,159 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         </div>
       </section>
 
+      {/* Worn Outfit History ("Trage-Historie") */}
+      <section
+        aria-label={isEn ? 'Wear History' : 'Zuletzt getragene Outfits'}
+        className="rounded-2xl bg-zinc-900/40 border border-zinc-800/80 p-4 sm:p-5 space-y-3.5"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+              <History className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-zinc-100 truncate">
+                  {isEn ? 'Wear History' : 'Zuletzt getragen'}
+                </h2>
+                {wornHistory && wornHistory.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] text-zinc-300 font-mono">
+                    {wornHistory.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400 truncate">
+                {isEn
+                  ? 'Track your wear habits & see which pieces you actually wear.'
+                  : 'Verfolge deine Tragegewohnheiten & sieh, welche Teile du wirklich trägst.'}
+              </p>
+            </div>
+          </div>
+
+          {wornHistory && wornHistory.length > 2 && (
+            <button
+              type="button"
+              onClick={() => setIsHistoryExpanded((prev) => !prev)}
+              className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors cursor-pointer touch-manipulation px-2 py-1 rounded-md hover:bg-zinc-800/50 shrink-0"
+            >
+              <span>
+                {isHistoryExpanded
+                  ? isEn
+                    ? 'Show less'
+                    : 'Weniger anzeigen'
+                  : isEn
+                  ? `Show all (${wornHistory.length})`
+                  : `Alle (${wornHistory.length}) anzeigen`}
+              </span>
+              {isHistoryExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {!wornHistory || wornHistory.length === 0 ? (
+          <div className="text-center py-4 px-3 rounded-xl bg-zinc-950/40 border border-dashed border-zinc-800/80 space-y-1">
+            <p className="text-xs text-zinc-300 font-medium">
+              {isEn ? 'No outfits logged as worn yet' : 'Noch keine Outfits in der Historie'}
+            </p>
+            <p className="text-[11px] text-zinc-500 max-w-md mx-auto">
+              {isEn
+                ? 'Tap "Wear Today" on any outfit below to record it in your history and track how often you wear your clothes.'
+                : 'Klicke bei einem Outfit unten auf „Heute anziehen“, um es festzuhalten und die Tragehäufigkeit deiner Kleidung zu zählen.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {(isHistoryExpanded ? wornHistory : wornHistory.slice(0, 2)).map((record) => {
+              const recordDateLabel = formatWornDate(record.wornDate, locale);
+              return (
+                <div
+                  key={record.id}
+                  className="rounded-xl bg-zinc-950/70 border border-zinc-800/80 p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700/80 transition-colors"
+                >
+                  <div className="space-y-1.5 min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-semibold text-amber-300 inline-flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 opacity-80" />
+                        {recordDateLabel}
+                      </span>
+                      {record.contextSummary?.temperatureC !== undefined && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
+                          {record.contextSummary.temperatureC}°C
+                        </span>
+                      )}
+                      {record.contextSummary?.occasion && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400">
+                          {isEn
+                            ? OCCASION_LABELS_EN[record.contextSummary.occasion]
+                            : OCCASION_LABELS[record.contextSummary.occasion]}
+                        </span>
+                      )}
+                      {record.totalScore && (
+                        <span className="text-[10px] text-emerald-400 font-mono">
+                          {record.totalScore}%
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs font-medium text-zinc-200 truncate">
+                      {record.outfitTitle}
+                    </p>
+
+                    {/* Miniature pieces in this worn outfit */}
+                    <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+                      {record.garments.map((g) => (
+                        <div
+                          key={g.id}
+                          title={`${g.name} (${g.wearCount || 0}× getragen)`}
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800/80 shrink-0 text-[11px]"
+                        >
+                          <GarmentVector
+                            type={g.subcategory}
+                            colorHex={g.colorHex}
+                            texture={g.texture}
+                            neckline={g.neckline}
+                            className="w-5 h-5 shrink-0"
+                          />
+                          <span className="text-zinc-300 max-w-[100px] truncate">{g.name}</span>
+                          {(g.wearCount || 0) > 0 && (
+                            <span className="text-[10px] text-amber-400 font-mono font-medium">
+                              {g.wearCount}×
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {onDeleteWornRecord && (
+                    <div className="flex items-center justify-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-900">
+                      <button
+                        type="button"
+                        onClick={() => onDeleteWornRecord(record.id)}
+                        title={
+                          isEn
+                            ? 'Remove this history entry & revert wear counts'
+                            : 'Eintrag aus Historie entfernen & Zähler korrigieren'
+                        }
+                        aria-label={isEn ? 'Remove history entry' : 'Eintrag löschen'}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-rose-400 hover:bg-rose-950/20 border border-transparent hover:border-rose-900/40 transition-colors cursor-pointer touch-manipulation active:scale-95"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="sm:hidden">{isEn ? 'Remove' : 'Eintrag löschen'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Generated Outfits Feed */}
       {outfits.length === 0 ? (
         <div className="rounded-2xl bg-zinc-900/40 border border-zinc-800 p-10 text-center space-y-4">
@@ -507,9 +694,12 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             <button
               type="button"
               onClick={onOpenAddModal}
-              className="px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-xs font-semibold text-zinc-950 cursor-pointer"
+              className="px-4 py-2.5 min-h-[42px] rounded-lg bg-zinc-100 hover:bg-white text-xs font-semibold text-zinc-950 cursor-pointer touch-manipulation active:scale-95"
             >
-              {isEn ? '+ Add Garment' : '+ Neues Kleidungsstück anlegen'}
+              <span>
+                <span className="inline sm:hidden">{isEn ? '+ Add Garment' : '+ Teil anlegen'}</span>
+                <span className="hidden sm:inline">{isEn ? '+ Add Garment' : '+ Neues Kleidungsstück anlegen'}</span>
+              </span>
             </button>
           </div>
         </div>
@@ -595,14 +785,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
                     <button
                       type="button"
-                      onClick={() =>
-                        handleMarkWorn(
-                          outfit.id,
-                          outfit.items
-                            .filter((i) => i.category === 'base_top' || i.category === 'mid_layer')
-                            .map((i) => i.id)
-                        )
-                      }
+                      onClick={() => handleMarkWorn(outfit, outfitTitle)}
                       className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                         isWornJustNow
                           ? 'bg-emerald-500 text-zinc-950 font-semibold'
@@ -688,6 +871,14 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                   <>
                                     <span aria-hidden="true">·</span>
                                     <span className="text-sky-300">Test-Stück</span>
+                                  </>
+                                )}
+                                {item.wearCount !== undefined && item.wearCount > 0 && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="text-amber-400 font-mono font-medium">
+                                      {item.wearCount}× getragen
+                                    </span>
                                   </>
                                 )}
                               </div>
@@ -797,6 +988,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             <p className="text-[10px] text-zinc-500 truncate">
                               {item.brand ? `${item.brand}` : SUBCATEGORY_LABELS[item.subcategory]}
                               {item.size ? ` · Gr. ${item.size}` : ''}
+                              {item.wearCount !== undefined && item.wearCount > 0 ? ` · ${item.wearCount}×` : ''}
                             </p>
                           </div>
                         </div>

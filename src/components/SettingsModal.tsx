@@ -764,7 +764,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               <div className="text-xs text-zinc-400 flex items-center justify-between">
-                <span>{customColorPreviewBio.trace}</span>
+                <span>{customColorPreviewBio.reasons?.[0] || ''}</span>
                 <span className="font-medium text-zinc-300">
                   {isEn ? 'Match with your skin tone:' : 'Passung zu deinem Typ:'}{' '}
                   {customColorPreviewBio.score}%

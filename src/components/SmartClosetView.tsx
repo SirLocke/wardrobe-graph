@@ -47,7 +47,14 @@ interface SmartClosetViewProps {
 
 type CleanFilter = 'all' | 'clean' | 'dirty' | 'sandbox';
 type SeasonFilter = 'all' | 'warm_weather' | 'transition' | 'cold_weather';
-type SortMode = 'biometric_desc' | 'biometric_asc' | 'outfits_desc' | 'name_asc';
+type SortMode =
+  | 'biometric_desc'
+  | 'biometric_asc'
+  | 'outfits_desc'
+  | 'name_asc'
+  | 'wear_desc'
+  | 'wear_asc'
+  | 'last_worn_desc';
 
 export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
   garments,
@@ -133,6 +140,17 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
         return true;
       })
       .sort((a, b) => {
+        if (sortMode === 'wear_desc') {
+          return (b.garment.wearCount || 0) - (a.garment.wearCount || 0);
+        }
+        if (sortMode === 'wear_asc') {
+          return (a.garment.wearCount || 0) - (b.garment.wearCount || 0);
+        }
+        if (sortMode === 'last_worn_desc') {
+          const dateA = a.garment.lastWornDate ? new Date(a.garment.lastWornDate).getTime() : 0;
+          const dateB = b.garment.lastWornDate ? new Date(b.garment.lastWornDate).getTime() : 0;
+          return dateB - dateA;
+        }
         if (sortMode === 'biometric_desc') return b.bio.score - a.bio.score;
         if (sortMode === 'biometric_asc') return a.bio.score - b.bio.score;
         if (sortMode === 'outfits_desc') return b.validOutfits - a.validOutfits;
@@ -164,23 +182,27 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
             <button
               type="button"
               onClick={onOpenImportExportModal}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
             >
-              <FileCode2 className="w-4 h-4 text-amber-400" />
-              <span>{isEn ? 'Backup / Import' : 'Backup & Import'}</span>
+              <FileCode2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>{isEn ? 'Backup' : 'Backup'}</span>
             </button>
 
             <button
               type="button"
               onClick={onOpenAddModal}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-100 hover:bg-white text-xs font-semibold text-zinc-950 transition-colors cursor-pointer whitespace-nowrap"
+              title={isEn ? 'Add Garment' : 'Neues Kleidungsstück anlegen'}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-lg bg-zinc-100 hover:bg-white text-xs font-semibold text-zinc-950 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
             >
-              <Plus className="w-4 h-4" />
-              <span>{isEn ? '+ Add Garment' : '+ Neues Kleidungsstück'}</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>
+                <span className="inline sm:hidden">{isEn ? 'Add' : 'Neu'}</span>
+                <span className="hidden sm:inline">{isEn ? 'Add Garment' : 'Kleidungsstück'}</span>
+              </span>
             </button>
           </div>
         </div>
@@ -293,7 +315,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
           {/* Search, Clean Status, Seasonality, Sort */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="relative">
-              <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 aria-label="Kleiderschrank durchsuchen"
@@ -304,8 +326,18 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                     ? 'Search Nike, Adidas, size L, jeans...'
                     : 'Suche nach Marke (Nike, Adidas), Größe, Jeans...'
                 }
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 pl-9 pr-3 py-2.5 min-h-[42px] text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 pl-9 pr-8 py-2.5 min-h-[42px] text-xs text-zinc-100 focus:outline-none focus:border-zinc-600"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Suche löschen"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-100 rounded cursor-pointer touch-manipulation"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             <select
@@ -338,9 +370,24 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               onChange={(e) => setSortMode(e.target.value as SortMode)}
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2.5 min-h-[42px] text-xs text-zinc-200 cursor-pointer"
             >
-              <option value="outfits_desc">Sortierung: Vielseitig kombinierbar</option>
-              <option value="biometric_desc">Sortierung: Beste Farben für mich</option>
-              <option value="name_asc">Sortierung: Alphabetisch (A–Z)</option>
+              <option value="outfits_desc">
+                {isEn ? 'Sort: Most versatile outfits' : 'Sortierung: Vielseitig kombinierbar'}
+              </option>
+              <option value="wear_desc">
+                {isEn ? 'Sort: Most worn (Favorites)' : 'Sortierung: Meistgetragen (Favoriten)'}
+              </option>
+              <option value="wear_asc">
+                {isEn ? 'Sort: Rarely / Never worn (Unused)' : 'Sortierung: Selten / Nie getragen (Schrankhüter)'}
+              </option>
+              <option value="last_worn_desc">
+                {isEn ? 'Sort: Recently worn' : 'Sortierung: Zuletzt getragen'}
+              </option>
+              <option value="biometric_desc">
+                {isEn ? 'Sort: Best colors for me' : 'Sortierung: Beste Farben für mich'}
+              </option>
+              <option value="name_asc">
+                {isEn ? 'Sort: Alphabetical (A–Z)' : 'Sortierung: Alphabetisch (A–Z)'}
+              </option>
             </select>
           </div>
         </div>
@@ -481,6 +528,19 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                             Gr. {garment.size}
                           </span>
                         )}
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-flex items-center gap-1 ${
+                            (garment.wearCount || 0) > 0
+                              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                              : 'bg-zinc-800/80 text-zinc-400 border border-zinc-700/50'
+                          }`}
+                        >
+                          {(garment.wearCount || 0) > 0
+                            ? `${garment.wearCount}× getragen`
+                            : isEn
+                            ? 'Never worn'
+                            : 'Nie getragen'}
+                        </span>
                       </div>
                       <p className="text-[11px] text-zinc-500 truncate">
                         {TEXTURE_LABELS[garment.texture].split(' (')[0]}
@@ -570,6 +630,14 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                 <span className="text-zinc-400">Farb- &amp; Schnitt-Passung:</span>
                 <span className="font-semibold text-emerald-400">
                   {popupEntry.bio.score}%
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-zinc-900/60 border border-zinc-800/80 px-3 py-2">
+                <span className="text-zinc-400">{isEn ? 'Wear count:' : 'Tragehäufigkeit:'}</span>
+                <span className="font-semibold text-amber-300">
+                  {(popupEntry.garment.wearCount || 0) > 0
+                    ? `${popupEntry.garment.wearCount}× getragen`
+                    : (isEn ? 'Never worn' : 'Noch nie getragen')}
                 </span>
               </div>
               {popupEntry.bio.reasons.map((r, idx) => (

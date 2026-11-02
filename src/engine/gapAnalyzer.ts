@@ -248,11 +248,15 @@ export function analyzeWardrobeGaps(
   garments: Garment[],
   profile: BiometricProfile
 ): GapAnalysisReport {
-  // 1. Evaluate Core Compatibility Graph
-  const baseGraph = evaluateCoreCompatibilityGraph(garments, profile);
-  const { countsByGarmentId } = baseGraph;
+  // 1. Evaluate Core Compatibility Graph & Context Matrix in a unified pass
+  const countsByGarmentId: Record<string, number> = {};
+  for (const g of garments) {
+    countsByGarmentId[g.id] = 0;
+  }
 
-  // 2. Evaluate full Context Matrix across all temperature & occasion buckets
+  const allValidCoreOutfitsMap = new Map<string, GeneratedOutfit>();
+  const coreBuckets = EVALUATION_BUCKETS.filter((b) => b.isCoreGraphContext);
+
   const contextMatrix: ContextBottleneck[] = EVALUATION_BUCKETS.map((bucket) => {
     const ctx: OutfitContext = {
       temperatureC: bucket.temperatureC,
@@ -262,7 +266,20 @@ export function analyzeWardrobeGaps(
       ignoreCleanStatus: true,
     };
     const outfits = generateOutfitsForContext(garments, profile, ctx, 0);
-    const validCount = outfits.filter((o) => o.totalScore >= VALID_OUTFIT_THRESHOLD).length;
+    const validInBucket = outfits.filter((o) => o.totalScore >= VALID_OUTFIT_THRESHOLD);
+
+    if (bucket.isCoreGraphContext) {
+      for (const outfit of validInBucket) {
+        if (!allValidCoreOutfitsMap.has(outfit.id)) {
+          allValidCoreOutfitsMap.set(outfit.id, outfit);
+          for (const item of outfit.items) {
+            countsByGarmentId[item.id] = (countsByGarmentId[item.id] || 0) + 1;
+          }
+        }
+      }
+    }
+
+    const validCount = validInBucket.length;
     const isBottleneck = validCount < 3;
 
     return {
@@ -283,7 +300,7 @@ export function analyzeWardrobeGaps(
 
   const bottlenecks = contextMatrix.filter((c) => c.isBottleneck);
 
-  // 3. Detect "Orphan Pieces" (Schrankleichen): biometricScore >= 70 AND validOutfitCount <= 2
+  // 2. Detect "Orphan Pieces" (Schrankleichen): biometricScore >= 70 AND validOutfitCount <= 2
   const orphanPieces: OrphanPieceAnalysis[] = [];
   for (const garment of garments) {
     const bio = scoreGarmentBiometrics(garment, profile);
@@ -301,7 +318,9 @@ export function analyzeWardrobeGaps(
   // Sort orphans by highest biometric potential first
   orphanPieces.sort((a, b) => b.biometricScore - a.biometricScore);
 
-  // 4. Virtual Archetype Simulation ("What to Buy" Calculator)
+  // 3. Virtual Archetype Simulation ("What to Buy" Calculator)
+  // Targeted evaluation: only generates combinations involving the virtual archetype,
+  // drastically reducing runtime without loss of precision.
   const candidates = instantiateCandidateArchetypes(profile);
 
   // Filter out archetypes that duplicate items the user already owns (same subcategory + similar color ΔHSL < 22)
@@ -317,23 +336,41 @@ export function analyzeWardrobeGaps(
 
   for (const { archetypeId, garment: virtualGarment, rationale } of nonDuplicateCandidates) {
     const simulatedCloset = [...garments, virtualGarment];
-    const simGraph = evaluateCoreCompatibilityGraph(simulatedCloset, profile);
+    const unlockedMap = new Map<string, GeneratedOutfit>();
 
-    const newOutfitsUnlocked = Math.max(
-      0,
-      simGraph.validOutfits.length - baseGraph.validOutfits.length
-    );
+    for (const bucket of coreBuckets) {
+      const ctx: OutfitContext = {
+        temperatureC: bucket.temperatureC,
+        weather: bucket.weather,
+        occasion: bucket.occasion,
+        lockedGarmentIds: [virtualGarment.id],
+        ignoreCleanStatus: true,
+      };
+      const outfits = generateOutfitsForContext(simulatedCloset, profile, ctx, 0);
+      for (const outfit of outfits) {
+        if (outfit.totalScore >= VALID_OUTFIT_THRESHOLD) {
+          unlockedMap.set(outfit.id, outfit);
+        }
+      }
+    }
 
+    const newOutfitsUnlocked = unlockedMap.size;
     if (newOutfitsUnlocked === 0) continue;
+
+    const newlyUnlockedList = Array.from(unlockedMap.values());
 
     // Orphans rescued: existing Orphan Pieces that now cross the > 2 outfits threshold
     const orphansRescued = orphanPieces
-      .filter((orphan) => (simGraph.countsByGarmentId[orphan.garment.id] || 0) > 2)
+      .filter((orphan) => {
+        const extraOutfits = newlyUnlockedList.filter((o) =>
+          o.items.some((i) => i.id === orphan.garment.id)
+        ).length;
+        return (countsByGarmentId[orphan.garment.id] || 0) + extraOutfits > 2;
+      })
       .map((o) => o.garment);
 
     // Top 3 concrete outfit combinations combining this virtual item with the user's existing items
-    const unlockedCombinationsPreview = simGraph.validOutfits
-      .filter((o) => o.items.some((i) => i.id === virtualGarment.id))
+    const unlockedCombinationsPreview = newlyUnlockedList
       .sort((a, b) => b.totalScore - a.totalScore)
       .slice(0, 3);
 
@@ -375,17 +412,18 @@ export function analyzeWardrobeGaps(
     }
   }
 
+  const totalCoreOutfits = allValidCoreOutfitsMap.size;
   const healthyBuckets = contextMatrix.filter((c) => !c.isBottleneck).length;
   const wardrobeHealthScore = Math.min(
     100,
     Math.round(
       (healthyBuckets / contextMatrix.length) * 65 +
-        Math.min(35, baseGraph.validOutfits.length * 2.2)
+        Math.min(35, totalCoreOutfits * 2.2)
     )
   );
 
   return {
-    totalValidOutfitsAcrossContexts: baseGraph.validOutfits.length,
+    totalValidOutfitsAcrossContexts: totalCoreOutfits,
     wardrobeHealthScore,
     contextMatrix,
     bottlenecks,

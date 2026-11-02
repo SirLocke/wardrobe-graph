@@ -1,11 +1,12 @@
 import Dexie, { type Table } from 'dexie';
 import {
   DEFAULT_BIOMETRIC_PROFILE,
+  SAMPLE_WORN_HISTORY,
   SEED_WARDROBE_GARMENTS,
   WARDROBE_PRESETS,
 } from '../data/seedData';
 import { classifyColorTemp, hexToHsl } from '../engine/colorMath';
-import { BiometricProfile, Garment } from '../types/wardrobe';
+import { BiometricProfile, Garment, WornOutfitRecord } from '../types/wardrobe';
 
 const SEED_META_BY_ID = new Map(
   WARDROBE_PRESETS.combined_atelier.garments.map((g) => [g.id, { brand: g.brand, size: g.size }])
@@ -35,6 +36,8 @@ function backfillProfileAndGarments(
       colorTemp,
       brand: g.brand ?? seedMeta?.brand,
       size: g.size ?? seedMeta?.size,
+      wearCount: g.wearCount ?? 0,
+      lastWornDate: g.lastWornDate,
     };
   });
 
@@ -44,12 +47,18 @@ function backfillProfileAndGarments(
 export class WardrobeDatabase extends Dexie {
   garments!: Table<Garment, string>;
   profiles!: Table<BiometricProfile, string>;
+  wornHistory!: Table<WornOutfitRecord, string>;
 
   constructor() {
     super('BiometricWardrobeDB');
     this.version(1).stores({
       garments: 'id, category, subcategory, colorTemp, isClean, isWishlistSandbox',
       profiles: 'id',
+    });
+    this.version(2).stores({
+      garments: 'id, category, subcategory, colorTemp, isClean, isWishlistSandbox, wearCount',
+      profiles: 'id',
+      wornHistory: 'id, wornDate',
     });
   }
 }
@@ -137,6 +146,14 @@ export async function loadOrSeedWardrobeData(): Promise<{
       await db.profiles.put(DEFAULT_BIOMETRIC_PROFILE);
       if (garmentCount === 0) {
         await db.garments.bulkPut(SEED_WARDROBE_GARMENTS);
+        try {
+          const historyCount = await db.wornHistory.count();
+          if (historyCount === 0) {
+            await db.wornHistory.bulkPut(SAMPLE_WORN_HISTORY);
+          }
+        } catch {
+          // ignore
+        }
       }
     }
 
@@ -235,16 +252,60 @@ export async function updateGarmentsCleanStatus(ids: string[], isClean: boolean)
   }
 }
 
+export async function getWornHistoryFromDb(): Promise<WornOutfitRecord[]> {
+  try {
+    const list = await db.wornHistory.orderBy('wornDate').reverse().toArray();
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+export async function logOutfitAsWornInDb(
+  record: WornOutfitRecord,
+  updatedGarments: Garment[]
+): Promise<void> {
+  try {
+    await db.transaction('rw', db.wornHistory, db.garments, async () => {
+      await db.wornHistory.put(record);
+      await db.garments.bulkPut(updatedGarments);
+    });
+    const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
+    void syncStateToServer(profile, updatedGarments);
+  } catch {
+    // Fallback silent
+  }
+}
+
+export async function deleteWornOutfitRecordFromDb(
+  recordId: string,
+  updatedGarments: Garment[]
+): Promise<void> {
+  try {
+    await db.transaction('rw', db.wornHistory, db.garments, async () => {
+      await db.wornHistory.delete(recordId);
+      await db.garments.bulkPut(updatedGarments);
+    });
+    const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
+    void syncStateToServer(profile, updatedGarments);
+  } catch {
+    // Fallback silent
+  }
+}
+
 export async function resetDatabaseToSeed(): Promise<{
   profile: BiometricProfile;
   garments: Garment[];
+  wornHistory: WornOutfitRecord[];
 }> {
   try {
-    await db.transaction('rw', db.garments, db.profiles, async () => {
+    await db.transaction('rw', db.garments, db.profiles, db.wornHistory, async () => {
       await db.garments.clear();
       await db.profiles.clear();
+      await db.wornHistory.clear();
       await db.profiles.put(DEFAULT_BIOMETRIC_PROFILE);
       await db.garments.bulkPut(SEED_WARDROBE_GARMENTS);
+      await db.wornHistory.bulkPut(SAMPLE_WORN_HISTORY);
     });
   } catch {
     // Ignore
@@ -253,6 +314,7 @@ export async function resetDatabaseToSeed(): Promise<{
   return {
     profile: DEFAULT_BIOMETRIC_PROFILE,
     garments: SEED_WARDROBE_GARMENTS,
+    wornHistory: SAMPLE_WORN_HISTORY,
   };
 }
 
@@ -261,11 +323,13 @@ export interface WardrobeBackupPayload {
   exportedAt: string;
   profile: BiometricProfile;
   garments: Garment[];
+  wornHistory?: WornOutfitRecord[];
 }
 
 export async function importWardrobeBackup(payload: WardrobeBackupPayload): Promise<{
   profile: BiometricProfile;
   garments: Garment[];
+  wornHistory: WornOutfitRecord[];
 }> {
   const normalizedProfile: BiometricProfile = {
     ...DEFAULT_BIOMETRIC_PROFILE,
@@ -280,15 +344,25 @@ export async function importWardrobeBackup(payload: WardrobeBackupPayload): Prom
       ...g,
       hsl,
       colorTemp,
+      wearCount: g.wearCount ?? 0,
+      lastWornDate: g.lastWornDate,
     };
   });
 
+  const normalizedWornHistory: WornOutfitRecord[] = Array.isArray(payload.wornHistory)
+    ? payload.wornHistory
+    : [];
+
   try {
-    await db.transaction('rw', db.garments, db.profiles, async () => {
+    await db.transaction('rw', db.garments, db.profiles, db.wornHistory, async () => {
       await db.garments.clear();
       await db.profiles.clear();
+      await db.wornHistory.clear();
       await db.profiles.put(normalizedProfile);
       await db.garments.bulkPut(normalizedGarments);
+      if (normalizedWornHistory.length > 0) {
+        await db.wornHistory.bulkPut(normalizedWornHistory);
+      }
     });
   } catch {
     // Ignore
@@ -299,5 +373,6 @@ export async function importWardrobeBackup(payload: WardrobeBackupPayload): Prom
   return {
     profile: normalizedProfile,
     garments: normalizedGarments,
+    wornHistory: normalizedWornHistory,
   };
 }

@@ -91,6 +91,8 @@ export interface Garment {
   size?: string;                    // Optional garment size (e.g. "M", "L", "38", "W32/L32", "42")
   isWishlistSandbox?: boolean;      // For testing hypothetical purchases
   imageDataUrl?: string;            // Optional user photo
+  wearCount?: number;               // How many times this piece has been worn (0+)
+  lastWornDate?: string;            // ISO date string when this piece was last worn
 }
 
 export type WeatherCondition = 'sunny_dry' | 'cloudy_windy' | 'rain_wet';
@@ -203,4 +205,19 @@ export interface GapAnalysisReport {
   orphanPieces: OrphanPieceAnalysis[];
   outfitCountsByGarmentId: Record<string, number>;
   recommendations: ArchetypeRecommendation[];
+}
+
+export interface WornOutfitRecord {
+  id: string;
+  wornDate: string; // ISO timestamp
+  outfitTitle: string;
+  garmentIds: string[];
+  garments: Garment[];
+  contextSummary?: {
+    temperatureC?: number;
+    weather?: WeatherCondition;
+    occasion?: OccasionType;
+    styleVibe?: StyleVibe;
+  };
+  totalScore?: number;
 }

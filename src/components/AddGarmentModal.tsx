@@ -426,7 +426,9 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                 className="w-full px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
               />
               {nameError && <p className="text-xs text-rose-400">{nameError}</p>}
-              <p className="text-xs text-zinc-400">{liveComputation.bio.trace}</p>
+              {liveComputation.bio.reasons?.[0] && (
+                <p className="text-xs text-zinc-400">{liveComputation.bio.reasons[0]}</p>
+              )}
             </div>
           </div>
 
