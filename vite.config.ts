@@ -14,9 +14,9 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
         manifest: {
           id: '/',
-          name: 'ATELIER BIOMETRIC — Deterministic Wardrobe & Gap-Analyzer',
-          short_name: 'AtelierBio',
-          description: '100% deterministische, regelbasierte Biometrie-Garderobe, täglicher Outfit-Generator und kombinatorischer Gap-Analyzer.',
+          name: 'Outfit-Planer — Dein Kleiderschrank',
+          short_name: 'OutfitPlaner',
+          description: 'Dein persönlicher Outfit-Planer & Kleiderschrank – kostenlos und offline nutzbar.',
           theme_color: '#09090b',
           background_color: '#09090b',
           display: 'standalone',

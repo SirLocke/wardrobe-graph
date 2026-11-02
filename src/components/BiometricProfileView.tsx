@@ -43,21 +43,25 @@ interface BiometricProfileViewProps {
 }
 
 const EYE_PRESETS = [
+  { name: 'Blau', hex: '#3B78A8' },
+  { name: 'Blaugrau', hex: '#526878' },
+  { name: 'Hellblau / Eisblau', hex: '#7BA7C7' },
   { name: 'Grün-Braun / Haselnuss', hex: '#6E7D4E' },
   { name: 'Grün / Graugrün', hex: '#4F6D5A' },
-  { name: 'Hellbraun / Bernstein', hex: '#8B6331' },
+  { name: 'Hellbraun / Bernstein', hex: '#8B6528' },
   { name: 'Dunkelbraun', hex: '#3B281E' },
-  { name: 'Blau / Blaugrau', hex: '#54728C' },
-  { name: 'Hellblau / Eisblau', hex: '#7BA7C7' },
 ];
 
 const HAIR_PRESETS = [
+  { name: 'Kupferblond / Goldbraun', hex: '#8C6244' },
   { name: 'Dunkelblond / Aschbraun', hex: '#5A4D41' },
   { name: 'Mittelbraun / Kastanie', hex: '#4A3222' },
   { name: 'Dunkelbraun / Schwarzbraun', hex: '#231C18' },
   { name: 'Schwarz', hex: '#121214' },
   { name: 'Blond / Honigblond', hex: '#9C7A4C' },
+  { name: 'Hellblond / Platin', hex: '#D8C39D' },
   { name: 'Grau / Silbergrau', hex: '#7A7D82' },
+  { name: 'Kupfer / Rotbraun', hex: '#8C3D26' },
 ];
 
 type SelfieTarget = 'skin' | 'eye' | 'hair';

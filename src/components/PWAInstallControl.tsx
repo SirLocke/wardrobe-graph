@@ -80,10 +80,10 @@ export const PWAInstallButton: React.FC = () => {
           }
         }}
         className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800 hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-        title="App als Offline-PWA installieren"
+        title="Als App auf dem Startbildschirm speichern"
       >
         <Download className="w-3.5 h-3.5 text-amber-400" />
-        <span>PWA installieren</span>
+        <span>App installieren</span>
       </button>
 
       {showGuideModal && (
@@ -94,10 +94,23 @@ export const PWAInstallButton: React.FC = () => {
           aria-labelledby="pwa-install-title"
         >
           <div className="w-full max-w-md rounded-xl bg-zinc-900 border border-zinc-800 p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 id="pwa-install-title" className="text-base font-semibold text-zinc-100">
-                Offline-App installieren (PWA)
-              </h3>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <img
+                  src="/icon.svg"
+                  alt="Outfit-Planer App Icon"
+                  referrerPolicy="no-referrer"
+                  className="w-11 h-11 rounded-xl border border-zinc-700/80 shadow-md shrink-0"
+                />
+                <div>
+                  <h3 id="pwa-install-title" className="text-base font-semibold text-zinc-100">
+                    Outfit-Planer als App speichern
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    Kostenlos · Funktioniert auch komplett offline
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowGuideModal(false)}
@@ -107,9 +120,8 @@ export const PWAInstallButton: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="mt-2 text-sm text-zinc-400 leading-relaxed">
-              ATELIER BIOMETRIC speichert deine gesamte Garderobe und dein Biometrie-Profil lokal in{' '}
-              <span className="text-zinc-200 font-medium">IndexedDB</span> und funktioniert zu 100% offline.
+            <p className="mt-3 text-sm text-zinc-400 leading-relaxed">
+              Dein Kleiderschrank und deine Farb-Einstellungen werden direkt auf deinem Gerät gespeichert und funktionieren jederzeit auch ohne Internet.
             </p>
             {isIOS ? (
               <div className="mt-4 space-y-2 text-xs text-zinc-300 bg-zinc-950 border border-zinc-800/80 rounded-lg p-3.5">
@@ -118,8 +130,8 @@ export const PWAInstallButton: React.FC = () => {
               </div>
             ) : (
               <div className="mt-4 space-y-2 text-xs text-zinc-300 bg-zinc-950 border border-zinc-800/80 rounded-lg p-3.5">
-                <p>1. Klicke in der Adressleiste deines Browsers auf das <strong>Installieren-Icon</strong> (rechts neben der URL).</p>
-                <p>2. Oder öffne das Browser-Menü und wähle <strong>App installieren</strong>.</p>
+                <p>1. Klicke in der Adressleiste deines Browsers auf das <strong>Installieren-Icon</strong> (rechts neben der Adresse).</p>
+                <p>2. Oder öffne das Browser-Menü und wähle <strong>App installieren / Zum Startbildschirm hinzufügen</strong>.</p>
               </div>
             )}
             <button

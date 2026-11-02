@@ -1,10 +1,109 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" rx="112" fill="#09090b"/>
-  <rect x="24" y="24" width="464" height="464" rx="92" stroke="#27272a" stroke-width="8"/>
-  <!-- Stylized Hanger & Color Prism Vector -->
-  <path d="M256 128C273.673 128 288 142.327 288 160C288 174.458 278.414 186.678 265.249 190.648L256 193.438V220L396 302C408.374 309.247 416 322.517 416 336.854C416 359.578 397.578 378 374.854 378H137.146C114.422 378 96 359.578 96 336.854C96 322.517 103.626 309.247 116 302L256 220" stroke="#f4f4f5" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="176" cy="330" r="18" fill="#8F9779"/>
-  <circle cx="230" cy="330" r="18" fill="#D5C7B8"/>
-  <circle cx="284" cy="330" r="18" fill="#5E2129"/>
-  <circle cx="338" cy="330" r="18" fill="#1B263B"/>
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#18181B"/>
+      <stop offset="55%" stop-color="#0D0D10"/>
+      <stop offset="100%" stop-color="#070709"/>
+    </linearGradient>
+    <radialGradient id="amberGlow" cx="50%" cy="28%" r="58%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="160" y1="72" x2="352" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="45%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="jacketLeft" x1="120" y1="165" x2="260" y2="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F4F4F5"/>
+      <stop offset="100%" stop-color="#D4D4D8"/>
+    </linearGradient>
+    <linearGradient id="jacketRight" x1="252" y1="165" x2="392" y2="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E4E4E7"/>
+      <stop offset="100%" stop-color="#A1A1AA"/>
+    </linearGradient>
+    <linearGradient id="innerTee" x1="216" y1="185" x2="296" y2="372" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9CA986"/>
+      <stop offset="100%" stop-color="#6F7D5C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle App Icon Background -->
+  <rect width="512" height="512" rx="116" fill="url(#bgGrad)"/>
+  <rect width="512" height="512" rx="116" fill="url(#amberGlow)"/>
+
+  <!-- Subtle Studio Frame Rim -->
+  <rect x="20" y="20" width="472" height="472" rx="98" stroke="#27272A" stroke-width="4"/>
+  <rect x="24" y="24" width="464" height="464" rx="94" stroke="#FBBF24" stroke-opacity="0.18" stroke-width="2"/>
+
+  <!-- Golden Coat Hanger Hook & Shoulder Bridge -->
+  <path
+    d="M256 76C275.882 76 292 91.67 292 111C292 126.4 281.4 139.2 266.5 143.8L256 147V168"
+    stroke="url(#goldGrad)"
+    stroke-width="18"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M174 192L256 154L338 192"
+    stroke="url(#goldGrad)"
+    stroke-width="16"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- Inner Layered Base-Top (Sage Green) -->
+  <path
+    d="M206 188L256 206L306 188V372H206V188Z"
+    fill="url(#innerTee)"
+  />
+  <path
+    d="M218 188C230 206 282 206 294 188"
+    stroke="#E4E4E7"
+    stroke-opacity="0.55"
+    stroke-width="6"
+    stroke-linecap="round"
+  />
+
+  <!-- Left Tailored Overshirt / Jacket Panel -->
+  <path
+    d="M176 178L218 164L238 242L234 374H166V242L144 334L108 324L132 204C135 191 145 182 158 179L176 178Z"
+    fill="url(#jacketLeft)"
+    stroke="#18181B"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+  <!-- Left Lapel Fold -->
+  <path
+    d="M218 164L192 214L212 220L238 258"
+    stroke="#52525B"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- Right Tailored Overshirt / Jacket Panel -->
+  <path
+    d="M336 178L294 164L274 242L278 374H346V242L368 334L404 324L380 204C377 191 367 182 354 179L336 178Z"
+    fill="url(#jacketRight)"
+    stroke="#18181B"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+  <!-- Right Lapel Fold -->
+  <path
+    d="M294 164L320 214L300 220L274 258"
+    stroke="#3F3F46"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Subtle Breast Pocket on Right Panel -->
+  <rect x="294" y="266" width="34" height="36" rx="6" fill="#D4D4D8" stroke="#52525B" stroke-width="4"/>
+
+  <!-- Signature 4-Segment Outfit Color Harmony Bar at Bottom -->
+  <rect x="116" y="416" width="64" height="20" rx="10" fill="#8F9779"/>
+  <rect x="188" y="416" width="64" height="20" rx="10" fill="#E3D4C0"/>
+  <rect x="260" y="416" width="64" height="20" rx="10" fill="#FBBF24"/>
+  <rect x="332" y="416" width="64" height="20" rx="10" fill="#60A5FA"/>
 </svg>

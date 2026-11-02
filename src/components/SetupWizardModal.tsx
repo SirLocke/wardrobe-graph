@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -79,7 +79,7 @@ Analysiere anhand des Fotos meine Farb- und Stilwerte und antworte AUSSCHLIESSLI
   "skinHex": "#D4A38B",
   "hairColorName": "Kupferblond / Goldbraun",
   "hairHex": "#8C6244",
-  "eyeColorName": "Blau-Grau",
+  "eyeColorName": "Blaugrau",
   "eyeHex": "#526878",
   "contrastLevel": "medium",
   "chromaLevel": "moderate",
@@ -247,12 +247,13 @@ const HAIR_PRESETS = [
 ];
 
 const EYE_PRESETS = [
-  { name: 'Blau-Grau', hex: '#526878' },
+  { name: 'Blau', hex: '#3B78A8' },
+  { name: 'Blaugrau', hex: '#526878' },
+  { name: 'Hellblau / Eisblau', hex: '#7BA7C7' },
   { name: 'Grün-Braun / Haselnuss', hex: '#6E7D4E' },
-  { name: 'Dunkelbraun', hex: '#4A3525' },
-  { name: 'Blau / Blaugrau', hex: '#5B7C99' },
-  { name: 'Grün / Graugrün', hex: '#6B7B6E' },
+  { name: 'Grün / Graugrün', hex: '#4F6D5A' },
   { name: 'Hellbraun / Bernstein', hex: '#8B6528' },
+  { name: 'Dunkelbraun', hex: '#3B281E' },
 ];
 
 const ACCESSORY_QUICK_ITEMS: GarmentSubcategory[] = [
@@ -266,6 +267,7 @@ const ACCESSORY_QUICK_ITEMS: GarmentSubcategory[] = [
   'scarf',
   'cap_beanie',
   'socks',
+  'socks_short',
 ];
 
 const HAIRCUT_OPTIONS: {
@@ -316,6 +318,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 }) => {
   const isEn = locale === 'en';
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const wasOpenRef = useRef<boolean>(false);
+  const hasUserCustomizedScopesRef = useRef<boolean>(false);
 
   const [selectedStartMode, setSelectedStartMode] = useState<WizardStartMode>('own_empty');
   const [draftProfile, setDraftProfile] = useState<BiometricProfile>(currentProfile);
@@ -416,7 +420,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         nextProfile.eyeHex = parsed.eyeHex;
       }
       if (parsed.eyeColorName) {
-        nextProfile.eyeColorName = String(parsed.eyeColorName);
+        const rawEyeName = String(parsed.eyeColorName).trim();
+        nextProfile.eyeColorName =
+          rawEyeName.toLowerCase() === 'blau-grau' ? 'Blaugrau' : rawEyeName;
       }
       if (parsed.contrastLevel && ['low', 'medium', 'high'].includes(parsed.contrastLevel)) {
         nextProfile.contrastLevel = parsed.contrastLevel;
@@ -427,15 +433,23 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
       if (parsed.haircutStyle) {
         nextProfile.haircutStyle = parsed.haircutStyle;
       }
-      if (Array.isArray(parsed.wardrobeScopes) && parsed.wardrobeScopes.length > 0) {
+      // Only let AI pre-fill wardrobeScopes initially if the user hasn't manually overridden them yet
+      if (
+        !hasUserCustomizedScopesRef.current &&
+        Array.isArray(parsed.wardrobeScopes) &&
+        parsed.wardrobeScopes.length > 0
+      ) {
         const validScopes = parsed.wardrobeScopes.filter((s: string) =>
           ['womenswear', 'menswear', 'unisex'].includes(s)
-        );
+        ) as WardrobeScopeTarget[];
         if (validScopes.length > 0) {
           setSelectedScopes(validScopes);
           nextProfile.wardrobeScopes = validScopes;
           nextProfile.wardrobeScope = deriveScopeFromTargets(validScopes);
         }
+      } else {
+        nextProfile.wardrobeScopes = selectedScopes;
+        nextProfile.wardrobeScope = deriveScopeFromTargets(selectedScopes);
       }
       if (
         parsed.styleVibe &&
@@ -486,7 +500,16 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) {
+      // Wizard is already open: never overwrite user's edits or selectedScopes when switching tabs
+      return;
+    }
+    wasOpenRef.current = true;
+    hasUserCustomizedScopesRef.current = false;
     setStep(1);
     setDraftProfile(currentProfile);
     setSelectedScopes(normalizeWardrobeScopes(currentProfile));
@@ -515,6 +538,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   if (!isOpen) return null;
 
   const handleToggleScope = (scope: WardrobeScopeTarget) => {
+    hasUserCustomizedScopesRef.current = true;
     setSelectedScopes((prev) => {
       let next: WardrobeScopeTarget[];
       if (prev.includes(scope)) {
@@ -535,6 +559,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   };
 
   const handleSelectPreset = (presetKey: WardrobePresetKey) => {
+    hasUserCustomizedScopesRef.current = true;
     setSelectedStartMode(presetKey);
     const preset = WARDROBE_PRESETS[presetKey];
     let targetScopes: WardrobeScopeTarget[];
@@ -1176,7 +1201,9 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <div className="flex flex-wrap gap-2">
                   {EYE_PRESETS.map((eye) => {
                     const active =
-                      draftProfile.eyeHex?.toLowerCase() === eye.hex.toLowerCase();
+                      draftProfile.eyeHex?.toLowerCase() === eye.hex.toLowerCase() ||
+                      draftProfile.eyeColorName?.toLowerCase().replace('-', '') ===
+                        eye.name.toLowerCase().replace('-', '');
                     return (
                       <button
                         key={eye.hex}
@@ -1204,7 +1231,10 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   })}
                   {/* Dynamic chip if custom / KI eye color does not match any preset */}
                   {!EYE_PRESETS.some(
-                    (e) => e.hex.toLowerCase() === draftProfile.eyeHex?.toLowerCase()
+                    (e) =>
+                      e.hex.toLowerCase() === draftProfile.eyeHex?.toLowerCase() ||
+                      e.name.toLowerCase().replace('-', '') ===
+                        draftProfile.eyeColorName?.toLowerCase().replace('-', '')
                   ) && draftProfile.eyeHex && (
                     <button
                       type="button"
@@ -1565,11 +1595,37 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 </div>
               </div>
 
-              {/* 1-Click Garment Grid */}
-              <div className="space-y-1.5">
-                <span className="text-xs font-medium text-zinc-300">
-                  2. Tippe auf ein Kleidungsstück, um es in deinen Schrank zu legen:
-                </span>
+              {/* 1-Click Garment Grid with inline Scope Switcher so user can override anytime */}
+              <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-zinc-300">
+                    2. Tippe auf ein Kleidungsstück, um es in deinen Schrank zu legen:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-zinc-500 mr-0.5">Auswahl:</span>
+                    {(['menswear', 'womenswear', 'unisex'] as WardrobeScopeTarget[]).map(
+                      (scopeKey) => {
+                        const isChecked = selectedScopes.includes(scopeKey);
+                        const meta = WARDROBE_MULTI_SCOPE_META[scopeKey];
+                        return (
+                          <button
+                            key={scopeKey}
+                            type="button"
+                            onClick={() => handleToggleScope(scopeKey)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                              isChecked
+                                ? 'bg-amber-500/15 border-amber-400 text-amber-200 font-semibold'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3 h-3 text-amber-400" />}
+                            <span>{isEn ? meta.labelEn : meta.labelDe}</span>
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {quickItems
                     .filter((sub) => SMART_SUBCATEGORY_DEFAULTS[sub]?.category !== 'accessory')

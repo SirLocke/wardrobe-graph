@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Compass,
   Grid,
@@ -102,6 +102,10 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   }, [activeTab]);
 
+  const isAnyModalOpenRef = useRef(false);
+  isAnyModalOpenRef.current =
+    isModalOpen || isImportExportOpen || isSetupWizardOpen || isSettingsOpen;
+
   const handleRefreshFromServer = async () => {
     const latest = await pullStateFromServer();
     if (latest) {
@@ -110,7 +114,7 @@ export default function App() {
     }
   };
 
-  // Load or seed from IndexedDB / MCP Server on mount + sync on window focus
+  // Load or seed from IndexedDB / MCP Server on mount + sync on window focus (only when no modal is open)
   useEffect(() => {
     let mounted = true;
     loadOrSeedWardrobeData().then(async (data) => {
@@ -127,6 +131,7 @@ export default function App() {
     });
 
     const onFocus = () => {
+      if (isAnyModalOpenRef.current) return;
       void handleRefreshFromServer();
     };
     window.addEventListener('focus', onFocus);
@@ -452,16 +457,22 @@ export default function App() {
       {/* Top Bar Contract: Strictly 3 zones separated by responsive gap */}
       <header className="sticky top-0 z-30 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/90">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-6 md:gap-8 px-3.5 sm:px-6 h-14">
-          {/* Zone 1: Single text element wordmark */}
+          {/* Zone 1: Brand App Icon + Wordmark */}
           <a
             href="#stylist"
             onClick={(e) => {
               e.preventDefault();
               setActiveTab('stylist');
             }}
-            className="text-sm sm:text-base md:text-lg font-bold tracking-tight text-zinc-100 whitespace-nowrap shrink-0 hover:text-amber-400 transition-colors"
+            className="inline-flex items-center gap-2.5 text-sm sm:text-base md:text-lg font-bold tracking-tight text-zinc-100 whitespace-nowrap shrink-0 hover:text-amber-400 transition-colors"
           >
-            {isEn ? 'OUTFIT PLANNER' : 'OUTFIT-PLANER'}
+            <img
+              src="/icon.svg"
+              alt=""
+              referrerPolicy="no-referrer"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-sm border border-zinc-800/80 shrink-0"
+            />
+            <span>{isEn ? 'OUTFIT PLANNER' : 'OUTFIT-PLANER'}</span>
           </a>
 
           {/* Zone 2: 4 concise single-line text navigation links */}
@@ -657,7 +668,13 @@ export default function App() {
 
       {/* Quiet Footer with Quick Actions */}
       <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 mt-12 pt-6 border-t border-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 text-xs text-zinc-500">
-        <div className="space-y-0.5">
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/icon.svg"
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-6 h-6 rounded-md border border-zinc-800 shrink-0"
+          />
           <p className="text-zinc-400 font-medium">
             {isEn
               ? 'Outfit Planner & Wardrobe · Free & works offline'
