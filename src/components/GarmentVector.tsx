@@ -4,6 +4,7 @@ import { GarmentSubcategory, NecklineType, TextureType } from '../types/wardrobe
 export interface GarmentVectorProps {
   type: GarmentSubcategory;
   colorHex: string;
+  accentColorHex?: string;
   texture?: TextureType;
   neckline?: NecklineType;
   className?: string;
@@ -22,6 +23,7 @@ export interface GarmentVectorProps {
 export const GarmentVector: React.FC<GarmentVectorProps> = ({
   type,
   colorHex,
+  accentColorHex,
   texture = 'smooth_cotton',
   neckline,
   className = 'w-16 h-16',
@@ -30,6 +32,9 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
   const uid = useId().replace(/:/g, '');
   const patternId = `tex-${uid}`;
   const gradId = `grad-${uid}`;
+  const hasAccent = Boolean(
+    accentColorHex && accentColorHex.toUpperCase() !== colorHex.toUpperCase()
+  );
 
   const isVeryDark = isHexDark(colorHex);
   const strokeColor = isVeryDark ? 'rgba(255,255,255,0.34)' : 'rgba(0,0,0,0.42)';
@@ -800,6 +805,14 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               strokeWidth="2.1"
               strokeLinejoin="round"
             />
+            {!isOverlay && hasAccent && (
+              <path
+                d="M32 18 L44 18 L43 44 Q37.5 47 32 44 Z"
+                fill={accentColorHex}
+                stroke={strokeColor}
+                strokeWidth="1.5"
+              />
+            )}
             {/* Block Heel & Sole */}
             <path
               d="M19 72 L35 72 L35 80 L19 80 Z M52 72 L89 72 L89 76 L52 76 Z"
@@ -822,8 +835,23 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               strokeWidth="2.1"
               strokeLinejoin="round"
             />
+            {!isOverlay && hasAccent && (
+              <path
+                d="M73 54.5 L85 57 C90 59 91 64 90 69 L72 69 Q71 61 73 54.5 Z"
+                fill={accentColorHex}
+                stroke={strokeColor}
+                strokeWidth="1.6"
+              />
+            )}
             {/* Mary-Jane Arch Strap */}
-            <line x1="48" y1="50" x2="48" y2="62" stroke={strokeColor} strokeWidth="2.4" />
+            <line
+              x1="48"
+              y1="50"
+              x2="48"
+              y2="62"
+              stroke={!isOverlay && hasAccent ? accentColorHex : strokeColor}
+              strokeWidth="2.8"
+            />
             <rect x="13" y="68" width="77" height="4" rx="1.5" fill="#18181b" stroke={strokeColor} strokeWidth="1.4" />
           </g>
         );
@@ -834,8 +862,15 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
             {/* Architectural Leather Mule / Strappy Sandal */}
             <rect x="14" y="66" width="74" height="6" rx="2.5" fill="#27201C" stroke={strokeColor} strokeWidth="1.8" />
             <path
-              d="M28 66 C30 50 44 48 48 66 M56 66 C58 53 74 53 78 66"
+              d="M28 66 C30 50 44 48 48 66"
               fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M56 66 C58 53 74 53 78 66"
+              fill={!isOverlay && hasAccent ? accentColorHex : fillUrl}
               stroke={strokeColor}
               strokeWidth="2.2"
               strokeLinejoin="round"
@@ -847,7 +882,12 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
         return (
           <g>
             {!isOverlay && (
-              <path d="M31 22 L31 17 L35 17 L35 22 M51 22 L51 17 L54 17 L54 22" fill="none" stroke={strokeColor} strokeWidth="1.6" />
+              <path
+                d="M31 22 L31 18 L35 18 L35 22 M50 22 L50 18 L53 18 L53 22"
+                fill="none"
+                stroke={hasAccent ? accentColorHex : strokeColor}
+                strokeWidth="1.6"
+              />
             )}
             <path
               d="M29 22 L54 22 L56 50 L82 60 C87 62 89 67 89 73 L89 78 L17 78 L17 67 L25 50 Z"
@@ -858,7 +898,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
             />
             <path
               d="M35 22 L48 22 L47 47 Q41 50 34 47 Z"
-              fill="rgba(0,0,0,0.32)"
+              fill={!isOverlay && hasAccent ? accentColorHex : 'rgba(0,0,0,0.32)'}
               stroke={detailStroke}
               strokeWidth="1.5"
             />
@@ -1127,29 +1167,47 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
       case 'scarf':
         return (
           <g>
-            {/* 2D Flat Folded Neck Wrap */}
-            <rect x="24" y="22" width="52" height="18" rx="6" fill={fillUrl} stroke={strokeColor} strokeWidth="2.2" />
-            {/* Left drape */}
+            {/* Left hanging drape over chest */}
             <path
-              d="M32 38 L30 82 L45 82 L47 38 Z"
+              d="M24 23 L20 80 L39 80 L43 24 Z"
               fill={fillUrl}
               stroke={strokeColor}
-              strokeWidth="2"
+              strokeWidth="2.1"
+              strokeLinejoin="round"
             />
-            {/* Right drape */}
+            {/* Right hanging drape (slightly shorter for natural asymmetry) */}
             <path
-              d="M53 38 L55 74 L68 74 L66 38 Z"
+              d="M56 24 L59 70 L77 70 L74 23 Z"
               fill={fillUrl}
               stroke={strokeColor}
-              strokeWidth="2"
+              strokeWidth="2.1"
+              strokeLinejoin="round"
             />
-            {/* Fringe details */}
-            <line x1="33" y1="82" x2="33" y2="87" stroke={strokeColor} strokeWidth="1.2" />
-            <line x1="38" y1="82" x2="38" y2="87" stroke={strokeColor} strokeWidth="1.2" />
-            <line x1="43" y1="82" x2="43" y2="87" stroke={strokeColor} strokeWidth="1.2" />
-            <line x1="57" y1="74" x2="57" y2="79" stroke={strokeColor} strokeWidth="1.2" />
-            <line x1="61" y1="74" x2="61" y2="79" stroke={strokeColor} strokeWidth="1.2" />
-            <line x1="65" y1="74" x2="65" y2="79" stroke={strokeColor} strokeWidth="1.2" />
+            {/* Cozy Rounded Collar Loop / Neck Wrap on top */}
+            <path
+              d="M16 14 C16 9 84 9 84 14 L82 26 C82 32 18 32 18 26 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.3"
+              strokeLinejoin="round"
+            />
+            {/* Subtle fold crease inside neck loop */}
+            <path
+              d="M26 20 Q50 25 74 20"
+              fill="none"
+              stroke={detailStroke}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            {/* Fringe details at bottom of both ends */}
+            <line x1="23" y1="80" x2="22" y2="87" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="28" y1="80" x2="27.5" y2="87" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="33" y1="80" x2="33" y2="87" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="37" y1="80" x2="37" y2="87" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="62" y1="70" x2="62" y2="77" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="67" y1="70" x2="67" y2="77" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="72" y1="70" x2="72.5" y2="77" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="75.5" y1="70" x2="76" y2="77" stroke={strokeColor} strokeWidth="1.4" strokeLinecap="round" />
           </g>
         );
 
@@ -1279,6 +1337,44 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               strokeWidth="2.1"
               strokeLinejoin="round"
             />
+            {/* Colored shoe accents (Heel tab + Side stripe / Loafer saddle strap) */}
+            {!isOverlay && hasAccent && (
+              isDerby ? (
+                <path
+                  d="M44 41 L55 48 L50 66 L39 58 Z"
+                  fill={accentColorHex}
+                  stroke={strokeColor}
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <g>
+                  {/* Heel Counter / Back Tab */}
+                  <path
+                    d="M19 41 L28 39.2 L26.5 49 L14.5 50.5 Z"
+                    fill={accentColorHex}
+                    stroke={strokeColor}
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                  />
+                  {/* Iconic Sneaker Quarter Stripe */}
+                  <path
+                    d="M31 54 L56 49.5 L61 54.5 L34 60.5 Z"
+                    fill={accentColorHex}
+                    stroke={strokeColor}
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                  />
+                  {isChunky && (
+                    <path
+                      d="M40 62.5 L68 57.5 L72 61 L43 66 Z"
+                      fill={accentColorHex}
+                      opacity="0.85"
+                    />
+                  )}
+                </g>
+              )
+            )}
             <path d="M13 55 Q24 55 27 69 M56 47 Q62 59 78 60" fill="none" stroke={detailStroke} strokeWidth="1.4" />
             <rect
               x="12"

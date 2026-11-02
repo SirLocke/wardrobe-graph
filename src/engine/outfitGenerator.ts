@@ -8,7 +8,7 @@ import {
   OutfitContext,
   TextureType,
 } from '../types/wardrobe';
-import { getHueDistance, isWardrobeNeutral, scoreGarmentBiometrics } from './colorMath';
+import { getHueDistance, hexToHsl, isWardrobeNeutral, scoreGarmentBiometrics } from './colorMath';
 
 const FORMALITY_WINDOWS: Record<OccasionType, [number, number]> = {
   casual: [1, 3],
@@ -105,6 +105,19 @@ export function passesHardContextFilter(
     return false;
   }
 
+  // Accessories do not use formality or thermalRating levels — only user toggles & weather sanity
+  if (garment.category === 'accessory') {
+    if (!isLocked) {
+      if (context.includeAccessories === false) return false;
+      if (context.excludedAccessorySubcategories?.includes(garment.subcategory)) {
+        return false;
+      }
+      if (garment.subcategory === 'sunglasses' && context.weather === 'rain_wet') return false;
+      if (garment.subcategory === 'scarf' && context.temperatureC >= 22) return false;
+    }
+    return true;
+  }
+
   // 2. Weather filter (Rain/Wet)
   if (context.weather === 'rain_wet' && !isLocked) {
     if (
@@ -125,23 +138,27 @@ export function passesHardContextFilter(
     }
   }
 
-  // 3. Occasion Formality Window
+  // 3. Occasion Formality Window (supports multi-select formalities[])
   if (!isLocked) {
     const [minFormality, maxFormality] = FORMALITY_WINDOWS[context.occasion] ?? [2, 4];
     const effectiveMin =
-      garment.category === 'accessory'
-        ? Math.max(1, minFormality - 1)
-        : garment.category === 'base_top' && context.temperatureC <= 20
+      garment.category === 'base_top' && context.temperatureC <= 20
         ? Math.max(1, minFormality - 1)
         : minFormality;
     const effectiveMax =
-      garment.category === 'accessory'
-        ? Math.min(5, maxFormality + 1)
-        : context.styleVibe === 'tailored_chic'
+      context.styleVibe === 'tailored_chic'
         ? Math.max(maxFormality, 4)
         : maxFormality;
 
-    if (garment.formality < effectiveMin || garment.formality > effectiveMax) {
+    const activeFormalities =
+      garment.formalities && garment.formalities.length > 0
+        ? garment.formalities
+        : [garment.formality];
+
+    const matchesFormality = activeFormalities.some(
+      (f) => f >= effectiveMin && f <= effectiveMax
+    );
+    if (!matchesFormality) {
       return false;
     }
 
@@ -153,39 +170,44 @@ export function passesHardContextFilter(
     }
   }
 
-  // 4. Temperature Thermal Rating filter per slot
+  // 4. Temperature Thermal Rating filter per slot (supports multi-select thermalRatings[])
   if (!isLocked) {
     const temp = context.temperatureC;
+    const activeThermals =
+      garment.thermalRatings && garment.thermalRatings.length > 0
+        ? garment.thermalRatings
+        : [garment.thermalRating];
+
     if (temp >= 27) {
-      if (garment.category === 'base_top' && garment.thermalRating > 2) return false;
-      if (garment.category === 'bottom' && garment.thermalRating > 2) return false;
+      if (garment.category === 'base_top' && !activeThermals.some((t) => t <= 2)) return false;
+      if (garment.category === 'bottom' && !activeThermals.some((t) => t <= 2)) return false;
     } else if (temp >= 21) {
-      if (garment.category === 'base_top' && garment.thermalRating > 2) return false;
-      if (garment.category === 'bottom' && garment.thermalRating > 3) return false;
+      if (garment.category === 'base_top' && !activeThermals.some((t) => t <= 2)) return false;
+      if (garment.category === 'bottom' && !activeThermals.some((t) => t <= 3)) return false;
     } else if (temp >= 14 && temp <= 20) {
-      if (garment.category === 'base_top' && garment.thermalRating > 3) return false;
-      if (garment.category === 'mid_layer' && (garment.thermalRating < 2 || garment.thermalRating > 3)) {
+      if (garment.category === 'base_top' && !activeThermals.some((t) => t <= 3)) return false;
+      if (
+        garment.category === 'mid_layer' &&
+        !activeThermals.some((t) => t >= 2 && t <= 3)
+      ) {
         return false;
       }
-      if (garment.category === 'bottom' && (garment.thermalRating < 2 || garment.thermalRating > 3)) {
+      if (
+        garment.category === 'bottom' &&
+        !activeThermals.some((t) => t >= 2 && t <= 3)
+      ) {
         return false;
       }
     } else {
-      if (garment.category === 'outerwear' && garment.thermalRating < 3) return false;
-      if (garment.category === 'bottom' && garment.thermalRating < 3) return false;
-      if (garment.subcategory === 'shorts' || garment.subcategory === 'mini_skirt' || garment.subcategory === 'sandal_strappy') {
+      if (garment.category === 'outerwear' && !activeThermals.some((t) => t >= 3)) return false;
+      if (garment.category === 'bottom' && !activeThermals.some((t) => t >= 3)) return false;
+      if (
+        garment.subcategory === 'shorts' ||
+        garment.subcategory === 'mini_skirt' ||
+        garment.subcategory === 'sandal_strappy'
+      ) {
         return false;
       }
-    }
-
-    // Accessory weather & user configuration logic
-    if (garment.category === 'accessory') {
-      if (context.includeAccessories === false) return false;
-      if (context.excludedAccessorySubcategories?.includes(garment.subcategory)) {
-        return false;
-      }
-      if (garment.subcategory === 'sunglasses' && context.weather === 'rain_wet') return false;
-      if (garment.subcategory === 'scarf' && temp >= 22) return false;
     }
   }
 
@@ -559,6 +581,28 @@ export function scoreOutfitCombination(
           traces.push(`Accessoire (${accessoryItem.name}): Kühle Optik unterstreicht deinen Teint`);
         }
       }
+    }
+  }
+
+  // Footwear accent color echo bonus (e.g. white sneakers with green/burgundy/navy accent matching top or bottom)
+  const footwearItem = coreItems.find((i) => i.category === 'footwear');
+  if (footwearItem && footwearItem.accentColorHex) {
+    const accentHsl = hexToHsl(footwearItem.accentColorHex);
+    const otherCoreItems = coreItems.filter((i) => i.id !== footwearItem.id);
+    const echoedItem = otherCoreItems.find(
+      (other) =>
+        (footwearItem.accentColorName &&
+          other.colorName.toLowerCase() === footwearItem.accentColorName.toLowerCase()) ||
+        (Math.abs(accentHsl.l - other.hsl.l) < 25 &&
+          getHueDistance(accentHsl.h, other.hsl.h) < 28)
+    );
+    if (echoedItem) {
+      colorHarmony = Math.min(20, colorHarmony + 3);
+      traces.push(
+        `Farb-Echo: Akzentfarbe der Schuhe (${
+          footwearItem.accentColorName || footwearItem.accentColorHex
+        }) greift den Farbton von ${echoedItem.name} harmonisch auf`
+      );
     }
   }
 

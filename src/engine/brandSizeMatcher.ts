@@ -4,6 +4,7 @@ import {
   BrandSizeRule,
   Garment,
   GarmentCategory,
+  GarmentSubcategory,
 } from '../types/wardrobe';
 
 export const POPULAR_BRANDS: string[] = [
@@ -207,6 +208,9 @@ export function matchesGarmentSearch(
 
   const matchName = garment.name.toLowerCase().includes(q);
   const matchColor = garment.colorName.toLowerCase().includes(q);
+  const matchAccentColor = garment.accentColorName
+    ? garment.accentColorName.toLowerCase().includes(q)
+    : false;
   const subLabel = subcategoryLabel || SUBCATEGORY_LABELS[garment.subcategory] || '';
   const matchSub = subLabel.toLowerCase().includes(q);
   const matchSize = garment.size
@@ -221,7 +225,91 @@ export function matchesGarmentSearch(
         (normQueryBrand.length >= 2 && normGarmentBrand.includes(normQueryBrand)))
   );
 
-  return matchName || matchColor || matchSub || matchSize || matchBrand;
+  return matchName || matchColor || matchAccentColor || matchSub || matchSize || matchBrand;
+}
+
+/**
+ * Builds the standard auto-generated garment name from subcategory, base color, and optional accent color.
+ */
+export function buildDefaultGarmentName(
+  subcategory: GarmentSubcategory,
+  colorName: string,
+  accentColorName?: string
+): string {
+  const baseSubLabel = (SUBCATEGORY_LABELS[subcategory] || subcategory).split(' (')[0].trim();
+  const cleanColor = colorName.replace(' (Test)', '').trim();
+  const cleanAccent = accentColorName ? accentColorName.replace(' (Test)', '').trim() : '';
+  if (cleanAccent && cleanAccent.toLowerCase() !== cleanColor.toLowerCase()) {
+    return `${baseSubLabel} ${cleanColor} / ${cleanAccent}`;
+  }
+  return `${baseSubLabel} ${cleanColor}`;
+}
+
+/**
+ * Checks if a garment's current name is still an untouched auto-generated default name
+ * (e.g. "Hoodie Salbeigrün", "hoodie Salbeigrün", "Schlichte Sneaker Off-White / Navy")
+ * vs. a custom or imported user-defined name (e.g. "Mein Lieblings-Hoodie", "Nike Tech Fleece").
+ */
+export function isDefaultGarmentName(
+  currentName: string,
+  currentSubcategory: GarmentSubcategory,
+  currentColorName: string,
+  currentAccentColorName?: string
+): boolean {
+  const trimmed = currentName.trim();
+  if (!trimmed) return true;
+
+  const lower = trimmed.toLowerCase();
+  const cleanColor = currentColorName.replace(' (Test)', '').trim().toLowerCase();
+  const cleanAccent = currentAccentColorName
+    ? currentAccentColorName.replace(' (Test)', '').trim().toLowerCase()
+    : '';
+
+  const expectedWithAccent = buildDefaultGarmentName(
+    currentSubcategory,
+    currentColorName,
+    currentAccentColorName
+  ).toLowerCase();
+  const expectedWithoutAccent = buildDefaultGarmentName(
+    currentSubcategory,
+    currentColorName
+  ).toLowerCase();
+
+  if (lower === expectedWithAccent || lower === expectedWithoutAccent) {
+    return true;
+  }
+
+  // Also check raw enum fallback from import (e.g. "hoodie Salbeigrün") or full label
+  const fullSubLabel = (SUBCATEGORY_LABELS[currentSubcategory] || '').trim().toLowerCase();
+  const rawSub = currentSubcategory.toLowerCase();
+  if (
+    lower === `${fullSubLabel} ${cleanColor}` ||
+    lower === `${rawSub} ${cleanColor}` ||
+    (cleanAccent &&
+      (lower === `${fullSubLabel} ${cleanColor} / ${cleanAccent}` ||
+        lower === `${rawSub} ${cleanColor} / ${cleanAccent}`))
+  ) {
+    return true;
+  }
+
+  // Check if it matches "<AnyDefaultSubcategoryLabel> <currentColorName>"
+  for (const [subKey, label] of Object.entries(SUBCATEGORY_LABELS)) {
+    const shortLabel = label.split(' (')[0].trim().toLowerCase();
+    const fullLabel = label.trim().toLowerCase();
+    const subKeyLower = subKey.toLowerCase();
+    if (
+      lower === `${shortLabel} ${cleanColor}` ||
+      lower === `${fullLabel} ${cleanColor}` ||
+      lower === `${subKeyLower} ${cleanColor}` ||
+      (cleanAccent &&
+        (lower === `${shortLabel} ${cleanColor} / ${cleanAccent}` ||
+          lower === `${fullLabel} ${cleanColor} / ${cleanAccent}`))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -247,3 +335,4 @@ export function getShortOutfitTitle(items: Garment[]): string {
   }
   return leadLabel;
 }
+

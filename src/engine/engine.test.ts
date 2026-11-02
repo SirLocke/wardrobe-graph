@@ -26,7 +26,9 @@ import {
   handleMcpJsonRpcRequest,
 } from '../mcp/mcpHandler';
 import {
+  buildDefaultGarmentName,
   getShortOutfitTitle,
+  isDefaultGarmentName,
   matchesGarmentSearch,
   normalizeBrandKey,
   suggestSizeForGarment,
@@ -653,5 +655,97 @@ test('userExactProfile & accessories: handles copper hair, warm undertone, blue-
   );
 });
 
+test('customGarmentName & shoeAccents & multiSelectRatings: preserves custom names on type change, supports shoe accent colors, and handles accessory/multi-select filters', () => {
+  // 1) Default name detection vs custom name preservation
+  assert.equal(
+    isDefaultGarmentName('Hoodie Salbeigrün', 'hoodie', 'Salbeigrün'),
+    true,
+    'Auto-generated default name should be recognized as default'
+  );
+  assert.equal(
+    isDefaultGarmentName('Sweatshirt Off-White', 'crewneck_sweater', 'Off-White'),
+    true,
+    'Auto-generated sweatshirt default name should be recognized as default'
+  );
+  assert.equal(
+    isDefaultGarmentName('Mein Lieblings-College-Pulli', 'hoodie', 'Salbeigrün'),
+    false,
+    'Custom imported or user-defined garment name must NOT be treated as default'
+  );
+  assert.equal(
+    buildDefaultGarmentName('sneaker_clean', 'Off-White', 'Salbeigrün'),
+    'Schlichte Sneaker Off-White / Salbeigrün'
+  );
+  assert.equal(
+    isDefaultGarmentName('Schlichte Sneaker Off-White / Salbeigrün', 'sneaker_clean', 'Off-White', 'Salbeigrün'),
+    true
+  );
 
+  // 2) Shoe accent color import, search & outfit harmony bonus
+  const accentedShoeJson = JSON.stringify([
+    {
+      id: 'shoe_accent_test',
+      name: 'Adidas Samba Weiß mit Grünen Streifen',
+      category: 'footwear',
+      subcategory: 'sneaker_clean',
+      colorName: 'Off-White',
+      colorHex: '#F4F1EA',
+      accentColorName: 'Salbeigrün',
+      accentColorHex: '#8F9779',
+      formality: 2,
+      formalities: [2, 3],
+      thermalRating: 2,
+      thermalRatings: [1, 2, 3],
+    },
+  ]);
+  const parsedShoe = parseAndNormalizeWardrobeImport(accentedShoeJson);
+  assert.equal(parsedShoe.ok, true);
+  const importedShoe = parsedShoe.garments[0];
+  assert.equal(importedShoe.accentColorName, 'Salbeigrün');
+  assert.equal(importedShoe.accentColorHex, '#8F9779');
+  assert.deepEqual(importedShoe.formalities, [2, 3]);
+  assert.deepEqual(importedShoe.thermalRatings, [1, 2, 3]);
+  assert.equal(matchesGarmentSearch(importedShoe, 'salbeigrün'), true, 'Search should match shoe accentColorName');
 
+  // 3) Multi-select formalities ([2, 3]) allows casual sneaker in smart_casual_office ([3, 4])
+  const officeOutfitsWithMultiShoe = generateOutfitsForContext(
+    [...SEED_WARDROBE_GARMENTS, importedShoe],
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'smart_casual_office',
+      lockedGarmentIds: ['shoe_accent_test'],
+    },
+    3
+  );
+  assert.ok(
+    officeOutfitsWithMultiShoe.length > 0,
+    'Garment with multi-select formalities [2, 3] should pass smart_casual_office filter'
+  );
+  assert.ok(
+    officeOutfitsWithMultiShoe.some((o) =>
+      o.traces.some((t) => t.includes('Akzentfarbe der Schuhe'))
+    ),
+    'Should include Farb-Echo trace when shoe accent color matches an outfit piece'
+  );
+
+  // 4) Accessories ignore formality/thermal filters so socks & accessories always appear even in formal_event
+  const formalOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'smart_casual_office',
+      lockedGarmentIds: [],
+    },
+    3
+  );
+  assert.ok(
+    formalOutfits[0].items.some(
+      (i) => i.subcategory === 'socks' || i.subcategory === 'socks_short'
+    ),
+    'Socks should always be included regardless of occasion formality window'
+  );
+});

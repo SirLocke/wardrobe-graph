@@ -81,6 +81,8 @@ export interface Garment {
   subcategory: GarmentSubcategory;
   colorName: string;
   colorHex: string;
+  accentColorName?: string;         // Optional secondary/accent color name (e.g. colored stripes/heel tab on white sneakers)
+  accentColorHex?: string;          // Optional secondary/accent color hex (#RRGGBB)
   // Auto-calculated on save via Color Math utility:
   hsl: { h: number; s: number; l: number };
   colorTemp: 'warm' | 'cool' | 'neutral';
@@ -88,7 +90,9 @@ export interface Garment {
   neckline: NecklineType;
   texture: TextureType;
   thermalRating: 1 | 2 | 3 | 4 | 5; // 1 = >24°C, 2 = 18-23°C, 3 = 12-17°C, 4 = 5-11°C, 5 = <5°C
+  thermalRatings?: Array<1 | 2 | 3 | 4 | 5>; // Optional multi-select warmth levels
   formality: 1 | 2 | 3 | 4 | 5;     // 1 = Lounge/Sport, 2 = Casual, 3 = Smart Casual, 4 = Business/Chic, 5 = Formal
+  formalities?: Array<1 | 2 | 3 | 4 | 5>;    // Optional multi-select occasion formalities
   waterResistant: boolean;
   isClean: boolean;
   brand?: string;                   // Optional brand tag (e.g. "Nike", "Adidas", "Levi's", "Zara")

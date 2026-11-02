@@ -490,6 +490,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                         <GarmentVector
                           type={garment.subcategory}
                           colorHex={garment.colorHex}
+                          accentColorHex={garment.accentColorHex}
                           texture={garment.texture}
                           neckline={garment.neckline}
                           className="w-14 h-14"
@@ -502,8 +503,10 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                         {garment.name}
                       </h2>
                       <p className="text-xs text-zinc-400 truncate">
-                        {SUBCATEGORY_LABELS[garment.subcategory].split(' (')[0]} ·{' '}
-                        {FIT_LABELS[garment.fit].split(' (')[0]}
+                        {SUBCATEGORY_LABELS[garment.subcategory].split(' (')[0]}
+                        {garment.category !== 'accessory'
+                          ? ` · ${FIT_LABELS[garment.fit].split(' (')[0]}`
+                          : ''}
                       </p>
                       <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-300">
                         <span
@@ -511,6 +514,18 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                           style={{ backgroundColor: garment.colorHex }}
                         />
                         <span className="truncate">{garment.colorName}</span>
+                        {garment.accentColorHex && (
+                          <>
+                            <span className="text-zinc-500">+</span>
+                            <span
+                              className="w-3 h-3 rounded-full border border-white/20 shrink-0"
+                              style={{ backgroundColor: garment.accentColorHex }}
+                            />
+                            <span className="truncate text-zinc-300">
+                              {garment.accentColorName || 'Akzent'}
+                            </span>
+                          </>
+                        )}
                         {garment.brand && (
                           <span className="px-1.5 py-0.5 rounded bg-zinc-800/90 border border-zinc-700/80 text-[10px] font-medium text-amber-300">
                             {garment.brand}
@@ -592,6 +607,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                   <GarmentVector
                     type={popupEntry.garment.subcategory}
                     colorHex={popupEntry.garment.colorHex}
+                    accentColorHex={popupEntry.garment.accentColorHex}
                     texture={popupEntry.garment.texture}
                     neckline={popupEntry.garment.neckline}
                     className="w-9 h-9"

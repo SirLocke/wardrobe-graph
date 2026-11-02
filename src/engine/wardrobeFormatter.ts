@@ -210,6 +210,19 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
         ? item.colorName.trim()
         : colorHex;
 
+    let accentColorName: string | undefined = undefined;
+    let accentColorHex: string | undefined = undefined;
+    if (
+      (typeof item.accentColorHex === 'string' && item.accentColorHex.trim()) ||
+      (typeof item.accentColorName === 'string' && item.accentColorName.trim())
+    ) {
+      accentColorHex = resolveColorHex(item.accentColorHex, item.accentColorName);
+      accentColorName =
+        typeof item.accentColorName === 'string' && item.accentColorName.trim()
+          ? item.accentColorName.trim()
+          : accentColorHex;
+    }
+
     const name =
       typeof item.name === 'string' && item.name.trim()
         ? item.name.trim()
@@ -218,7 +231,7 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
     const rawFit = String(item.fit || 'regular') as FitType;
     const fit: FitType = VALID_FITS.includes(rawFit) ? rawFit : 'regular';
 
-    const isLowerBody = category === 'bottom' || category === 'footwear';
+    const isLowerBody = category === 'bottom' || category === 'footwear' || category === 'accessory';
     const rawNeck = String(item.neckline || (isLowerBody ? 'none' : 'crewneck')) as NecklineType;
     const neckline: NecklineType = isLowerBody
       ? 'none'
@@ -234,10 +247,22 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       Number.isFinite(rawThermal) ? Math.max(1, Math.min(5, Math.round(rawThermal))) : 2
     ) as 1 | 2 | 3 | 4 | 5;
 
+    const thermalRatings = Array.isArray(item.thermalRatings)
+      ? (item.thermalRatings
+          .map((n) => Math.max(1, Math.min(5, Math.round(Number(n)))))
+          .filter((n) => Number.isFinite(n)) as Array<1 | 2 | 3 | 4 | 5>)
+      : undefined;
+
     const rawFormality = Number(item.formality);
     const formality = (
       Number.isFinite(rawFormality) ? Math.max(1, Math.min(5, Math.round(rawFormality))) : 3
     ) as 1 | 2 | 3 | 4 | 5;
+
+    const formalities = Array.isArray(item.formalities)
+      ? (item.formalities
+          .map((n) => Math.max(1, Math.min(5, Math.round(Number(n)))))
+          .filter((n) => Number.isFinite(n)) as Array<1 | 2 | 3 | 4 | 5>)
+      : undefined;
 
     const waterResistant = Boolean(item.waterResistant);
     const isClean = item.isClean === undefined ? true : Boolean(item.isClean);
@@ -258,16 +283,22 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       subcategory,
       colorName,
       colorHex,
+      accentColorName,
+      accentColorHex,
       hsl,
       colorTemp,
       fit,
       neckline,
       texture,
       thermalRating,
+      thermalRatings: thermalRatings && thermalRatings.length > 0 ? thermalRatings : undefined,
       formality,
+      formalities: formalities && formalities.length > 0 ? formalities : undefined,
       waterResistant,
       isClean,
       isWishlistSandbox,
+      brand: typeof item.brand === 'string' && item.brand.trim() ? item.brand.trim() : undefined,
+      size: typeof item.size === 'string' && item.size.trim() ? item.size.trim() : undefined,
       imageDataUrl: typeof item.imageDataUrl === 'string' ? item.imageDataUrl : undefined,
     });
   });
@@ -298,6 +329,8 @@ export function buildLlmWardrobeAnalysisPrompt(
     subcategory: g.subcategory,
     colorName: g.colorName,
     colorHex: g.colorHex,
+    accentColorName: g.accentColorName,
+    accentColorHex: g.accentColorHex,
     fit: g.fit,
     neckline: g.neckline,
     texture: g.texture,
@@ -326,17 +359,19 @@ Bitte:
 \`\`\`typescript
 interface ImportGarment {
   name: string; // z.B. "Merino Rollkragen Dunkel-Oliv"
-  category: "base_top" | "mid_layer" | "outerwear" | "bottom" | "footwear";
+  category: "base_top" | "mid_layer" | "outerwear" | "bottom" | "footwear" | "accessory";
   subcategory:
     | "t_shirt" | "heavyweight_tee" | "polo" | "longsleeve"
     | "overshirt" | "button_down_shirt" | "crewneck_sweater" | "knit_sweater" | "turtleneck" | "hoodie" | "cardigan"
     | "light_jacket" | "coat" | "parka" | "blouson"
     | "chino" | "denim" | "trousers" | "cargo" | "shorts"
     | "sneaker_clean" | "sneaker_chunky" | "boots" | "loafer_derby" | "runner";
-  colorName: string; // z.B. "Salbeigrün", "Espresso", "Navy"
+  colorName: string; // z.B. "Salbeigrün", "Espresso", "Off-White"
   colorHex: string;  // Exakter 6-stelliger Hex-Code, z.B. "#8F9779"
+  accentColorName?: string; // Optional bei Schuhen mit farbigen Akzenten (z.B. "Salbeigrün", "Burgunder")
+  accentColorHex?: string;  // Optionaler Hex-Code für Schuh-Akzente
   fit: "slim" | "regular" | "relaxed" | "boxy_oversized";
-  neckline: "crewneck" | "heavy_crewneck" | "v_neck" | "stand_collar" | "shirt_collar" | "turtleneck" | "hooded" | "none"; // "none" bei Hosen/Schuhen
+  neckline: "crewneck" | "heavy_crewneck" | "v_neck" | "stand_collar" | "shirt_collar" | "turtleneck" | "hooded" | "none"; // "none" bei Hosen/Schuhen/Accessoires
   texture: "smooth_cotton" | "heavy_jersey" | "twill_chino" | "denim" | "chunky_knit" | "fine_knit" | "flannel_wool" | "linen" | "tech_waterproof" | "leather_suede";
   thermalRating: 1 | 2 | 3 | 4 | 5; // 1=>24°C, 2=18-23°C, 3=12-17°C, 4=5-11°C, 5=<5°C
   formality: 1 | 2 | 3 | 4 | 5;     // 1=Sport, 2=Casual, 3=Smart Casual, 4=Business/Chic, 5=Formal

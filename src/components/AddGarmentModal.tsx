@@ -9,6 +9,7 @@ import {
   Plus,
   Ruler,
   SlidersHorizontal,
+  Sparkles,
   Tag,
   Upload,
   X,
@@ -29,8 +30,10 @@ import {
   TEXTURE_LABELS,
 } from '../data/seedData';
 import {
+  buildDefaultGarmentName,
   COMMON_SIZE_SUGGESTIONS,
   getCategorySizeGroup,
+  isDefaultGarmentName,
   POPULAR_BRANDS,
   suggestSizeForGarment,
   upsertBrandSizeRule,
@@ -56,6 +59,22 @@ interface AddGarmentModalProps {
   initialGarment?: Garment | null;
 }
 
+const THERMAL_LEVEL_OPTIONS: Array<{ value: 1 | 2 | 3 | 4 | 5; label: string; shortLabel: string }> = [
+  { value: 1, label: 'Sehr leicht (Sommer)', shortLabel: 'Sommer (>24°C)' },
+  { value: 2, label: 'Mild (Frühling / Spätsommer)', shortLabel: 'Mild (18–23°C)' },
+  { value: 3, label: 'Übergang (Herbst / Alltag)', shortLabel: 'Übergang (12–17°C)' },
+  { value: 4, label: 'Warm (Kühle Tage)', shortLabel: 'Warm (5–11°C)' },
+  { value: 5, label: 'Sehr warm (Winter)', shortLabel: 'Winter (<5°C)' },
+];
+
+const FORMALITY_LEVEL_OPTIONS: Array<{ value: 1 | 2 | 3 | 4 | 5; label: string }> = [
+  { value: 1, label: 'Sport / Zuhause' },
+  { value: 2, label: 'Lässig / Alltag' },
+  { value: 3, label: 'Smart Casual / Büro' },
+  { value: 4, label: 'Schick / Ausgehen' },
+  { value: 5, label: 'Festlich / Formell' },
+];
+
 export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   isOpen,
   onClose,
@@ -65,17 +84,22 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   initialGarment,
 }) => {
   const [name, setName] = useState('Hoodie Salbeigrün');
+  const [hasCustomNameEdit, setHasCustomNameEdit] = useState(false);
   const [category, setCategory] = useState<GarmentCategory>('mid_layer');
   const [subcategory, setSubcategory] = useState<GarmentSubcategory>('hoodie');
   const [colorName, setColorName] = useState('Salbeigrün');
   const [colorHex, setColorHex] = useState('#8F9779');
+  const [accentColorName, setAccentColorName] = useState('');
+  const [accentColorHex, setAccentColorHex] = useState('');
   const [brand, setBrand] = useState('');
   const [size, setSize] = useState('');
   const [fit, setFit] = useState<FitType>('relaxed');
   const [neckline, setNeckline] = useState<NecklineType>('hooded');
   const [texture, setTexture] = useState<TextureType>('heavy_jersey');
   const [thermalRating, setThermalRating] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [thermalRatings, setThermalRatings] = useState<Array<1 | 2 | 3 | 4 | 5>>([3]);
   const [formality, setFormality] = useState<1 | 2 | 3 | 4 | 5>(2);
+  const [formalities, setFormalities] = useState<Array<1 | 2 | 3 | 4 | 5>>([2]);
   const [waterResistant, setWaterResistant] = useState(false);
   const [isClean, setIsClean] = useState(true);
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
@@ -104,10 +128,19 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
     if (initialGarment) {
       setName(initialGarment.name);
+      const isDefault = isDefaultGarmentName(
+        initialGarment.name,
+        initialGarment.subcategory,
+        initialGarment.colorName,
+        initialGarment.accentColorName
+      );
+      setHasCustomNameEdit(!isDefault);
       setCategory(initialGarment.category);
       setSubcategory(initialGarment.subcategory);
       setColorName(initialGarment.colorName);
       setColorHex(initialGarment.colorHex);
+      setAccentColorName(initialGarment.accentColorName || '');
+      setAccentColorHex(initialGarment.accentColorHex || '');
       setBrand(initialGarment.brand || '');
       setSize(
         initialGarment.size ||
@@ -118,7 +151,17 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setNeckline(initialGarment.neckline);
       setTexture(initialGarment.texture);
       setThermalRating(initialGarment.thermalRating);
+      setThermalRatings(
+        initialGarment.thermalRatings && initialGarment.thermalRatings.length > 0
+          ? initialGarment.thermalRatings
+          : [initialGarment.thermalRating]
+      );
       setFormality(initialGarment.formality);
+      setFormalities(
+        initialGarment.formalities && initialGarment.formalities.length > 0
+          ? initialGarment.formalities
+          : [initialGarment.formality]
+      );
       setWaterResistant(initialGarment.waterResistant);
       setIsClean(initialGarment.isClean);
       setImageDataUrl(initialGarment.imageDataUrl);
@@ -129,17 +172,22 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setSubcategory(defaultSub);
       setColorName('Salbeigrün');
       setColorHex('#8F9779');
+      setAccentColorName('');
+      setAccentColorHex('');
       setBrand('');
       setSize(suggestSizeForGarment(defaults.category, '', profile).suggestedSize);
       setFit(defaults.fit);
       setNeckline(defaults.neckline);
       setTexture(defaults.texture);
       setThermalRating(defaults.thermalRating);
+      setThermalRatings([defaults.thermalRating]);
       setFormality(defaults.formality);
+      setFormalities([defaults.formality]);
       setWaterResistant(defaults.waterResistant);
       setIsClean(true);
       setImageDataUrl(undefined);
       setName('T-Shirt Salbeigrün');
+      setHasCustomNameEdit(false);
     }
   }, [isOpen, initialGarment, profile]);
 
@@ -162,20 +210,36 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
   const applySubcategoryDefaults = (newSub: GarmentSubcategory, currentColorName: string) => {
     const defaults = SMART_SUBCATEGORY_DEFAULTS[newSub];
+    const shouldAutoUpdateName =
+      !hasCustomNameEdit &&
+      isDefaultGarmentName(name, subcategory, colorName, accentColorName);
+
+    const nextAccentName = defaults.category === 'footwear' ? accentColorName : '';
+    const nextAccentHex = defaults.category === 'footwear' ? accentColorHex : '';
+
     setCategory(defaults.category);
     setSubcategory(newSub);
     setFit(defaults.fit);
     setNeckline(defaults.neckline);
     setTexture(defaults.texture);
     setThermalRating(defaults.thermalRating);
+    setThermalRatings([defaults.thermalRating]);
     setFormality(defaults.formality);
+    setFormalities([defaults.formality]);
     setWaterResistant(defaults.waterResistant);
+    if (defaults.category !== 'footwear') {
+      setAccentColorName('');
+      setAccentColorHex('');
+    }
     const suggestion = suggestSizeForGarment(defaults.category, brand, profile);
     if (suggestion.suggestedSize) {
       setSize(suggestion.suggestedSize);
     }
-    const baseSubLabel = SUBCATEGORY_LABELS[newSub].split(' (')[0];
-    setName(`${baseSubLabel} ${currentColorName}`);
+    if (shouldAutoUpdateName) {
+      setName(
+        buildDefaultGarmentName(newSub, currentColorName, nextAccentHex ? nextAccentName : undefined)
+      );
+    }
   };
 
   const handleCategoryChange = (newCat: GarmentCategory) => {
@@ -216,10 +280,64 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
   const handleSelectColorPreset = (presetName: string, presetHex: string) => {
     const cleanColorName = presetName.replace(' (Test)', '');
+    const shouldAutoUpdateName =
+      !hasCustomNameEdit &&
+      isDefaultGarmentName(name, subcategory, colorName, accentColorName);
     setColorName(cleanColorName);
     setColorHex(presetHex);
-    const baseSubLabel = SUBCATEGORY_LABELS[subcategory].split(' (')[0];
-    setName(`${baseSubLabel} ${cleanColorName}`);
+    if (shouldAutoUpdateName) {
+      setName(
+        buildDefaultGarmentName(
+          subcategory,
+          cleanColorName,
+          accentColorHex ? accentColorName : undefined
+        )
+      );
+    }
+  };
+
+  const handleSelectAccentColorPreset = (presetName: string, presetHex: string) => {
+    const cleanAccentName = presetName ? presetName.replace(' (Test)', '') : '';
+    const shouldAutoUpdateName =
+      !hasCustomNameEdit &&
+      isDefaultGarmentName(name, subcategory, colorName, accentColorName);
+    setAccentColorName(cleanAccentName);
+    setAccentColorHex(presetHex);
+    if (shouldAutoUpdateName) {
+      setName(
+        buildDefaultGarmentName(
+          subcategory,
+          colorName,
+          presetHex ? cleanAccentName : undefined
+        )
+      );
+    }
+  };
+
+  const toggleThermalRatingOption = (val: 1 | 2 | 3 | 4 | 5) => {
+    setThermalRatings((prev) => {
+      const exists = prev.includes(val);
+      const next = exists
+        ? prev.length > 1
+          ? prev.filter((item) => item !== val)
+          : prev
+        : [...prev, val].sort((a, b) => a - b);
+      setThermalRating(next[0]);
+      return next;
+    });
+  };
+
+  const toggleFormalityOption = (val: 1 | 2 | 3 | 4 | 5) => {
+    setFormalities((prev) => {
+      const exists = prev.includes(val);
+      const next = exists
+        ? prev.length > 1
+          ? prev.filter((item) => item !== val)
+          : prev
+        : [...prev, val].sort((a, b) => a - b);
+      setFormality(next[0]);
+      return next;
+    });
   };
 
   const handleAddCustomColor = () => {
@@ -307,6 +425,9 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     }
     setNameError(null);
 
+    const isAccessory = category === 'accessory';
+    const isFootwear = category === 'footwear';
+
     const newGarment: Garment = {
       id:
         initialGarment && !keepOpenForDuplicate
@@ -317,13 +438,21 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       subcategory,
       colorName: colorName.trim() || 'Wunschfarbe',
       colorHex,
+      accentColorName:
+        isFootwear && accentColorHex ? accentColorName.trim() || 'Akzent' : undefined,
+      accentColorHex: isFootwear && accentColorHex ? accentColorHex : undefined,
       hsl: liveComputation.hsl,
       colorTemp: liveComputation.colorTemp,
-      fit,
-      neckline: category === 'bottom' || category === 'footwear' ? 'none' : neckline,
+      fit: isAccessory ? 'regular' : fit,
+      neckline:
+        category === 'bottom' || category === 'footwear' || category === 'accessory'
+          ? 'none'
+          : neckline,
       texture,
-      thermalRating,
-      formality,
+      thermalRating: isAccessory ? 3 : thermalRatings[0] || thermalRating,
+      thermalRatings: isAccessory ? undefined : thermalRatings,
+      formality: isAccessory ? 3 : formalities[0] || formality,
+      formalities: isAccessory ? undefined : formalities,
       waterResistant,
       isClean,
       imageDataUrl,
@@ -406,6 +535,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <GarmentVector
                 type={subcategory}
                 colorHex={colorHex}
+                accentColorHex={category === 'footwear' && accentColorHex ? accentColorHex : undefined}
                 texture={texture}
                 className="w-20 h-20"
               />
@@ -414,6 +544,11 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-medium text-zinc-400">
                   Bezeichnung im Kleiderschrank
+                  {hasCustomNameEdit && (
+                    <span className="ml-2 text-[10px] text-amber-400/90 font-normal">
+                      (Eigener Name bleibt bei Typwechsel erhalten)
+                    </span>
+                  )}
                 </span>
                 <span className={`px-2.5 py-0.5 rounded-md border text-[11px] font-medium ${scoreToneClass}`}>
                   {fitVerdictText} ({liveComputation.bio.score}%)
@@ -422,7 +557,13 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const nextVal = e.target.value;
+                  setName(nextVal);
+                  setHasCustomNameEdit(
+                    !isDefaultGarmentName(nextVal, subcategory, colorName, accentColorName)
+                  );
+                }}
                 placeholder="z.B. Hoodie Salbeigrün"
                 className="w-full px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
               />
@@ -440,7 +581,9 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                 1. Was möchtest du hinzufügen?
               </label>
               <span className="text-[11px] text-zinc-500">
-                Wärme, Stoff &amp; Anlass werden automatisch passend vorbelegt
+                {category === 'accessory'
+                  ? 'Accessoires passen flexibel zu jedem Anlass'
+                  : 'Wärme, Stoff & Anlass werden automatisch passend vorbelegt'}
               </span>
             </div>
 
@@ -482,6 +625,11 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                       <GarmentVector
                         type={sub}
                         colorHex={isSelected ? colorHex : '#A1A1AA'}
+                        accentColorHex={
+                          isSelected && category === 'footwear' && accentColorHex
+                            ? accentColorHex
+                            : undefined
+                        }
                         texture={SMART_SUBCATEGORY_DEFAULTS[sub].texture}
                         className="w-8 h-8"
                       />
@@ -499,7 +647,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                2. Welche Farbe hat es? <span className="text-amber-400 ml-1">({colorName})</span>
+                2. {category === 'footwear' ? 'Grundfarbe des Schuhs' : 'Welche Farbe hat es?'}{' '}
+                <span className="text-amber-400 ml-1">({colorName})</span>
               </label>
               <button
                 type="button"
@@ -570,6 +719,73 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                 );
               })}
             </div>
+
+            {/* Shoe Accent Color Picker (for white/neutral shoes with colored stripes, heel tab, logo, or gusset) */}
+            {category === 'footwear' && (
+              <div className="mt-4 pt-3.5 border-t border-zinc-800/80 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>
+                      Farbige Akzente am Schuh (Optional – z. B. Streifen, Ferse, Logo)
+                    </span>
+                    {accentColorHex && (
+                      <span className="text-amber-400">({accentColorName})</span>
+                    )}
+                  </label>
+                  {accentColorHex && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAccentColorPreset('', '')}
+                      className="text-[11px] text-zinc-400 hover:text-zinc-200 underline cursor-pointer"
+                    >
+                      Akzent entfernen (Einfarbig)
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAccentColorPreset('', '')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer ${
+                      !accentColorHex
+                        ? 'bg-zinc-800 border-amber-400 text-zinc-100 ring-1 ring-amber-400/40'
+                        : 'bg-zinc-900/40 border-zinc-800/80 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <span className="w-3.5 h-3.5 rounded-full border border-dashed border-zinc-500 shrink-0" />
+                    <span className="text-[11px] font-medium truncate">Einfarbig</span>
+                  </button>
+
+                  {colorPresets.map((preset) => {
+                    const isSelected =
+                      Boolean(accentColorHex) &&
+                      accentColorHex.toUpperCase() === preset.hex.toUpperCase();
+                    return (
+                      <button
+                        key={`accent_${preset.name}_${preset.hex}`}
+                        type="button"
+                        onClick={() => handleSelectAccentColorPreset(preset.name, preset.hex)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-zinc-800 border-amber-400 text-zinc-100 ring-1 ring-amber-400/40'
+                            : 'bg-zinc-900/40 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0"
+                          style={{ backgroundColor: preset.hex }}
+                        />
+                        <span className="text-[11px] font-medium truncate">
+                          {preset.name.replace(' (Test)', '')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* STEP 3: Marke & Größe (Optional – mit automatischem Größen-Vorschlag) */}
@@ -688,7 +904,9 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             >
               <span className="inline-flex items-center gap-2">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                Details feinjustieren (Passform, Stoff, Wetter &amp; Foto) – Optional
+                {category === 'accessory'
+                  ? 'Details feinjustieren (Material & Foto) – Optional'
+                  : 'Details feinjustieren (Passform, Stoff, Wetter, Anlass & Foto) – Optional'}
               </span>
               {showAdvancedDetails ? (
                 <ChevronUp className="w-4 h-4 text-zinc-400" />
@@ -699,112 +917,148 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
             {showAdvancedDetails && (
               <div className="mt-4 p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/60 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-400 mb-1">
-                      Passform (Schnitt)
-                    </label>
-                    <select
-                      value={fit}
-                      onChange={(e) => setFit(e.target.value as FitType)}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                    >
-                      {(Object.keys(FIT_LABELS) as FitType[]).map((f) => (
-                        <option key={f} value={f}>
-                          {FIT_LABELS[f]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {category !== 'bottom' && category !== 'footwear' && (
+                {category === 'accessory' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
                     <div>
                       <label className="block text-xs font-medium text-zinc-400 mb-1">
-                        Kragen / Ausschnitt
+                        Material / Oberfläche
                       </label>
                       <select
-                        value={neckline}
-                        onChange={(e) => setNeckline(e.target.value as NecklineType)}
+                        value={texture}
+                        onChange={(e) => setTexture(e.target.value as TextureType)}
                         className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
                       >
-                        {(Object.keys(NECKLINE_LABELS) as NecklineType[])
-                          .filter((n) => n !== 'none')
-                          .map((n) => (
-                            <option key={n} value={n}>
-                              {NECKLINE_LABELS[n]}
-                            </option>
-                          ))}
+                        {(Object.keys(TEXTURE_LABELS) as TextureType[]).map((t) => (
+                          <option key={t} value={t}>
+                            {TEXTURE_LABELS[t]}
+                          </option>
+                        ))}
                       </select>
                     </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-400 mb-1">
-                      Material / Oberfläche
-                    </label>
-                    <select
-                      value={texture}
-                      onChange={(e) => setTexture(e.target.value as TextureType)}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                    >
-                      {(Object.keys(TEXTURE_LABELS) as TextureType[]).map((t) => (
-                        <option key={t} value={t}>
-                          {TEXTURE_LABELS[t]}
-                        </option>
-                      ))}
-                    </select>
+                    <p className="text-xs text-zinc-400 bg-zinc-950/60 border border-zinc-800/70 rounded-lg px-3 py-2.5">
+                      Für Accessoires musst du keine Wärme-Stufe und keinen Stil-Anlass einordnen – sie werden automatisch flexibel zu deinen Outfits kombiniert.
+                    </p>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-400 mb-1">
+                          Passform (Schnitt)
+                        </label>
+                        <select
+                          value={fit}
+                          onChange={(e) => setFit(e.target.value as FitType)}
+                          className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                        >
+                          {(Object.keys(FIT_LABELS) as FitType[]).map((f) => (
+                            <option key={f} value={f}>
+                              {FIT_LABELS[f]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400">Wärme-Stufe</span>
-                      <span className="font-medium text-amber-400">
-                        {thermalRating === 1 && 'Sehr leicht (Sommer)'}
-                        {thermalRating === 2 && 'Mild (Frühling / Spätsommer)'}
-                        {thermalRating === 3 && 'Übergang (Herbst / Alltag)'}
-                        {thermalRating === 4 && 'Warm (Kühle Tage)'}
-                        {thermalRating === 5 && 'Sehr warm (Winter)'}
-                      </span>
+                      {category !== 'bottom' && category !== 'footwear' && (
+                        <div>
+                          <label className="block text-xs font-medium text-zinc-400 mb-1">
+                            Kragen / Ausschnitt
+                          </label>
+                          <select
+                            value={neckline}
+                            onChange={(e) => setNeckline(e.target.value as NecklineType)}
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                          >
+                            {(Object.keys(NECKLINE_LABELS) as NecklineType[])
+                              .filter((n) => n !== 'none')
+                              .map((n) => (
+                                <option key={n} value={n}>
+                                  {NECKLINE_LABELS[n]}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-400 mb-1">
+                          Material / Oberfläche
+                        </label>
+                        <select
+                          value={texture}
+                          onChange={(e) => setTexture(e.target.value as TextureType)}
+                          className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                        >
+                          {(Object.keys(TEXTURE_LABELS) as TextureType[]).map((t) => (
+                            <option key={t} value={t}>
+                              {TEXTURE_LABELS[t]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <input
-                      type="range"
-                      min={1}
-                      max={5}
-                      step={1}
-                      value={thermalRating}
-                      onChange={(e) =>
-                        setThermalRating(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)
-                      }
-                      className="w-full accent-amber-500 cursor-pointer"
-                    />
-                  </div>
 
-                  <div className="p-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400">Stil-Anlass</span>
-                      <span className="font-medium text-zinc-200">
-                        {formality === 1 && 'Sport / Zuhause'}
-                        {formality === 2 && 'Lässig / Alltag'}
-                        {formality === 3 && 'Smart Casual / Büro'}
-                        {formality === 4 && 'Schick / Ausgehen'}
-                        {formality === 5 && 'Festlich / Formell'}
-                      </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Multi-select Thermal Rating */}
+                      <div className="p-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-300 font-medium">
+                            Wärme-Stufe <span className="text-zinc-500 font-normal">(Mehrfachauswahl möglich)</span>
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {THERMAL_LEVEL_OPTIONS.map((opt) => {
+                            const active = thermalRatings.includes(opt.value);
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => toggleThermalRatingOption(opt.value)}
+                                className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                                  active
+                                    ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                {active ? '✓ ' : ''}
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Multi-select Formality */}
+                      <div className="p-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-300 font-medium">
+                            Stil-Anlass <span className="text-zinc-500 font-normal">(Mehrfachauswahl möglich)</span>
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {FORMALITY_LEVEL_OPTIONS.map((opt) => {
+                            const active = formalities.includes(opt.value);
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => toggleFormalityOption(opt.value)}
+                                className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                                  active
+                                    ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                {active ? '✓ ' : ''}
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <input
-                      type="range"
-                      min={1}
-                      max={5}
-                      step={1}
-                      value={formality}
-                      onChange={(e) =>
-                        setFormality(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)
-                      }
-                      className="w-full accent-amber-500 cursor-pointer"
-                    />
-                  </div>
-                </div>
+                  </>
+                )}
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                   <div className="flex items-center gap-3">

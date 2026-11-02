@@ -418,6 +418,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     <GarmentVector
                       type={g.subcategory}
                       colorHex={g.colorHex}
+                      accentColorHex={g.accentColorHex}
                       texture={g.texture}
                       neckline={g.neckline}
                       className="w-8 h-8 shrink-0"
@@ -854,6 +855,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                   <GarmentVector
                                     type={item.subcategory}
                                     colorHex={item.colorHex}
+                                    accentColorHex={item.accentColorHex}
                                     texture={item.texture}
                                     neckline={item.neckline}
                                     className="w-10 h-10"
@@ -904,6 +906,18 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     style={{ backgroundColor: item.colorHex }}
                                   />
                                   <span className="truncate">{item.colorName}</span>
+                                  {item.accentColorHex && (
+                                    <>
+                                      <span aria-hidden="true">+</span>
+                                      <span
+                                        className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
+                                        style={{ backgroundColor: item.accentColorHex }}
+                                      />
+                                      <span className="truncate text-zinc-300">
+                                        {item.accentColorName || 'Akzent'}
+                                      </span>
+                                    </>
+                                  )}
                                   <span aria-hidden="true">·</span>
                                   <span className="truncate">
                                     {TEXTURE_LABELS[item.texture]}
@@ -1033,6 +1047,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                               <GarmentVector
                                 type={item.subcategory}
                                 colorHex={item.colorHex}
+                                accentColorHex={item.accentColorHex}
                                 texture={item.texture}
                                 neckline={item.neckline}
                                 className="w-16 h-16"
@@ -1050,6 +1065,18 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                 style={{ backgroundColor: item.colorHex }}
                               />
                               <span className="truncate">{item.colorName}</span>
+                              {item.accentColorHex && (
+                                <>
+                                  <span aria-hidden="true">+</span>
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"
+                                    style={{ backgroundColor: item.accentColorHex }}
+                                  />
+                                  <span className="truncate text-zinc-300">
+                                    {item.accentColorName || 'Akzent'}
+                                  </span>
+                                </>
+                              )}
                             </div>
                             <p className="text-[10px] text-zinc-500 truncate">
                               {item.brand ? `${item.brand}` : SUBCATEGORY_LABELS[item.subcategory]}
@@ -1181,6 +1208,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                           <GarmentVector
                             type={g.subcategory}
                             colorHex={g.colorHex}
+                            accentColorHex={g.accentColorHex}
                             texture={g.texture}
                             neckline={g.neckline}
                             className="w-5 h-5 shrink-0"
