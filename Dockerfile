@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Copy package manifests first for layer caching
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Copy application source & build production PWA bundle
 COPY . .

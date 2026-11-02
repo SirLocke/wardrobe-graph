@@ -80,18 +80,30 @@ export class WardrobeDatabase extends Dexie {
 export const db = new WardrobeDatabase();
 
 /**
+ * Helper to determine if a garment is user-created (not part of the initial seed catalog)
+ */
+function isUserCustomGarment(g: Garment): boolean {
+  return !g.id.startsWith('seed_') && !g.id.startsWith('fem_');
+}
+
+/**
  * Syncs the current browser wardrobe state to the local Express/MCP server store (/api/wardrobe)
  * so external LLMs connected via MCP always see the latest state.
  */
 export async function syncStateToServer(
   profile: BiometricProfile,
-  garments: Garment[]
+  garments: Garment[],
+  wornHistory?: WornOutfitRecord[]
 ): Promise<void> {
   try {
+    const history =
+      wornHistory !== undefined
+        ? wornHistory
+        : await db.wornHistory.toArray().catch(() => []);
     await fetch('/api/wardrobe', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, garments }),
+      body: JSON.stringify({ profile, garments, wornHistory: history }),
     });
   } catch {
     // Offline or standalone static mode — ignore silently
@@ -100,11 +112,12 @@ export async function syncStateToServer(
 
 /**
  * Pulls the latest wardrobe state from the local Express/MCP server (/api/wardrobe)
- * and updates IndexedDB so garments added via MCP immediately appear in the browser.
+ * and updates IndexedDB safely without overwriting user-entered data with demo/seed data.
  */
 export async function pullStateFromServer(): Promise<{
   profile: BiometricProfile;
   garments: Garment[];
+  wornHistory?: WornOutfitRecord[];
 } | null> {
   try {
     const res = await fetch('/api/wardrobe');
@@ -112,15 +125,55 @@ export async function pullStateFromServer(): Promise<{
     const data = await res.json();
     if (!data || !data.profile || !Array.isArray(data.garments)) return null;
 
+    // Check what local IndexedDB currently has before touching anything
+    let localProfile: BiometricProfile | null = null;
+    let localGarments: Garment[] = [];
+    let localWornHistory: WornOutfitRecord[] = [];
+
+    try {
+      localProfile = (await db.profiles.get('default_profile')) || null;
+      localGarments = await db.garments.toArray();
+      localWornHistory = await db.wornHistory.toArray();
+    } catch {
+      // IndexedDB restricted or not available
+    }
+
+    const localHasUserData =
+      (localProfile && localProfile.isDemoMode === false) ||
+      localGarments.some(isUserCustomGarment);
+
+    const serverIsDemoOnly =
+      data.profile.isDemoMode !== false &&
+      !data.garments.some((g: Garment) => isUserCustomGarment(g));
+
+    // GUARD: If user has real custom data in the browser and the server only has demo/seed data,
+    // NEVER overwrite the user's data! Instead, push the user's real data UP to the server.
+    if (localHasUserData && serverIsDemoOnly && localProfile) {
+      void syncStateToServer(localProfile, localGarments, localWornHistory);
+      return {
+        profile: localProfile,
+        garments: localGarments,
+        wornHistory: localWornHistory,
+      };
+    }
+
     const { profile: enrichedProfile, garments: normalizedGarments } =
       backfillProfileAndGarments(data.profile, data.garments);
 
+    const incomingWornHistory: WornOutfitRecord[] = Array.isArray(data.wornHistory)
+      ? data.wornHistory
+      : [];
+
     try {
-      await db.transaction('rw', db.garments, db.profiles, async () => {
+      await db.transaction('rw', db.garments, db.profiles, db.wornHistory, async () => {
         await db.garments.clear();
         await db.profiles.clear();
         await db.profiles.put(enrichedProfile);
         await db.garments.bulkPut(normalizedGarments);
+        if (incomingWornHistory.length > 0) {
+          await db.wornHistory.clear();
+          await db.wornHistory.bulkPut(incomingWornHistory);
+        }
       });
     } catch {
       // Ignore if IndexedDB restricted
@@ -129,6 +182,7 @@ export async function pullStateFromServer(): Promise<{
     return {
       profile: enrichedProfile,
       garments: normalizedGarments,
+      wornHistory: incomingWornHistory.length > 0 ? incomingWornHistory : localWornHistory,
     };
   } catch {
     return null;
@@ -143,7 +197,24 @@ export async function loadOrSeedWardrobeData(): Promise<{
   profile: BiometricProfile;
   garments: Garment[];
 }> {
-  // First check if the local MCP server store has data
+  // First check if IndexedDB already has real user data
+  try {
+    const rawProfile = await db.profiles.get('default_profile');
+    const rawGarments = await db.garments.toArray();
+    const hasLocalUserData =
+      (rawProfile && rawProfile.isDemoMode === false) ||
+      rawGarments.some(isUserCustomGarment);
+
+    if (hasLocalUserData && rawProfile) {
+      // Local client has user data. Push to server to ensure server is in sync, then return local data.
+      void syncStateToServer(rawProfile, rawGarments);
+      return { profile: rawProfile, garments: rawGarments };
+    }
+  } catch {
+    // IndexedDB access issue, proceed to server
+  }
+
+  // Next check if the local MCP server store has data
   const serverState = await pullStateFromServer();
   if (
     serverState &&
@@ -324,7 +395,7 @@ export async function resetDatabaseToSeed(): Promise<{
   } catch {
     // Ignore
   }
-  void syncStateToServer(DEFAULT_BIOMETRIC_PROFILE, SEED_WARDROBE_GARMENTS);
+  void syncStateToServer(DEFAULT_BIOMETRIC_PROFILE, SEED_WARDROBE_GARMENTS, SAMPLE_WORN_HISTORY);
   return {
     profile: DEFAULT_BIOMETRIC_PROFILE,
     garments: SEED_WARDROBE_GARMENTS,
@@ -382,7 +453,7 @@ export async function importWardrobeBackup(payload: WardrobeBackupPayload): Prom
     // Ignore
   }
 
-  void syncStateToServer(normalizedProfile, normalizedGarments);
+  void syncStateToServer(normalizedProfile, normalizedGarments, normalizedWornHistory);
 
   return {
     profile: normalizedProfile,

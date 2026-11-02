@@ -1,13 +1,14 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { createDefaultWardrobeState, WardrobeStateStore } from './mcpHandler';
-import { BiometricProfile, Garment } from '../types/wardrobe';
+import { BiometricProfile, Garment, WornOutfitRecord } from '../types/wardrobe';
 
 export interface PersistedWardrobeFile {
   version: number;
   updatedAt: string;
   profile: BiometricProfile;
   garments: Garment[];
+  wornHistory?: WornOutfitRecord[];
 }
 
 const DEFAULT_DATA_PATH = path.resolve(
@@ -31,6 +32,7 @@ export function createFileWardrobeStore(customFilePath?: string): WardrobeStateS
           updatedAt: parsed.updatedAt || new Date().toISOString(),
           profile: parsed.profile,
           garments: parsed.garments,
+          wornHistory: Array.isArray(parsed.wornHistory) ? parsed.wornHistory : [],
         };
       }
     } catch {
@@ -43,6 +45,7 @@ export function createFileWardrobeStore(customFilePath?: string): WardrobeStateS
       updatedAt: new Date().toISOString(),
       profile: seed.profile,
       garments: seed.garments,
+      wornHistory: [],
     };
 
     try {
@@ -65,14 +68,24 @@ export function createFileWardrobeStore(customFilePath?: string): WardrobeStateS
       return {
         profile: data.profile,
         garments: data.garments,
+        wornHistory: data.wornHistory || [],
       };
     },
-    setState: async (next: { profile: BiometricProfile; garments: Garment[] }) => {
+    setState: async (next: {
+      profile: BiometricProfile;
+      garments: Garment[];
+      wornHistory?: WornOutfitRecord[];
+    }) => {
+      const current = await ensureInitialized();
       const payload: PersistedWardrobeFile = {
         version: 1,
         updatedAt: new Date().toISOString(),
         profile: next.profile,
         garments: next.garments,
+        wornHistory:
+          next.wornHistory !== undefined
+            ? next.wornHistory
+            : current.wornHistory || [],
       };
       try {
         await fs.mkdir(path.dirname(filePath), { recursive: true });

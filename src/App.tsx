@@ -111,6 +111,9 @@ export default function App() {
     if (latest) {
       setProfile(latest.profile);
       setGarments(latest.garments);
+      if (latest.wornHistory && latest.wornHistory.length > 0) {
+        setWornHistory(latest.wornHistory);
+      }
     }
   };
 

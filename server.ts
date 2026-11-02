@@ -49,10 +49,14 @@ async function startServer() {
       const nextGarments = Array.isArray(req.body?.garments)
         ? req.body.garments
         : current.garments;
+      const nextWornHistory = Array.isArray(req.body?.wornHistory)
+        ? req.body.wornHistory
+        : (current as any).wornHistory || [];
 
       await store.setState({
         profile: nextProfile,
         garments: nextGarments,
+        wornHistory: nextWornHistory,
       });
       const updated = await store.getFullPayload();
       res.json(updated);
