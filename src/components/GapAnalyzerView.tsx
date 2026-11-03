@@ -23,6 +23,7 @@ import {
   GarmentCategory,
   OrphanPieceAnalysis,
 } from '../types/wardrobe';
+import { buildBrandOrShopUrl } from '../engine/outfitShare';
 import { GarmentVector } from './GarmentVector';
 
 interface GapAnalyzerViewProps {

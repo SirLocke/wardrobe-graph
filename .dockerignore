@@ -1,6 +1,11 @@
 node_modules
 dist
+dev-dist
+test-results
+.aistudio
+.github
 .git
-.env
+.env*
 data
 *.log
+

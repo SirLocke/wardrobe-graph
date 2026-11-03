@@ -9,12 +9,44 @@ import {
 } from './src/mcp/mcpHandler';
 
 const PORT = Number(process.env.PORT) || 3000;
+const BASIC_AUTH_USER = (process.env.BASIC_AUTH_USER || '').trim();
+const BASIC_AUTH_PASS = (process.env.BASIC_AUTH_PASS || '').trim();
 const store = createFileWardrobeStore();
 
 async function startServer() {
   const app = express();
 
   app.use(express.json({ limit: '15mb' }));
+
+  // Healthcheck endpoint for Docker / Coolify / Railway / Reverse Proxies (unauthenticated)
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', service: 'thread-graph' });
+  });
+
+  // Optional HTTP Basic Auth when BASIC_AUTH_USER and BASIC_AUTH_PASS are set
+  if (BASIC_AUTH_USER && BASIC_AUTH_PASS) {
+    app.use((req, res, next) => {
+      if (req.method === 'OPTIONS' || req.path === '/api/health') {
+        next();
+        return;
+      }
+      const authHeader = req.headers.authorization || '';
+      if (authHeader.startsWith('Basic ')) {
+        const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf-8');
+        const sepIdx = decoded.indexOf(':');
+        if (sepIdx !== -1) {
+          const user = decoded.slice(0, sepIdx);
+          const pass = decoded.slice(sepIdx + 1);
+          if (user === BASIC_AUTH_USER && pass === BASIC_AUTH_PASS) {
+            next();
+            return;
+          }
+        }
+      }
+      res.setHeader('WWW-Authenticate', 'Basic realm="Atelier Biometric Wardrobe"');
+      res.status(401).send('Authentication required');
+    });
+  }
 
   // Allow local CORS for MCP HTTP clients (OpenWebUI, Cursor, local scripts)
   app.use((req, res, next) => {

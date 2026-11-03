@@ -1,18 +1,24 @@
 import {
   BiometricProfile,
   ContrastLevel,
+  CustomOccasion,
   Garment,
   GarmentSubcategory,
   GeneratedOutfit,
   OccasionType,
   OutfitContext,
+  OutfitModifier,
   TextureType,
 } from '../types/wardrobe';
 import { getHueDistance, hexToHsl, isWardrobeNeutral, scoreGarmentBiometrics } from './colorMath';
 
 const FORMALITY_WINDOWS: Record<OccasionType, [number, number]> = {
+  homeoffice_lounge: [1, 3],
   casual: [1, 3],
   smart_casual_office: [3, 4],
+  city_cafe: [2, 4],
+  outdoor_walk: [1, 3],
+  beach_vacation: [1, 3],
   active_sporty: [1, 2],
   date_night: [3, 4],
   formal_event: [4, 5],
@@ -25,6 +31,65 @@ const OFFICE_EXCLUDED_SUBCATEGORIES: GarmentSubcategory[] = [
   'crop_top',
   'mini_skirt',
 ];
+
+const HOMEOFFICE_EXCLUDED_SUBCATEGORIES: GarmentSubcategory[] = [
+  'suit_trousers',
+  'blazer',
+  'coat',
+  'trenchcoat',
+  'heeled_ankle_boot',
+];
+
+const BEACH_EXCLUDED_SUBCATEGORIES: GarmentSubcategory[] = [
+  'suit_trousers',
+  'blazer',
+  'coat',
+  'parka',
+  'down_jacket',
+  'puffer_jacket',
+  'boots',
+  'heeled_ankle_boot',
+];
+
+/**
+ * Resolves the active CustomOccasion if context.customOccasionId is set.
+ */
+export function resolveActiveCustomOccasion(
+  context: OutfitContext,
+  profile?: BiometricProfile
+): CustomOccasion | undefined {
+  if (!context.customOccasionId || !profile?.customOccasions) return undefined;
+  return profile.customOccasions.find((co) => co.id === context.customOccasionId);
+}
+
+/**
+ * Resolves the effective OutfitModifier list for a given context and profile.
+ * If context.activeModifiers is explicitly defined (even if empty), it is used directly
+ * (plus weather-triggered rainproof/windproof when weather is rain_wet/cloudy_windy).
+ * Otherwise, defaults from profile.defaultStylePreferences and any active custom occasion are merged.
+ */
+export function getEffectiveModifiers(
+  context: OutfitContext,
+  profile?: BiometricProfile
+): OutfitModifier[] {
+  const customOcc = resolveActiveCustomOccasion(context, profile);
+  const set = new Set<OutfitModifier>();
+
+  if (Array.isArray(context.activeModifiers)) {
+    for (const m of context.activeModifiers) set.add(m);
+  } else {
+    const prefs = profile?.defaultStylePreferences;
+    if (prefs?.colorHarmony === 'monochrome_calm') set.add('monochrome_calm');
+    if (prefs?.colorHarmony === 'color_accent') set.add('color_accent');
+    for (const m of prefs?.preferredModifiers || []) set.add(m);
+    for (const m of customOcc?.defaultModifiers || []) set.add(m);
+  }
+
+  if (context.weather === 'rain_wet') set.add('rainproof');
+  if (context.weather === 'cloudy_windy') set.add('windproof');
+
+  return Array.from(set);
+}
 
 const CONTRAST_LABELS: Record<ContrastLevel, string> = {
   low: 'niedrigen',
@@ -121,12 +186,16 @@ export function isGarmentWaterResistant(garment: Garment): boolean {
 export function passesHardContextFilter(
   garment: Garment,
   context: OutfitContext,
-  isLocked: boolean = false
+  isLocked: boolean = false,
+  profile?: BiometricProfile
 ): boolean {
   // 1. Cleanliness filter
   if (!context.ignoreCleanStatus && !isLocked && !garment.isClean) {
     return false;
   }
+
+  const effectiveModifiers = getEffectiveModifiers(context, profile);
+  const customOcc = resolveActiveCustomOccasion(context, profile);
 
   // Accessories do not use formality or thermalRating levels — only user toggles & weather sanity
   if (garment.category === 'accessory') {
@@ -165,8 +234,8 @@ export function passesHardContextFilter(
     return true;
   }
 
-  // 2. Weather filter (Rain/Wet)
-  if (context.weather === 'rain_wet' && !isLocked) {
+  // 2. Weather or explicit rainproof modifier filter (Rain/Wet)
+  if ((context.weather === 'rain_wet' || effectiveModifiers.includes('rainproof')) && !isLocked) {
     if (
       (garment.category === 'footwear' || garment.category === 'outerwear') &&
       !isGarmentWaterResistant(garment)
@@ -185,35 +254,62 @@ export function passesHardContextFilter(
     }
   }
 
-  // 3. Occasion Formality Window (supports multi-select formalities[])
+  // 3. Occasion Formality Window (supports multi-select formalities[] and customOccasions)
   if (!isLocked) {
-    const [minFormality, maxFormality] = FORMALITY_WINDOWS[context.occasion] ?? [2, 4];
-    const effectiveMin =
-      garment.category === 'base_top' && context.temperatureC <= 20
-        ? Math.max(1, minFormality - 1)
-        : minFormality;
-    const effectiveMax =
-      context.styleVibe === 'tailored_chic'
-        ? Math.max(maxFormality, 4)
-        : maxFormality;
-
     const activeFormalities =
       garment.formalities && garment.formalities.length > 0
         ? garment.formalities
         : [garment.formality];
 
-    const matchesFormality = activeFormalities.some(
-      (f) => f >= effectiveMin && f <= effectiveMax
-    );
-    if (!matchesFormality) {
-      return false;
-    }
+    if (customOcc && customOcc.formalities && customOcc.formalities.length > 0) {
+      const minCustom = Math.min(...customOcc.formalities);
+      const maxCustom = Math.max(...customOcc.formalities);
+      const effectiveMin =
+        garment.category === 'base_top' && context.temperatureC <= 20
+          ? Math.max(1, minCustom - 1)
+          : minCustom;
+      const matchesCustom =
+        activeFormalities.some((f) => customOcc.formalities.includes(f)) ||
+        activeFormalities.some((f) => f >= effectiveMin && f <= maxCustom);
+      if (!matchesCustom) {
+        return false;
+      }
+    } else {
+      const [minFormality, maxFormality] = FORMALITY_WINDOWS[context.occasion] ?? [2, 4];
+      const effectiveMin =
+        garment.category === 'base_top' && context.temperatureC <= 20
+          ? Math.max(1, minFormality - 1)
+          : minFormality;
+      const effectiveMax =
+        context.styleVibe === 'tailored_chic'
+          ? Math.max(maxFormality, 4)
+          : maxFormality;
 
-    if (
-      context.occasion === 'smart_casual_office' &&
-      OFFICE_EXCLUDED_SUBCATEGORIES.includes(garment.subcategory)
-    ) {
-      return false;
+      const matchesFormality = activeFormalities.some(
+        (f) => f >= effectiveMin && f <= effectiveMax
+      );
+      if (!matchesFormality) {
+        return false;
+      }
+
+      if (
+        context.occasion === 'smart_casual_office' &&
+        OFFICE_EXCLUDED_SUBCATEGORIES.includes(garment.subcategory)
+      ) {
+        return false;
+      }
+      if (
+        context.occasion === 'homeoffice_lounge' &&
+        HOMEOFFICE_EXCLUDED_SUBCATEGORIES.includes(garment.subcategory)
+      ) {
+        return false;
+      }
+      if (
+        context.occasion === 'beach_vacation' &&
+        BEACH_EXCLUDED_SUBCATEGORIES.includes(garment.subcategory)
+      ) {
+        return false;
+      }
     }
   }
 
@@ -608,6 +704,123 @@ export function scoreOutfitCombination(
     }
   }
 
+  // 6b. Expanded Occasion & Combinable Modifier Scoring
+  const effectiveModifiers = getEffectiveModifiers(context, profile);
+  const customOcc = resolveActiveCustomOccasion(context, profile);
+
+  if (customOcc) {
+    traces.push(`Anlass [${customOcc.name}]: Abgestimmt auf deine persönlichen Anlass-Vorgaben`);
+  } else if (context.occasion === 'homeoffice_lounge') {
+    const comfortCount = coreItems.filter(
+      (i) =>
+        i.fit === 'relaxed' ||
+        i.fit === 'regular' ||
+        i.texture === 'heavy_jersey' ||
+        i.texture === 'fine_knit' ||
+        i.texture === 'fleece' ||
+        i.texture === 'smooth_cotton'
+    ).length;
+    if (comfortCount >= 2) {
+      styleVibeBonus += 6;
+      traces.push('Homeoffice & Lounge: Bequeme Schnitte und weiche Materialien für entspanntes Arbeiten');
+    }
+  } else if (context.occasion === 'beach_vacation') {
+    const beachCount = coreItems.filter(
+      (i) =>
+        i.texture === 'linen' ||
+        i.texture === 'smooth_cotton' ||
+        i.subcategory === 'shorts' ||
+        i.subcategory === 'short_sleeve_shirt' ||
+        i.subcategory === 'tank_camisole' ||
+        i.subcategory === 'sandal_strappy' ||
+        i.subcategory === 'sneaker_clean'
+    ).length;
+    if (beachCount >= 2) {
+      styleVibeBonus += 7;
+      traces.push('Strand & Urlaub: Luftige Stoffe und entspannte Schnitte');
+    }
+  } else if (context.occasion === 'outdoor_walk') {
+    const outdoorReady = coreItems.some(
+      (i) =>
+        isGarmentWaterResistant(i) ||
+        i.windproof ||
+        i.subcategory === 'fleece_jacket' ||
+        i.subcategory === 'fleece_vest' ||
+        i.subcategory === 'boots' ||
+        i.subcategory === 'runner'
+    );
+    if (outdoorReady) {
+      styleVibeBonus += 5;
+      traces.push('Draußen & Spaziergang: Funktionale Schichten und bequemes Schuhwerk');
+    }
+  } else if (context.occasion === 'city_cafe') {
+    const citySmartCount = coreItems.filter(
+      (i) =>
+        TAILORED_SUBCATEGORIES.includes(i.subcategory) ||
+        i.subcategory === 'overshirt' ||
+        i.subcategory === 'knit_sweater' ||
+        i.subcategory === 'sneaker_clean'
+    ).length;
+    if (citySmartCount >= 2) {
+      styleVibeBonus += 5;
+      traces.push('Café & Stadt: Gepflegter, entspannter City-Look');
+    }
+  }
+
+  if (effectiveModifiers.includes('extra_comfort')) {
+    const softAndRelaxed = coreItems.filter(
+      (i) =>
+        i.fit === 'relaxed' ||
+        i.fit === 'boxy_oversized' ||
+        i.texture === 'heavy_jersey' ||
+        i.texture === 'fleece' ||
+        i.texture === 'fine_knit'
+    ).length;
+    if (softAndRelaxed >= 2) {
+      styleVibeBonus += 6;
+      traces.push('Modifier [Extra bequem]: Weiche Stoffe & entspannte Passform bevorzugt');
+    } else if (coreItems.some((i) => i.fit === 'slim')) {
+      styleVibeBonus -= 6;
+    }
+  }
+
+  if (effectiveModifiers.includes('clean_no_print')) {
+    const hasAnyPrintOrLogo = coreItems.some((i) => i.hasPrint || i.hasLogo);
+    if (!hasAnyPrintOrLogo) {
+      styleVibeBonus += 5;
+      traces.push('Modifier [Ohne Print & Logo]: Ruhige, cleane Oberflächen ohne Aufdruck');
+    } else {
+      styleVibeBonus -= 14;
+    }
+  }
+
+  if (effectiveModifiers.includes('layered_open')) {
+    if (midLayer && baseTop && midLayer.wornOpen === true) {
+      styleVibeBonus += 6;
+      traces.push('Modifier [Zwiebellook]: Offenes Layering zum flexiblen An- und Ausziehen');
+    }
+  }
+
+  if (effectiveModifiers.includes('monochrome_calm') && vibe !== 'minimal_capsule') {
+    if (distinctNonNeutralHues.length <= 1 && coreItems.every((i) => i.hsl.s <= 45)) {
+      styleVibeBonus += 7;
+      traces.push('Look [Ton-in-Ton schlicht]: Ruhige, harmonische Farbabstufung');
+    } else {
+      styleVibeBonus -= 8;
+    }
+  }
+
+  if (effectiveModifiers.includes('color_accent') && vibe !== 'statement_editorial') {
+    if (distinctNonNeutralHues.length === 1) {
+      styleVibeBonus += 7;
+      traces.push(
+        `Look [Farbakzent]: ${distinctNonNeutralHues[0].colorName} als gezielter Hingucker-Akzent`
+      );
+    } else if (distinctNonNeutralHues.length === 0) {
+      styleVibeBonus -= 6;
+    }
+  }
+
   // 7. Print, Logo & Open/Closed Shirt Styling Rules
   const printedItems = coreItems.filter((i) => i.hasPrint);
   const logoItems = coreItems.filter((i) => i.hasLogo);
@@ -615,13 +828,17 @@ export function scoreOutfitCombination(
     styleVibeBonus -= 8;
     traces.push('Print-Konflikt: Mehrere auffällige Prints im selben Outfit konkurrieren miteinander');
   } else if (printedItems.length === 1) {
-    if (vibe === 'minimal_capsule') {
+    if (vibe === 'minimal_capsule' || effectiveModifiers.includes('clean_no_print')) {
       styleVibeBonus -= 4;
     } else if (context.occasion === 'casual' || vibe === 'street_relaxed') {
       styleVibeBonus += 2;
       traces.push(`Lässiger Hingucker: ${printedItems[0].name} mit Print lockert das Outfit auf`);
     }
-  } else if (logoItems.length === 1 && (context.occasion === 'casual' || vibe === 'street_relaxed')) {
+  } else if (
+    logoItems.length === 1 &&
+    !effectiveModifiers.includes('clean_no_print') &&
+    (context.occasion === 'casual' || vibe === 'street_relaxed')
+  ) {
     styleVibeBonus += 1;
     traces.push(`Dezentes Marken-Detail: ${logoItems[0].name} mit Logo-Akzent`);
   }
@@ -733,10 +950,27 @@ export function generateOutfitsForContext(
   limit: number = 5
 ): GeneratedOutfit[] {
   const lockedSet = new Set(context.lockedGarmentIds);
+  const effectiveModifiers = getEffectiveModifiers(context, profile);
 
-  const eligible = garments.filter((g) =>
-    passesHardContextFilter(g, context, lockedSet.has(g.id))
+  let eligible = garments.filter((g) =>
+    passesHardContextFilter(g, context, lockedSet.has(g.id), profile)
   );
+
+  // If 'rainproof' modifier was toggled manually on a dry day and filtered out all outerwear/footwear,
+  // gracefully fall back to filtering without hard rainproof exclusion while keeping scoring priority
+  if (
+    eligible.filter((g) => g.category === 'footwear').length === 0 &&
+    context.weather !== 'rain_wet' &&
+    effectiveModifiers.includes('rainproof')
+  ) {
+    const relaxedContext: OutfitContext = {
+      ...context,
+      activeModifiers: effectiveModifiers.filter((m) => m !== 'rainproof'),
+    };
+    eligible = garments.filter((g) =>
+      passesHardContextFilter(g, relaxedContext, lockedSet.has(g.id), profile)
+    );
+  }
 
   const baseTops = eligible.filter((g) => g.category === 'base_top');
   const midLayers = eligible.filter((g) => g.category === 'mid_layer');
@@ -772,17 +1006,21 @@ export function generateOutfitsForContext(
       return true;
     }
     if (isShirtSubcategory(mid.subcategory)) {
-      // When a shirt is layered as a second layer over a T-shirt/tank, always wear it open!
       return true;
     }
     if (mid.subcategory === 'overshirt' || mid.subcategory === 'cardigan') {
+      if (effectiveModifiers.includes('layered_open')) return true;
       if (top.hasPrint) return true;
       if (isShirtSubcategory(top.subcategory)) {
-        // Cardigan over a collared shirt can be worn open or buttoned; open shows the shirt nicely
         return context.temperatureC >= 12;
       }
       if (context.temperatureC >= 15) return true;
-      if (context.occasion === 'casual' || context.styleVibe === 'street_relaxed') {
+      if (
+        context.occasion === 'casual' ||
+        context.occasion === 'homeoffice_lounge' ||
+        context.occasion === 'beach_vacation' ||
+        context.styleVibe === 'street_relaxed'
+      ) {
         return context.temperatureC >= 11;
       }
       return false;
@@ -971,12 +1209,65 @@ export function generateOutfitsForContext(
   // visibly re-orders and surfaces outfits matching the chosen style direction.
   const getVibeAlignmentPriority = (outfit: GeneratedOutfit): number => {
     const vibe = context.styleVibe || 'balanced';
-    if (vibe === 'balanced') return 0;
-
+    let modScore = 0;
     const core = outfit.items.filter((i) => i.category !== 'accessory');
     const nonNeutrals = core.filter((i) => !isWardrobeNeutral(i.hsl, i.colorTemp));
     const avgSat =
       core.length > 0 ? core.reduce((s, i) => s + i.hsl.s, 0) / core.length : 20;
+
+    if (effectiveModifiers.includes('extra_comfort')) {
+      for (const item of core) {
+        if (item.fit === 'relaxed' || item.fit === 'boxy_oversized') modScore += 10;
+        if (
+          item.texture === 'heavy_jersey' ||
+          item.texture === 'fleece' ||
+          item.texture === 'fine_knit'
+        ) {
+          modScore += 8;
+        }
+        if (item.fit === 'slim') modScore -= 12;
+      }
+    }
+
+    if (effectiveModifiers.includes('clean_no_print')) {
+      if (core.some((i) => i.hasPrint || i.hasLogo)) {
+        modScore -= 35;
+      } else {
+        modScore += 15;
+      }
+    }
+
+    if (effectiveModifiers.includes('layered_open')) {
+      if (core.some((i) => i.category === 'mid_layer' && i.wornOpen === true)) {
+        modScore += 22;
+      }
+    }
+
+    if (effectiveModifiers.includes('monochrome_calm')) {
+      modScore += nonNeutrals.length === 0 ? 30 : nonNeutrals.length === 1 ? 8 : -20;
+      modScore += Math.max(0, 25 - avgSat);
+    }
+
+    if (effectiveModifiers.includes('color_accent')) {
+      modScore += nonNeutrals.length >= 1 ? 28 : -20;
+    }
+
+    if (effectiveModifiers.includes('windproof')) {
+      if (
+        core.some(
+          (i) =>
+            i.windproof ||
+            i.rainproof ||
+            i.texture === 'tech_waterproof' ||
+            i.subcategory === 'rain_jacket' ||
+            i.subcategory === 'parka'
+        )
+      ) {
+        modScore += 18;
+      }
+    }
+
+    if (vibe === 'balanced') return modScore;
 
     if (vibe === 'minimal_capsule') {
       let score = nonNeutrals.length === 0 ? 40 : nonNeutrals.length === 1 ? 10 : -25;
@@ -984,7 +1275,7 @@ export function generateOutfitsForContext(
       if (core.some((i) => i.subcategory === 'knit_sweater')) score += 12;
       if (core.some((i) => i.subcategory === 'sneaker_clean')) score += 8;
       if (core.some((i) => i.subcategory === 'chino' || i.subcategory === 'wide_leg_trousers')) score += 8;
-      return score;
+      return score + modScore;
     }
 
     if (vibe === 'statement_editorial') {
@@ -993,7 +1284,7 @@ export function generateOutfitsForContext(
       if (core.some((i) => i.subcategory === 'overshirt' || i.subcategory === 'blazer' || i.subcategory === 'trenchcoat')) score += 15;
       if (core.some((i) => i.subcategory === 'boots' || i.subcategory === 'heeled_ankle_boot')) score += 12;
       if (core.some((i) => i.colorName === 'Espresso' || i.colorName === 'Salbeigrün' || i.colorName === 'Burgunder')) score += 10;
-      return score;
+      return score + modScore;
     }
 
     if (vibe === 'tailored_chic') {
@@ -1021,7 +1312,7 @@ export function generateOutfitsForContext(
           score -= 18;
         }
       }
-      return score;
+      return score + modScore;
     }
 
     if (vibe === 'street_relaxed') {
@@ -1049,10 +1340,10 @@ export function generateOutfitsForContext(
           score -= 22;
         }
       }
-      return score;
+      return score + modScore;
     }
 
-    return 0;
+    return modScore;
   };
 
   const scoredCore = validCoreCombos

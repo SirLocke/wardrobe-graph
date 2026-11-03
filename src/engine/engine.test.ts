@@ -7,6 +7,11 @@ import {
   scoreGarmentBiometrics,
 } from './colorMath';
 import { generateOutfitsForContext } from './outfitGenerator';
+import {
+  buildBrandOrShopUrl,
+  decodeSharedOutfit,
+  encodeSharedOutfit,
+} from './outfitShare';
 import { analyzeWardrobeGaps } from './gapAnalyzer';
 import {
   buildLlmWardrobeAnalysisPrompt,
@@ -1106,6 +1111,82 @@ test('colorNaming & categorization & dynamicWornOpen & capBeanieSplit & customCo
     'Profile customColors must be included in getAllColorPresets'
   );
 });
+
+test('outfitGenerator: supports expanded occasions (homeoffice_lounge, beach_vacation), customOccasions, and combinable OutfitModifiers', () => {
+  // 1) Homeoffice & Lounge occasion
+  const homeOfficeOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 20,
+      weather: 'sunny_dry',
+      occasion: 'homeoffice_lounge',
+      lockedGarmentIds: [],
+      activeModifiers: ['extra_comfort', 'clean_no_print'],
+    },
+    3
+  );
+  assert.ok(homeOfficeOutfits.length > 0, 'Should generate outfits for homeoffice_lounge');
+  assert.ok(
+    homeOfficeOutfits[0].traces.some((t) => t.includes('Modifier')),
+    'Should include active modifier trace in explanation'
+  );
+
+  // 2) Custom Occasion with custom formality and defaultModifiers
+  const profileWithCustomOccasion = {
+    ...DEFAULT_BIOMETRIC_PROFILE,
+    customOccasions: [
+      {
+        id: 'custom_brunch',
+        name: 'Sonntags-Brunch',
+        formalities: [2, 3] as Array<1 | 2 | 3 | 4 | 5>,
+        defaultModifiers: ['layered_open', 'monochrome_calm'] as const,
+      },
+    ],
+  };
+
+  const customOccOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    profileWithCustomOccasion,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      customOccasionId: 'custom_brunch',
+      lockedGarmentIds: [],
+    },
+    3
+  );
+  assert.ok(customOccOutfits.length > 0, 'Should generate outfits for custom occasion');
+  assert.ok(
+    customOccOutfits[0].traces.some((t) => t.includes('Sonntags-Brunch')),
+    'Should mention custom occasion name in trace'
+  );
+
+  // 3) Outfit Share encoding/decoding & shop search URL
+  const encoded = encodeSharedOutfit(
+    customOccOutfits[0],
+    'Mein Sonntags-Look',
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      customOccasionId: 'custom_brunch',
+      lockedGarmentIds: [],
+    },
+    'Sonntags-Brunch'
+  );
+  const decoded = decodeSharedOutfit(encoded);
+  assert.ok(decoded !== null, 'Should decode shared outfit payload');
+  assert.equal(decoded?.title, 'Mein Sonntags-Look');
+  assert.equal(decoded?.customOccasionName, 'Sonntags-Brunch');
+  assert.equal(decoded?.garments.length, customOccOutfits[0].items.length);
+
+  const shopUrl = buildBrandOrShopUrl(decoded!.garments[0]);
+  assert.ok(shopUrl.startsWith('https://'), 'Should generate valid https shop URL');
+});
+
+
 
 
 

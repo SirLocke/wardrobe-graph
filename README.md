@@ -14,29 +14,28 @@
 Most "smart wardrobe" apps are thin wrappers around cloud LLM APIs that hallucinate outfits, require subscriptions, and lock your wardrobe photos inside proprietary silos.
 
 **`thread-graph`** treats personal styling as a **deterministic constraint-satisfaction and graph-theory problem**:
-1. **Biometric Color Harmony (`src/engine/colorMath.ts`)**: Converts any garment color into HSL/perceptual lightness, classifies color temperature (`warm`, `cool`, `neutral`), derives your **12-Season Color Passport**, and scores garments against your skin undertone, hair/skin contrast, eye color (hue-echo detection), and haircut/beard framing.
-2. **Anatomical Layering & Context Engine (`src/engine/outfitGenerator.ts`)**: Evaluates temperature (`-5°C` to `32°C`), weather (`sunny_dry`, `cloudy_windy`, `rain_wet`), occasion formality (`1..5`), and 5 aesthetic vibes (`balanced`, `minimal_capsule`, `statement_editorial`, `tailored_chic`, `street_relaxed`) using a 5-pillar scoring matrix with Maximal Marginal Relevance (MMR) diversity and emits human-readable **Rule Traces**.
-3. **Combinatorial Graph & Gap Analyzer (`src/engine/gapAnalyzer.ts`)**: Builds a multi-layer compatibility graph across all weather/occasion contexts to detect **Orphan Pieces** (items with `<= 2` valid outfit combinations) and simulates **41 classic garment archetypes** (`src/engine/archetypes.ts`) across **Womenswear, Menswear, and Unisex** scopes to rank the **Top 5 High-ROI Missing Pieces** by exact number of newly unlocked outfits (`+N new combinations`).
-4. **Architectural Vector Avatars & Stacked Look-View (`src/components/GarmentVector.tsx` & `OutfitLayerStack.tsx`)**: No photo cropping required. Renders **38 tailored garment silhouettes** (womenswear, menswear & unisex including hoodies, tees, blouses, blazers, trenchcoats, wide-leg trousers, skirts, sneakers & boots) and stacks outfits anatomically from head to toe with open-front torso layering.
+1. **Biometric Color Harmony (`src/engine/colorMath.ts`)**: Converts any garment color into HSL/perceptual lightness, classifies color temperature (`warm`, `cool`, `neutral`), derives your **12-Season Color Passport**, and scores garments against your skin undertone, hair/skin contrast, eye color (hue-echo detection), and haircut/beard framing. Includes bilingual (`DE`/`EN`) automatic color naming (`src/engine/colorNaming.ts`) and custom user palettes.
+2. **Anatomical Layering, Custom Occasions & Combinable Modifiers (`src/engine/outfitGenerator.ts`)**: Evaluates temperature (`-5°C` to `32°C`), weather (`sunny_dry`, `cloudy_windy`, `rain_wet`), 9 built-in occasions (`homeoffice_lounge`, `casual`, `smart_casual_office`, `city_cafe`, `outdoor_walk`, `beach_vacation`, `active_sporty`, `date_night`, `formal_event`) plus **freely extensible Custom Occasions (`+ Eigener Anlass`)**, and 7 combinable **Daily Modifiers** (`rainproof`, `windproof`, `layered_open`, `extra_comfort`, `clean_no_print`, `monochrome_calm`, `color_accent`) with dynamic open/closed layer recommendations (`wornOpen`) and Maximal Marginal Relevance (MMR) diversity.
+3. **Combinatorial Graph & Gap Analyzer (`src/engine/gapAnalyzer.ts`)**: Builds a multi-layer compatibility graph across weather/occasion contexts to detect **Orphan Pieces** (items with `<= 2` valid outfit combinations) and simulates **41 classic garment archetypes** (`src/engine/archetypes.ts`) across **Womenswear, Menswear, and Unisex** scopes to rank the **Top 5 High-ROI Missing Pieces** by exact number of newly unlocked outfits (`+N new combinations`).
+4. **Architectural Vector Avatars & Stacked Look-View (`src/components/GarmentVector.tsx` & `OutfitLayerStack.tsx`)**: No photo cropping required. Renders **40+ tailored garment silhouettes** (including suit trousers, chinos, shirts, hoodies, blazers, coats, caps vs. winter beanies, sneakers & boots) and stacks outfits anatomically from head to toe with iOS/iPhone PWA Safe-Area support.
 
 ---
 
-## Quick Start (One-Liner Docker Compose)
+## Self-Hosting (Docker, VPS, Coolify, Railway, Home Server)
 
-Run the full web app + persistent JSON store + Model Context Protocol (MCP) server locally on port `3000`:
+Run the full web app + persistent server-side JSON store (`/api/wardrobe`) + Model Context Protocol (`/mcp`) server anywhere with Docker:
 
 ```bash
 docker compose up -d --build
 ```
 
-Or run directly with a single `docker-compose.yml`:
+Or use this `docker-compose.yml` on your VPS / Coolify / Portainer / Home Server:
 
 ```yaml
 services:
   thread-graph:
-    image: ghcr.io/your-org/thread-graph:latest
-    build: .
     container_name: thread-graph
+    build: .
     ports:
       - "3000:3000"
     volumes:
@@ -45,10 +44,14 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - WARDROBE_DATA_FILE=/app/data/wardrobe-store.json
+      # Optional: Protect public internet deployments with HTTP Basic Auth
+      - BASIC_AUTH_USER=
+      - BASIC_AUTH_PASS=
     restart: unless-stopped
 ```
 
-Then open **`http://localhost:3000`** in your browser.
+- **Cross-Device Sync (Desktop & iPhone PWA):** All garments, biometric settings, custom colors, brand size rules, custom occasions, and wear history are persisted in `/app/data/wardrobe-store.json` on the server AND cached locally in `IndexedDB` (`Dexie`) for offline use.
+- **Optional Password Protection (`BASIC_AUTH_USER` & `BASIC_AUTH_PASS`):** If you host the container on a public URL, set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS` in your environment variables to protect the Web UI, `/api/wardrobe`, and `/mcp` with HTTP Basic Auth. Healthchecks at `GET /api/health` remain accessible for reverse proxies.
 
 ---
 
@@ -56,13 +59,13 @@ Then open **`http://localhost:3000`** in your browser.
 
 ```bash
 # 1. Install dependencies
-npm install
+npm install --legacy-peer-deps
 
 # 2. Start full-stack dev server (Web UI on :3000 + MCP HTTP server on :3000/mcp)
 npm run dev
 
-# 3. Run the deterministic engine & MCP unit test suite (zero browser needed)
-npx tsx --test src/engine/engine.test.ts
+# 3. Run the deterministic engine & MCP unit test suite (17 test suites)
+npm test
 
 # 4. Build static production bundle (for GitHub Pages / Cloudflare Pages)
 npm run build
@@ -72,7 +75,7 @@ npm run build
 
 ## Live Demo & GitHub Pages Deployment (Zero-Backend Mode)
 
-Because **`thread-graph`** uses `Dexie.js` (`IndexedDB`) with built-in starter seed data (`src/data/seedData.ts`), the entire application runs **100% client-side in the browser** without requiring a backend server:
+Because **`thread-graph`** uses `Dexie.js` (`IndexedDB`) with built-in starter seed data (`src/data/seedData.ts`) and JSON Backup Import/Export, the application also runs **100% client-side as a static site** (e.g. GitHub Pages, Cloudflare Pages, Netlify, Vercel) without requiring a backend server:
 - Visitors can immediately adjust temperature sliders, lock anchor garments, inspect Orphan Pieces, and test hypothetical purchases in the **Wishlist Sandbox** (`[Im Schrank testen]`).
 - A ready-to-use GitHub Actions workflow is included at [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml) — simply enable **Settings → Pages → Source: GitHub Actions** in your repository.
 

@@ -1,6 +1,6 @@
 /**
  * @license
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -636,6 +636,7 @@ export default function App() {
                 onEditGarment={openEditGarment}
                 onOpenSetupWizard={handleExitDemoAndOpenWizard}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenProfileTab={() => setActiveTab('profile')}
                 onUpdateProfile={handleUpdateProfile}
               />
             )}

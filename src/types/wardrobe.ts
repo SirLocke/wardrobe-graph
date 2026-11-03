@@ -58,6 +58,8 @@ export interface BiometricProfile {
     hex: string;
     group: 'Neutrals' | 'Earth & Olive' | 'Blue & Cool' | 'Accent';
   }>;
+  customOccasions?: CustomOccasion[];
+  defaultStylePreferences?: DefaultStylePreferences;
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear' | 'accessory';
@@ -136,6 +138,7 @@ export interface Garment {
   isClean: boolean;
   brand?: string;                   // Optional brand tag (e.g. "Nike", "Adidas", "Levi's", "Zara")
   size?: string;                    // Optional garment size (e.g. "M", "L", "38", "W32/L32", "42")
+  buyUrl?: string;                  // Optional product/brand shop URL
   isWishlistSandbox?: boolean;      // For testing hypothetical purchases
   imageDataUrl?: string;            // Optional user photo
   wearCount?: number;               // How many times this piece has been worn (0+)
@@ -143,7 +146,37 @@ export interface Garment {
 }
 
 export type WeatherCondition = 'sunny_dry' | 'cloudy_windy' | 'rain_wet';
-export type OccasionType = 'casual' | 'smart_casual_office' | 'active_sporty' | 'date_night' | 'formal_event';
+export type OccasionType =
+  | 'homeoffice_lounge'
+  | 'casual'
+  | 'smart_casual_office'
+  | 'city_cafe'
+  | 'outdoor_walk'
+  | 'beach_vacation'
+  | 'active_sporty'
+  | 'date_night'
+  | 'formal_event';
+
+export type OutfitModifier =
+  | 'rainproof'
+  | 'windproof'
+  | 'layered_open'
+  | 'extra_comfort'
+  | 'clean_no_print'
+  | 'monochrome_calm'
+  | 'color_accent';
+
+export interface CustomOccasion {
+  id: string;
+  name: string;
+  formalities: Array<1 | 2 | 3 | 4 | 5>;
+  defaultModifiers?: OutfitModifier[];
+}
+
+export interface DefaultStylePreferences {
+  colorHarmony?: 'monochrome_calm' | 'balanced' | 'color_accent';
+  preferredModifiers?: OutfitModifier[];
+}
 
 /**
  * Deterministic Style Direction / Aesthetic Vibe
@@ -159,7 +192,9 @@ export interface OutfitContext {
   temperatureC: number;
   weather: WeatherCondition;
   occasion: OccasionType;
+  customOccasionId?: string;
   styleVibe?: StyleVibe;
+  activeModifiers?: OutfitModifier[];
   lockedGarmentIds: string[];
   ignoreCleanStatus?: boolean;
   /**

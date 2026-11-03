@@ -1,16 +1,23 @@
 services:
   thread-graph:
-    image: ghcr.io/thread-graph/thread-graph:latest
     container_name: thread-graph
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
     environment:
       - NODE_ENV=production
       - PORT=3000
       - WARDROBE_DATA_FILE=/app/data/wardrobe-store.json
+      - BASIC_AUTH_USER=${BASIC_AUTH_USER:-}
+      - BASIC_AUTH_PASS=${BASIC_AUTH_PASS:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
+

@@ -8,6 +8,7 @@ import {
   GarmentSubcategory,
   NecklineType,
   OccasionType,
+  OutfitModifier,
   StyleVibe,
   TextureType,
   WardrobeScope,
@@ -256,19 +257,87 @@ export const TEXTURE_LABELS: Record<TextureType, string> = {
 };
 
 export const OCCASION_LABELS: Record<OccasionType, string> = {
+  homeoffice_lounge: 'Homeoffice & Lounge',
   casual: 'Alltag & Freizeit',
-  smart_casual_office: 'Büro & Alltag schick',
-  active_sporty: 'Sportlich & Unterwegs',
-  date_night: 'Abendessen & Ausgehen',
-  formal_event: 'Festlich & Besonderer Anlass',
+  smart_casual_office: 'Büro & Business',
+  city_cafe: 'Café & Stadt',
+  outdoor_walk: 'Draußen & Spaziergang',
+  beach_vacation: 'Strand & Urlaub',
+  active_sporty: 'Sport & Aktiv',
+  date_night: 'Abend & Date',
+  formal_event: 'Festlich & Event',
 };
 
 export const OCCASION_LABELS_EN: Record<OccasionType, string> = {
+  homeoffice_lounge: 'Home Office & Lounge',
   casual: 'Everyday & Casual',
-  smart_casual_office: 'Office & Smart Casual',
-  active_sporty: 'Active & On the Go',
-  date_night: 'Dinner & Date Night',
-  formal_event: 'Formal & Special Event',
+  smart_casual_office: 'Office & Business',
+  city_cafe: 'Café & City',
+  outdoor_walk: 'Outdoor & Walk',
+  beach_vacation: 'Beach & Vacation',
+  active_sporty: 'Sport & Active',
+  date_night: 'Dinner & Date',
+  formal_event: 'Formal & Event',
+};
+
+export interface OutfitModifierMetadata {
+  id: OutfitModifier;
+  labelDe: string;
+  labelEn: string;
+  descDe: string;
+  descEn: string;
+}
+
+export const OUTFIT_MODIFIER_META: Record<OutfitModifier, OutfitModifierMetadata> = {
+  rainproof: {
+    id: 'rainproof',
+    labelDe: 'Regenfest',
+    labelEn: 'Rainproof',
+    descDe: 'Bevorzugt wasserabweisende Jacken, Schuhe und unempfindliche Stoffe',
+    descEn: 'Prefers water-resistant jackets, shoes, and weather-ready fabrics',
+  },
+  windproof: {
+    id: 'windproof',
+    labelDe: 'Winddicht',
+    labelEn: 'Windproof',
+    descDe: 'Bevorzugt windabweisende Jacken und schützende Außenschichten',
+    descEn: 'Prefers windproof jackets and protective outer layers',
+  },
+  layered_open: {
+    id: 'layered_open',
+    labelDe: 'Zwiebellook / Offen',
+    labelEn: 'Layered / Open',
+    descDe: 'Bevorzugt offen getragene Hemden, Overshirts, Strickjacken oder Westen über T-Shirts',
+    descEn: 'Prefers open shirts, overshirts, cardigans, or vests layered over tees',
+  },
+  extra_comfort: {
+    id: 'extra_comfort',
+    labelDe: 'Extra bequem',
+    labelEn: 'Extra Comfort',
+    descDe: 'Bevorzugt lockere Schnitte und weiche Stoffe wie Jersey, Feinstrick oder Fleece',
+    descEn: 'Prefers relaxed cuts and soft fabrics like jersey, fine knit, or fleece',
+  },
+  clean_no_print: {
+    id: 'clean_no_print',
+    labelDe: 'Ohne Print & Logo',
+    labelEn: 'No Print / Clean',
+    descDe: 'Bevorzugt ruhige, einfarbige Teile ohne große Aufdrucke oder Logos',
+    descEn: 'Prefers clean pieces without graphic prints or prominent logos',
+  },
+  monochrome_calm: {
+    id: 'monochrome_calm',
+    labelDe: 'Ton-in-Ton schlicht',
+    labelEn: 'Tonal & Minimal',
+    descDe: 'Ruhige Basisfarben und harmonische Ton-in-Ton-Kombinationen',
+    descEn: 'Calm neutral tones and harmonious tonal combinations',
+  },
+  color_accent: {
+    id: 'color_accent',
+    labelDe: 'Farbakzent',
+    labelEn: 'Color Accent',
+    descDe: 'Setzt gezielt eine deiner stärksten Typ-Farben als Blickfang ein',
+    descEn: 'Highlights one of your strongest personal power colors as a focal point',
+  },
 };
 
 export const WEATHER_LABELS: Record<WeatherCondition, string> = {
@@ -354,6 +423,11 @@ export const DEFAULT_BIOMETRIC_PROFILE: BiometricProfile = {
     { brand: 'Zara', size: 'L', categoryGroup: 'top' },
   ],
   isDemoMode: true,
+  defaultStylePreferences: {
+    colorHarmony: 'balanced',
+    preferredModifiers: [],
+  },
+  customOccasions: [],
   autoLaundrySubcategories: [
     't_shirt',
     'heavyweight_tee',

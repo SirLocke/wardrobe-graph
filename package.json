@@ -1,7 +1,9 @@
 {
-  "name": "react-example",
+  "name": "thread-graph",
+  "description": "Deterministic Biometric Wardrobe Stylist, Gap Analyzer & MCP Server (Offline-First PWA)",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -9,6 +11,7 @@
     "mcp": "tsx mcp-server.ts",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "tsx --test src/engine/engine.test.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "deploy": "./deploy.sh",

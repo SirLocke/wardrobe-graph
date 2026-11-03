@@ -14,6 +14,7 @@ import {
 import {
   deriveScopeFromTargets,
   normalizeWardrobeScopes,
+  OUTFIT_MODIFIER_META,
   WARDROBE_MULTI_SCOPE_META,
   WARDROBE_SCOPE_META,
 } from '../data/seedData';
@@ -25,6 +26,7 @@ import {
   FacialHair,
   Garment,
   HaircutStyle,
+  OutfitModifier,
   Undertone,
   ValueLevel,
   WardrobeScope,
@@ -662,6 +664,186 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
                 <option value="short_beard">Kurzer Vollbart</option>
                 <option value="full_beard">Längerer Vollbart</option>
               </select>
+            </div>
+          </div>
+
+          {/* 6. Persönlicher Stil & Standard-Vorlieben (Dauerhaft im Profil hinterlegt) */}
+          <div className="pt-4 border-t border-zinc-800 space-y-4">
+            <div>
+              <h3 className="text-xs font-semibold text-zinc-100">
+                6. Dein persönlicher Stil &amp; Standard-Vorlieben
+              </h3>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Diese Vorlieben sind bei deinen täglichen Outfit-Vorschlägen automatisch vorbelegt.
+              </p>
+            </div>
+
+            {/* Farbwirkung im Alltag */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-zinc-300">
+                Farbwirkung im Alltag
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    {
+                      id: 'balanced',
+                      label: 'Ausgewogen',
+                      desc: 'Harmonischer Mix aus Basisfarben & Typ-Farben',
+                    },
+                    {
+                      id: 'monochrome_calm',
+                      label: 'Ton-in-Ton schlicht',
+                      desc: 'Ruhige Capsule-Optik ohne starke Farbbrüche',
+                    },
+                    {
+                      id: 'color_accent',
+                      label: 'Farbakzent',
+                      desc: 'Ein gezielter Hingucker-Farbton im Fokus',
+                    },
+                  ] as const
+                ).map((opt) => {
+                  const currentHarmony =
+                    profile.defaultStylePreferences?.colorHarmony || 'balanced';
+                  const active = currentHarmony === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        const prevMods = (
+                          profile.defaultStylePreferences?.preferredModifiers || []
+                        ).filter((m) => m !== 'monochrome_calm' && m !== 'color_accent');
+                        const nextMods: OutfitModifier[] =
+                          opt.id === 'monochrome_calm'
+                            ? [...prevMods, 'monochrome_calm']
+                            : opt.id === 'color_accent'
+                            ? [...prevMods, 'color_accent']
+                            : prevMods;
+                        onUpdateProfile({
+                          ...profile,
+                          defaultStylePreferences: {
+                            ...profile.defaultStylePreferences,
+                            colorHarmony: opt.id,
+                            preferredModifiers: nextMods,
+                          },
+                        });
+                      }}
+                      className={`p-2.5 min-h-[44px] rounded-xl border text-left transition-all cursor-pointer touch-manipulation active:scale-95 ${
+                        active
+                          ? 'border-amber-400 bg-amber-500/15 text-zinc-100 ring-1 ring-amber-400/30'
+                          : 'border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <p className="text-xs font-semibold text-zinc-100">{opt.label}</p>
+                      <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug">{opt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Bevorzugter Schnitt */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-zinc-300">
+                Bevorzugte Passform &amp; Schnitt
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    {
+                      id: 'slim_tapered',
+                      label: 'Körpernah & Gepflegt',
+                      desc: 'Schmale, definierte Linie',
+                    },
+                    {
+                      id: 'regular_tailored',
+                      label: 'Klassisch / Normal',
+                      desc: 'Ausgewogene Standard-Passform',
+                    },
+                    {
+                      id: 'relaxed_boxy',
+                      label: 'Locker & Entspannt',
+                      desc: 'Lässige, bequeme Schnitte',
+                    },
+                  ] as const
+                ).map((fitOpt) => {
+                  const active = profile.preferredFit === fitOpt.id;
+                  return (
+                    <button
+                      key={fitOpt.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdateProfile({
+                          ...profile,
+                          preferredFit: fitOpt.id,
+                        })
+                      }
+                      className={`p-2.5 min-h-[44px] rounded-xl border text-left transition-all cursor-pointer touch-manipulation active:scale-95 ${
+                        active
+                          ? 'border-amber-400 bg-amber-500/15 text-zinc-100 ring-1 ring-amber-400/30'
+                          : 'border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <p className="text-xs font-semibold text-zinc-100">{fitOpt.label}</p>
+                      <p className="text-[10px] text-zinc-400 mt-0.5 leading-snug">{fitOpt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Dauerhafte Standard-Modifier (Mehrfachauswahl) */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-zinc-300">
+                Dauerhafte Standard-Modifier (Mehrfachauswahl)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {(['extra_comfort', 'clean_no_print', 'layered_open'] as OutfitModifier[]).map(
+                  (modId) => {
+                    const meta = OUTFIT_MODIFIER_META[modId];
+                    const currentMods =
+                      profile.defaultStylePreferences?.preferredModifiers || [];
+                    const isSelected = currentMods.includes(modId);
+                    return (
+                      <button
+                        key={modId}
+                        type="button"
+                        onClick={() => {
+                          const nextMods = isSelected
+                            ? currentMods.filter((m) => m !== modId)
+                            : [...currentMods, modId];
+                          onUpdateProfile({
+                            ...profile,
+                            defaultStylePreferences: {
+                              colorHarmony:
+                                profile.defaultStylePreferences?.colorHarmony || 'balanced',
+                              preferredModifiers: nextMods,
+                            },
+                          });
+                        }}
+                        title={meta.descDe}
+                        className={`px-3 py-2 min-h-[40px] rounded-xl border text-xs font-medium transition-all cursor-pointer touch-manipulation active:scale-95 flex items-center gap-2 ${
+                          isSelected
+                            ? 'border-amber-400 bg-amber-500/15 text-amber-200 font-semibold'
+                            : 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                            isSelected
+                              ? 'bg-amber-400 text-zinc-950 font-bold'
+                              : 'border border-zinc-600 bg-zinc-900'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                        <span>{meta.labelDe}</span>
+                      </button>
+                    );
+                  }
+                )}
+              </div>
             </div>
           </div>
         </section>
