@@ -40,8 +40,12 @@ export const OCCASION_FORMALITY_BOUNDS: Record<
   OccasionType,
   { min: number; max: number; maxInternalSpread: number }
 > = {
+  homeoffice_lounge: { min: 1, max: 3, maxInternalSpread: 1 },
   active_sporty: { min: 1, max: 2, maxInternalSpread: 1 },
   casual: { min: 2, max: 3, maxInternalSpread: 1 },
+  city_cafe: { min: 2, max: 4, maxInternalSpread: 1 },
+  outdoor_walk: { min: 1, max: 3, maxInternalSpread: 1 },
+  beach_vacation: { min: 1, max: 3, maxInternalSpread: 1 },
   smart_casual_office: { min: 3, max: 4, maxInternalSpread: 1 },
   date_night: { min: 3, max: 5, maxInternalSpread: 1 },
   formal_event: { min: 4, max: 5, maxInternalSpread: 1 },

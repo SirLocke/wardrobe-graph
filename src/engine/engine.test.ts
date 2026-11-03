@@ -38,6 +38,7 @@ import {
   normalizeBrandKey,
   suggestSizeForGarment,
 } from './brandSizeMatcher';
+import { BiometricProfile } from '../types/wardrobe';
 
 test('colorMath: hexToHsl and classifyColorTemp classify warm, cool, and neutral accurately', () => {
   const sage = hexToHsl('#8F9779');
@@ -1133,14 +1134,14 @@ test('outfitGenerator: supports expanded occasions (homeoffice_lounge, beach_vac
   );
 
   // 2) Custom Occasion with custom formality and defaultModifiers
-  const profileWithCustomOccasion = {
+  const profileWithCustomOccasion: BiometricProfile = {
     ...DEFAULT_BIOMETRIC_PROFILE,
     customOccasions: [
       {
         id: 'custom_brunch',
         name: 'Sonntags-Brunch',
-        formalities: [2, 3] as Array<1 | 2 | 3 | 4 | 5>,
-        defaultModifiers: ['layered_open', 'monochrome_calm'] as const,
+        formalities: [2, 3],
+        defaultModifiers: ['layered_open', 'monochrome_calm'],
       },
     ],
   };

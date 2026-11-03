@@ -1106,7 +1106,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                   key={modKey}
                   type="button"
                   onClick={() => toggleDailyModifier(modKey)}
-                  title={isEn ? meta.subtitleEn : meta.subtitleDe}
+                  title={isEn ? meta.descEn : meta.descDe}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[34px] rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
                     isSelected
                       ? 'bg-amber-400/20 border-amber-400/60 text-amber-200 font-semibold'
