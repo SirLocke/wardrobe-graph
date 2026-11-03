@@ -470,8 +470,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col pb-28 sm:pb-32 md:pb-12 overflow-x-hidden">
-      {/* Top Bar Contract: Strictly 3 zones separated by responsive gap */}
-      <header className="sticky top-0 z-30 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/90">
+      {/* Top Bar Contract: Strictly 3 zones separated by responsive gap + iOS Safe Area Top */}
+      <header className="sticky top-0 z-30 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/90 pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-6 md:gap-8 px-3.5 sm:px-6 h-14">
           {/* Zone 1: Brand App Icon + Wordmark */}
           <a
@@ -729,7 +729,7 @@ export default function App() {
       {/* Mobile Bottom Navigation Bar (Thumb Zone with iOS Safe Area) */}
       <nav
         aria-label="Mobile Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/90 grid grid-cols-4 items-center h-16 pb-safe touch-manipulation shadow-2xl"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/90 grid grid-cols-4 items-center min-h-16 h-auto py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] touch-manipulation shadow-2xl"
       >
         {(
           [
@@ -767,6 +767,8 @@ export default function App() {
           setEditingGarment(null);
         }}
         profile={profile}
+        garments={garments}
+        locale={locale}
         onSaveGarment={handleSaveGarment}
         onUpdateProfile={handleUpdateProfile}
         initialGarment={editingGarment}
@@ -791,6 +793,7 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         profile={profile}
+        garments={garments}
         locale={locale}
         onLocaleChange={setLocale}
         onSaveProfile={handleUpdateProfile}

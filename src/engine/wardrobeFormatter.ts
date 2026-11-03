@@ -9,12 +9,14 @@ import {
   GapAnalysisReport,
   Garment,
   GarmentCategory,
+  GarmentPattern,
   GarmentSubcategory,
   NecklineType,
   TextureType,
   WornOutfitRecord,
 } from '../types/wardrobe';
 import { classifyColorTemp, deriveSeasonPalette, hexToHsl, scoreGarmentBiometrics } from './colorMath';
+import { hexToGermanColorName, inferColorFromGarmentName, resolveGermanColorNameToHex } from './colorNaming';
 
 const VALID_CATEGORIES: GarmentCategory[] = [
   'base_top',
@@ -25,9 +27,19 @@ const VALID_CATEGORIES: GarmentCategory[] = [
   'accessory',
 ];
 
-const VALID_SUBCATEGORIES: GarmentSubcategory[] = Object.values(
-  SUBCATEGORIES_BY_CATEGORY
-).flat();
+const VALID_SUBCATEGORIES: GarmentSubcategory[] = [
+  ...Object.values(SUBCATEGORIES_BY_CATEGORY).flat(),
+  'cap_beanie',
+];
+
+const VALID_PATTERNS: GarmentPattern[] = [
+  'solid',
+  'checked',
+  'pinstripe',
+  'striped',
+  'herringbone',
+  'dotted',
+];
 
 const VALID_FITS: FitType[] = ['slim', 'regular', 'relaxed', 'boxy_oversized'];
 
@@ -75,13 +87,14 @@ function inferCategoryFromSubcategory(sub: GarmentSubcategory): GarmentCategory 
       return cat;
     }
   }
+  if (sub === 'cap_beanie') return 'accessory';
   return 'base_top';
 }
 
 /**
- * Normalizes a hex string or attempts to match a preset color name if hex is missing
+ * Normalizes a hex string or attempts to match a German/English color name or garment title if hex is missing
  */
-function resolveColorHex(rawHex: unknown, rawColorName: unknown): string {
+function resolveColorHex(rawHex: unknown, rawColorName: unknown, rawTitle?: unknown): string {
   if (typeof rawHex === 'string') {
     const trimmed = rawHex.trim();
     if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) {
@@ -92,11 +105,17 @@ function resolveColorHex(rawHex: unknown, rawColorName: unknown): string {
     }
   }
   if (typeof rawColorName === 'string' && rawColorName.trim()) {
+    const resolved = resolveGermanColorNameToHex(rawColorName);
+    if (resolved) return resolved;
     const lower = rawColorName.toLowerCase();
     const match = TEXTILE_COLOR_PRESETS.find((p) =>
       lower.includes(p.name.toLowerCase().split(' ')[0])
     );
     if (match) return match.hex;
+  }
+  if (typeof rawTitle === 'string' && rawTitle.trim()) {
+    const inferred = inferColorFromGarmentName(rawTitle);
+    if (inferred) return inferred.hex;
   }
   return '#8F9779';
 }
@@ -193,10 +212,22 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
     let category: GarmentCategory;
 
     if (VALID_SUBCATEGORIES.includes(rawSub)) {
-      subcategory = rawSub;
-      category = VALID_CATEGORIES.includes(rawCat)
-        ? rawCat
-        : inferCategoryFromSubcategory(subcategory);
+      if (rawSub === 'cap_beanie') {
+        const lowerTitle = String(item.name || '').toLowerCase();
+        subcategory =
+          lowerTitle.includes('cap') || lowerTitle.includes('kappe') || lowerTitle.includes('cappy')
+            ? 'cap'
+            : 'beanie';
+      } else {
+        subcategory = rawSub;
+      }
+      if (subcategory === 'button_down_shirt' || subcategory === 'short_sleeve_shirt') {
+        category = 'base_top';
+      } else {
+        category = VALID_CATEGORIES.includes(rawCat)
+          ? rawCat
+          : inferCategoryFromSubcategory(subcategory);
+      }
     } else if (VALID_CATEGORIES.includes(rawCat)) {
       category = rawCat;
       subcategory = SUBCATEGORIES_BY_CATEGORY[category][0];
@@ -213,11 +244,11 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       );
     }
 
-    const colorHex = resolveColorHex(item.colorHex, item.colorName);
+    const colorHex = resolveColorHex(item.colorHex, item.colorName, item.name);
     const colorName =
       typeof item.colorName === 'string' && item.colorName.trim()
         ? item.colorName.trim()
-        : colorHex;
+        : hexToGermanColorName(colorHex).name;
 
     let accentColorName: string | undefined = undefined;
     let accentColorHex: string | undefined = undefined;
@@ -229,8 +260,12 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       accentColorName =
         typeof item.accentColorName === 'string' && item.accentColorName.trim()
           ? item.accentColorName.trim()
-          : accentColorHex;
+          : hexToGermanColorName(accentColorHex).name;
     }
+
+    const rawPattern = String(item.pattern || '').trim() as GarmentPattern;
+    const pattern: GarmentPattern | undefined =
+      VALID_PATTERNS.includes(rawPattern) && rawPattern !== 'solid' ? rawPattern : undefined;
 
     const name =
       typeof item.name === 'string' && item.name.trim()
@@ -313,6 +348,7 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       colorHex,
       accentColorName,
       accentColorHex,
+      pattern,
       hsl,
       colorTemp,
       fit,

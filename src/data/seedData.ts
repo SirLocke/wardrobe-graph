@@ -4,6 +4,7 @@ import {
   FitType,
   Garment,
   GarmentCategory,
+  GarmentPattern,
   GarmentSubcategory,
   NecklineType,
   OccasionType,
@@ -52,7 +53,7 @@ export const TEXTILE_COLOR_PRESETS: TextileColorPreset[] = [
 ];
 
 export const CATEGORY_LABELS: Record<GarmentCategory, string> = {
-  base_top: 'T-Shirts, Tops & Blusen',
+  base_top: 'T-Shirts, Hemden & Tops',
   mid_layer: 'Pullover, Hoodies & Strickjacken',
   outerwear: 'Jacken & Mäntel',
   bottom: 'Hosen & Röcke',
@@ -61,7 +62,7 @@ export const CATEGORY_LABELS: Record<GarmentCategory, string> = {
 };
 
 export const CATEGORY_LABELS_EN: Record<GarmentCategory, string> = {
-  base_top: 'T-Shirts, Tops & Blouses',
+  base_top: 'T-Shirts, Shirts, Tops & Blouses',
   mid_layer: 'Sweaters, Hoodies & Cardigans',
   outerwear: 'Jackets & Coats',
   bottom: 'Trousers, Jeans & Skirts',
@@ -75,13 +76,14 @@ export const SUBCATEGORY_LABELS: Record<GarmentSubcategory, string> = {
   heavyweight_tee: 'Dickes T-Shirt',
   polo: 'Poloshirt',
   longsleeve: 'Langarmshirt',
+  button_down_shirt: 'Hemd (Langarm)',
+  short_sleeve_shirt: 'Kurzarmhemd',
   blouse: 'Bluse',
   tank_camisole: 'Top / Trägertop',
   crop_top: 'Kurzes Shirt',
   bodysuit: 'Enges Langarmshirt',
   // Mid Layers
-  overshirt: 'Hemdjacke',
-  button_down_shirt: 'Hemd',
+  overshirt: 'Hemdjacke (Overshirt)',
   crewneck_sweater: 'Sweatshirt',
   knit_sweater: 'Strickpullover',
   turtleneck: 'Rollkragenpullover',
@@ -106,6 +108,7 @@ export const SUBCATEGORY_LABELS: Record<GarmentSubcategory, string> = {
   chino: 'Chino-Hose',
   denim: 'Jeans',
   trousers: 'Stoffhose',
+  suit_trousers: 'Anzughose',
   cargo: 'Cargohose',
   shorts: 'Kurze Hose / Shorts',
   wide_leg_trousers: 'Weite Stoffhose',
@@ -129,19 +132,32 @@ export const SUBCATEGORY_LABELS: Record<GarmentSubcategory, string> = {
   belt: 'Gürtel',
   bag_backpack: 'Tasche / Rucksack',
   scarf: 'Schal / Tuch',
-  cap_beanie: 'Mütze / Cap',
+  cap: 'Cap / Kappe',
+  beanie: 'Mütze / Beanie',
+  cap_beanie: 'Mütze / Beanie',
   socks: 'Lange Socken',
   socks_short: 'Kurze Socken',
+};
+
+export const PATTERN_LABELS: Record<GarmentPattern, string> = {
+  solid: 'Einfarbig (Uni)',
+  checked: 'Kariert / Glencheck',
+  pinstripe: 'Nadelstreifen',
+  striped: 'Gestreift',
+  herringbone: 'Fischgrät / Struktur',
+  dotted: 'Gemustert / Gepunktet',
 };
 
 export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcategory[]> = {
   base_top: [
     't_shirt',
+    'heavyweight_tee',
     'longsleeve',
+    'button_down_shirt',
+    'short_sleeve_shirt',
+    'polo',
     'blouse',
     'tank_camisole',
-    'polo',
-    'heavyweight_tee',
     'crop_top',
     'bodysuit',
   ],
@@ -151,7 +167,6 @@ export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcatego
     'crewneck_sweater',
     'cardigan',
     'blazer',
-    'button_down_shirt',
     'overshirt',
     'turtleneck',
     'vest_gilet',
@@ -174,11 +189,12 @@ export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcatego
     'denim',
     'chino',
     'trousers',
+    'suit_trousers',
     'wide_leg_trousers',
+    'shorts',
+    'cargo',
     'midi_skirt',
     'mini_skirt',
-    'cargo',
-    'shorts',
   ],
   footwear: [
     'sneaker_clean',
@@ -193,6 +209,8 @@ export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcatego
   accessory: [
     'socks',
     'socks_short',
+    'cap',
+    'beanie',
     'watch',
     'sunglasses',
     'glasses',
@@ -201,7 +219,6 @@ export const SUBCATEGORIES_BY_CATEGORY: Record<GarmentCategory, GarmentSubcatego
     'belt',
     'bag_backpack',
     'scarf',
-    'cap_beanie',
   ],
 };
 
@@ -498,7 +515,7 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
   makeSeedGarment({
     id: 'seed_mid_2',
     name: 'Hemd Beige',
-    category: 'mid_layer',
+    category: 'base_top',
     subcategory: 'button_down_shirt',
     colorName: 'Sand / Beige',
     colorHex: '#D5C7B8',
@@ -758,13 +775,29 @@ export const SEED_WARDROBE_GARMENTS: Garment[] = [
     id: 'seed_acc_6',
     name: 'Dunkelblaue Mütze',
     category: 'accessory',
-    subcategory: 'cap_beanie',
+    subcategory: 'beanie',
     colorName: 'Navy',
     colorHex: '#1B263B',
     fit: 'regular',
     neckline: 'none',
     texture: 'fine_knit',
-    thermalRating: 3,
+    thermalRating: 4,
+    formality: 2,
+    waterResistant: false,
+    isClean: true,
+    size: 'OneSize',
+  }),
+  makeSeedGarment({
+    id: 'seed_acc_8',
+    name: 'Salbeigrüne Cap',
+    category: 'accessory',
+    subcategory: 'cap',
+    colorName: 'Salbeigrün',
+    colorHex: '#8F9779',
+    fit: 'regular',
+    neckline: 'none',
+    texture: 'twill_chino',
+    thermalRating: 1,
     formality: 2,
     waterResistant: false,
     isClean: true,
@@ -1338,9 +1371,11 @@ export const WARDROBE_MULTI_SCOPE_META: Record<
     descEn: 'Button-down shirts, chinos, overshirts, watches & classic cuts',
     items: [
       'button_down_shirt',
+      'short_sleeve_shirt',
       'overshirt',
       'polo',
       'chino',
+      'suit_trousers',
       'boots',
       'parka',
       'loafer_derby',
@@ -1349,6 +1384,7 @@ export const WARDROBE_MULTI_SCOPE_META: Record<
       'glasses',
       'belt',
       'bracelet',
+      'cap',
     ],
   },
   unisex: {
@@ -1377,7 +1413,8 @@ export const WARDROBE_MULTI_SCOPE_META: Record<
       'sunglasses',
       'glasses',
       'belt',
-      'cap_beanie',
+      'cap',
+      'beanie',
       'scarf',
       'socks',
       'socks_short',
@@ -1488,6 +1525,8 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
   heavyweight_tee: { category: 'base_top', fit: 'relaxed', neckline: 'heavy_crewneck', texture: 'heavy_jersey', thermalRating: 2, formality: 2, waterResistant: false },
   polo: { category: 'base_top', fit: 'regular', neckline: 'shirt_collar', texture: 'smooth_cotton', thermalRating: 1, formality: 3, waterResistant: false },
   longsleeve: { category: 'base_top', fit: 'regular', neckline: 'crewneck', texture: 'heavy_jersey', thermalRating: 2, formality: 2, waterResistant: false },
+  button_down_shirt: { category: 'base_top', fit: 'regular', neckline: 'shirt_collar', texture: 'smooth_cotton', thermalRating: 2, formality: 3, waterResistant: false },
+  short_sleeve_shirt: { category: 'base_top', fit: 'relaxed', neckline: 'shirt_collar', texture: 'linen', thermalRating: 1, formality: 3, waterResistant: false },
   blouse: { category: 'base_top', fit: 'relaxed', neckline: 'v_neck', texture: 'smooth_cotton', thermalRating: 2, formality: 3, waterResistant: false },
   tank_camisole: { category: 'base_top', fit: 'slim', neckline: 'crewneck', texture: 'fine_knit', thermalRating: 1, formality: 2, waterResistant: false },
   crop_top: { category: 'base_top', fit: 'boxy_oversized', neckline: 'crewneck', texture: 'heavy_jersey', thermalRating: 1, formality: 2, waterResistant: false },
@@ -1497,7 +1536,6 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
   crewneck_sweater: { category: 'mid_layer', fit: 'relaxed', neckline: 'crewneck', texture: 'heavy_jersey', thermalRating: 3, formality: 2, waterResistant: false },
   knit_sweater: { category: 'mid_layer', fit: 'regular', neckline: 'heavy_crewneck', texture: 'chunky_knit', thermalRating: 3, formality: 3, waterResistant: false },
   overshirt: { category: 'mid_layer', fit: 'relaxed', neckline: 'stand_collar', texture: 'twill_chino', thermalRating: 3, formality: 3, waterResistant: false },
-  button_down_shirt: { category: 'mid_layer', fit: 'regular', neckline: 'shirt_collar', texture: 'smooth_cotton', thermalRating: 2, formality: 3, waterResistant: false },
   turtleneck: { category: 'mid_layer', fit: 'slim', neckline: 'turtleneck', texture: 'fine_knit', thermalRating: 3, formality: 4, waterResistant: false },
   cardigan: { category: 'mid_layer', fit: 'relaxed', neckline: 'v_neck', texture: 'chunky_knit', thermalRating: 3, formality: 3, waterResistant: false },
   blazer: { category: 'mid_layer', fit: 'relaxed', neckline: 'shirt_collar', texture: 'flannel_wool', thermalRating: 3, formality: 4, waterResistant: false },
@@ -1519,6 +1557,7 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
   denim: { category: 'bottom', fit: 'regular', neckline: 'none', texture: 'denim', thermalRating: 3, formality: 2, waterResistant: false },
   chino: { category: 'bottom', fit: 'regular', neckline: 'none', texture: 'twill_chino', thermalRating: 2, formality: 3, waterResistant: false },
   trousers: { category: 'bottom', fit: 'regular', neckline: 'none', texture: 'flannel_wool', thermalRating: 3, formality: 4, waterResistant: false },
+  suit_trousers: { category: 'bottom', fit: 'slim', neckline: 'none', texture: 'flannel_wool', thermalRating: 3, formality: 5, waterResistant: false },
   wide_leg_trousers: { category: 'bottom', fit: 'relaxed', neckline: 'none', texture: 'twill_chino', thermalRating: 2, formality: 3, waterResistant: false },
   midi_skirt: { category: 'bottom', fit: 'relaxed', neckline: 'none', texture: 'smooth_cotton', thermalRating: 2, formality: 3, waterResistant: false },
   mini_skirt: { category: 'bottom', fit: 'regular', neckline: 'none', texture: 'twill_chino', thermalRating: 1, formality: 2, waterResistant: false },
@@ -1542,6 +1581,8 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
   belt: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'leather_suede', thermalRating: 1, formality: 3, waterResistant: true },
   bag_backpack: { category: 'accessory', fit: 'relaxed', neckline: 'none', texture: 'leather_suede', thermalRating: 1, formality: 3, waterResistant: true },
   scarf: { category: 'accessory', fit: 'relaxed', neckline: 'stand_collar', texture: 'flannel_wool', thermalRating: 4, formality: 3, waterResistant: false },
+  cap: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'twill_chino', thermalRating: 1, formality: 2, waterResistant: false },
+  beanie: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'chunky_knit', thermalRating: 4, formality: 2, waterResistant: false },
   cap_beanie: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'chunky_knit', thermalRating: 4, formality: 2, waterResistant: false },
   socks: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'fine_knit', thermalRating: 2, formality: 2, waterResistant: false },
   socks_short: { category: 'accessory', fit: 'regular', neckline: 'none', texture: 'smooth_cotton', thermalRating: 1, formality: 2, waterResistant: false },
@@ -1549,16 +1590,32 @@ export const SMART_SUBCATEGORY_DEFAULTS: Record<
 
 const CUSTOM_COLORS_STORAGE_KEY = 'atelier_custom_colors_v1';
 
-export function loadCustomColors(): TextileColorPreset[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(CUSTOM_COLORS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+export function loadCustomColors(profile?: BiometricProfile): TextileColorPreset[] {
+  const fromProfile = Array.isArray(profile?.customColors) ? profile!.customColors : [];
+  let fromStorage: TextileColorPreset[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_COLORS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) fromStorage = parsed;
+      }
+    } catch {
+      // ignore storage errors
+    }
   }
+  if (fromProfile.length === 0) return fromStorage;
+  if (fromStorage.length === 0) return fromProfile;
+  // Merge by hex code (profile takes precedence)
+  const merged = [...fromProfile];
+  const seen = new Set(fromProfile.map((c) => c.hex.toUpperCase()));
+  for (const c of fromStorage) {
+    if (c && c.hex && !seen.has(c.hex.toUpperCase())) {
+      seen.add(c.hex.toUpperCase());
+      merged.push(c);
+    }
+  }
+  return merged;
 }
 
 export function saveCustomColors(colors: TextileColorPreset[]): void {
@@ -1570,8 +1627,8 @@ export function saveCustomColors(colors: TextileColorPreset[]): void {
   }
 }
 
-export function getAllColorPresets(): TextileColorPreset[] {
-  return [...loadCustomColors(), ...TEXTILE_COLOR_PRESETS];
+export function getAllColorPresets(profile?: BiometricProfile): TextileColorPreset[] {
+  return [...loadCustomColors(profile), ...TEXTILE_COLOR_PRESETS];
 }
 
 export const SAMPLE_WORN_HISTORY: WornOutfitRecord[] = [

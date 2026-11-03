@@ -5,12 +5,14 @@ import {
   ChevronDown,
   ChevronUp,
   CopyPlus,
+  Edit3,
   Palette,
   Plus,
   Ruler,
   SlidersHorizontal,
   Sparkles,
   Tag,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react';
@@ -23,6 +25,7 @@ import {
   loadCustomColors,
   NECKLINE_LABELS,
   normalizeWardrobeScopes,
+  PATTERN_LABELS,
   saveCustomColors,
   SMART_SUBCATEGORY_DEFAULTS,
   SUBCATEGORIES_BY_CATEGORY,
@@ -34,17 +37,25 @@ import {
   buildDefaultGarmentName,
   COMMON_SIZE_SUGGESTIONS,
   getCategorySizeGroup,
+  getFrequentAndPopularBrands,
   isDefaultGarmentName,
-  POPULAR_BRANDS,
   suggestSizeForGarment,
   upsertBrandSizeRule,
 } from '../engine/brandSizeMatcher';
 import { classifyColorTemp, hexToHsl, scoreGarmentBiometrics } from '../engine/colorMath';
 import {
+  classifyHexColorGroup,
+  hexToGermanColorName,
+  inferColorFromGarmentName,
+  translateColorName,
+} from '../engine/colorNaming';
+import {
+  AppLocale,
   BiometricProfile,
   FitType,
   Garment,
   GarmentCategory,
+  GarmentPattern,
   GarmentSubcategory,
   NecklineType,
   TextureType,
@@ -55,22 +66,11 @@ interface AddGarmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   profile: BiometricProfile;
+  garments?: Garment[];
+  locale?: AppLocale;
   onSaveGarment: (garment: Garment, keepOpenForDuplicate: boolean) => Promise<void>;
   onUpdateProfile?: (nextProfile: BiometricProfile) => Promise<void>;
   initialGarment?: Garment | null;
-}
-
-const OPENABLE_SUBCATEGORIES: GarmentSubcategory[] = [
-  'button_down_shirt',
-  'overshirt',
-  'cardigan',
-  'fleece_vest',
-  'vest_gilet',
-  'blouse',
-];
-
-function isOpenableSubcategory(sub: GarmentSubcategory): boolean {
-  return OPENABLE_SUBCATEGORIES.includes(sub);
 }
 
 const THERMAL_LEVEL_OPTIONS: Array<{ value: 1 | 2 | 3 | 4 | 5; label: string; shortLabel: string }> = [
@@ -93,18 +93,23 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   isOpen,
   onClose,
   profile,
+  garments,
+  locale = 'de',
   onSaveGarment,
   onUpdateProfile,
   initialGarment,
 }) => {
-  const [name, setName] = useState('Hoodie Salbeigrün');
+  const isEn = locale === 'en';
+  const defaultColorLabel = isEn ? 'Sage Green' : 'Salbeigrün';
+  const [name, setName] = useState(`T-Shirt ${defaultColorLabel}`);
   const [hasCustomNameEdit, setHasCustomNameEdit] = useState(false);
-  const [category, setCategory] = useState<GarmentCategory>('mid_layer');
-  const [subcategory, setSubcategory] = useState<GarmentSubcategory>('hoodie');
-  const [colorName, setColorName] = useState('Salbeigrün');
+  const [category, setCategory] = useState<GarmentCategory>('base_top');
+  const [subcategory, setSubcategory] = useState<GarmentSubcategory>('t_shirt');
+  const [colorName, setColorName] = useState(defaultColorLabel);
   const [colorHex, setColorHex] = useState('#8F9779');
   const [accentColorName, setAccentColorName] = useState('');
   const [accentColorHex, setAccentColorHex] = useState('');
+  const [pattern, setPattern] = useState<GarmentPattern>('solid');
   const [brand, setBrand] = useState('');
   const [size, setSize] = useState('');
   const [fit, setFit] = useState<FitType>('relaxed');
@@ -119,7 +124,6 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [windproof, setWindproof] = useState(false);
   const [hasPrint, setHasPrint] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
-  const [wornOpen, setWornOpen] = useState(false);
   const [isClean, setIsClean] = useState(true);
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
@@ -127,23 +131,42 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
   const [ruleSavedNotice, setRuleSavedNotice] = useState<string | null>(null);
 
-  // Easy custom color creator without hex jargon
-  const [colorPresets, setColorPresets] = useState<TextileColorPreset[]>(() => getAllColorPresets());
+  // Custom colors synced with profile + localStorage
+  const [customColors, setCustomColors] = useState<TextileColorPreset[]>(() =>
+    loadCustomColors(profile)
+  );
+  const [colorPresets, setColorPresets] = useState<TextileColorPreset[]>(() =>
+    getAllColorPresets(profile)
+  );
   const [showNewColorCreator, setShowNewColorCreator] = useState(false);
-  const [newCustomColorName, setNewCustomColorName] = useState('');
+  const [newCustomColorName, setNewCustomColorName] = useState(() =>
+    hexToGermanColorName('#6B8E78', locale).name
+  );
   const [newCustomColorHex, setNewCustomColorHex] = useState('#6B8E78');
+  const [hasManualCustomColorName, setHasManualCustomColorName] = useState(false);
+  const [editingCustomColorOriginalName, setEditingCustomColorOriginalName] = useState<string | null>(
+    null
+  );
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeScopes = normalizeWardrobeScopes(profile);
 
   useEffect(() => {
     if (!isOpen) return;
-    setColorPresets(getAllColorPresets());
+    const loadedCustom = loadCustomColors(profile);
+    setCustomColors(loadedCustom);
+    setColorPresets(getAllColorPresets(profile));
     setDuplicateNotice(null);
     setRuleSavedNotice(null);
     setNameError(null);
     setShowNewColorCreator(false);
+    setEditingCustomColorOriginalName(null);
+    setHasManualCustomColorName(false);
     setShowAdvancedDetails(Boolean(initialGarment));
+
+    if (!hasManualCustomColorName) {
+      setNewCustomColorName(hexToGermanColorName('#6B8E78', locale).name);
+    }
 
     if (initialGarment) {
       setName(initialGarment.name);
@@ -156,10 +179,15 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setHasCustomNameEdit(!isDefault);
       setCategory(initialGarment.category);
       setSubcategory(initialGarment.subcategory);
-      setColorName(initialGarment.colorName);
+      setColorName(translateColorName(initialGarment.colorName, locale, initialGarment.colorHex));
       setColorHex(initialGarment.colorHex);
-      setAccentColorName(initialGarment.accentColorName || '');
+      setAccentColorName(
+        initialGarment.accentColorName
+          ? translateColorName(initialGarment.accentColorName, locale, initialGarment.accentColorHex)
+          : ''
+      );
       setAccentColorHex(initialGarment.accentColorHex || '');
+      setPattern(initialGarment.pattern || 'solid');
       setBrand(initialGarment.brand || '');
       setSize(
         initialGarment.size ||
@@ -192,7 +220,6 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setWindproof(Boolean(initialGarment.windproof));
       setHasPrint(Boolean(initialGarment.hasPrint));
       setHasLogo(Boolean(initialGarment.hasLogo));
-      setWornOpen(Boolean(initialGarment.wornOpen));
       setIsClean(
         canGarmentUseLaundry(initialGarment) ? initialGarment.isClean : true
       );
@@ -200,12 +227,14 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     } else {
       const defaultSub: GarmentSubcategory = 't_shirt';
       const defaults = SMART_SUBCATEGORY_DEFAULTS[defaultSub];
+      const initColor = hexToGermanColorName('#8F9779', locale).name;
       setCategory(defaults.category);
       setSubcategory(defaultSub);
-      setColorName('Salbeigrün');
+      setColorName(initColor);
       setColorHex('#8F9779');
       setAccentColorName('');
       setAccentColorHex('');
+      setPattern('solid');
       setBrand('');
       setSize(suggestSizeForGarment(defaults.category, '', profile).suggestedSize);
       setFit(defaults.fit);
@@ -220,13 +249,12 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setWindproof(Boolean(defaults.windproof));
       setHasPrint(false);
       setHasLogo(false);
-      setWornOpen(false);
       setIsClean(true);
       setImageDataUrl(undefined);
-      setName('T-Shirt Salbeigrün');
+      setName(`T-Shirt ${initColor}`);
       setHasCustomNameEdit(false);
     }
-  }, [isOpen, initialGarment, profile]);
+  }, [isOpen, initialGarment, profile, locale]);
 
   useEffect(() => {
     if (!imageDataUrl || !canvasRef.current) return;
@@ -251,8 +279,10 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       !hasCustomNameEdit &&
       isDefaultGarmentName(name, subcategory, colorName, accentColorName);
 
-    const nextAccentName = defaults.category === 'footwear' ? accentColorName : '';
-    const nextAccentHex = defaults.category === 'footwear' ? accentColorHex : '';
+    const supportsAccent =
+      defaults.category === 'footwear' || defaults.category === 'bottom';
+    const nextAccentName = supportsAccent ? accentColorName : '';
+    const nextAccentHex = supportsAccent ? accentColorHex : '';
     const isRain = Boolean(
       defaults.rainproof ||
         defaults.waterResistant ||
@@ -274,13 +304,15 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     setWindproof(Boolean(defaults.windproof));
     setHasPrint(false);
     setHasLogo(false);
-    setWornOpen(newSub === 'fleece_vest' || newSub === 'vest_gilet');
     if (!canGarmentUseLaundry({ category: defaults.category, subcategory: newSub })) {
       setIsClean(true);
     }
-    if (defaults.category !== 'footwear') {
+    if (!supportsAccent) {
       setAccentColorName('');
       setAccentColorHex('');
+    }
+    if (defaults.category === 'accessory' || defaults.category === 'footwear') {
+      setPattern('solid');
     }
     const suggestion = suggestSizeForGarment(defaults.category, brand, profile);
     if (suggestion.suggestedSize) {
@@ -330,7 +362,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   };
 
   const handleSelectColorPreset = (presetName: string, presetHex: string) => {
-    const cleanColorName = presetName.replace(' (Test)', '');
+    const cleanColorName = translateColorName(presetName.replace(' (Test)', ''), locale, presetHex);
     const shouldAutoUpdateName =
       !hasCustomNameEdit &&
       isDefaultGarmentName(name, subcategory, colorName, accentColorName);
@@ -348,7 +380,9 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   };
 
   const handleSelectAccentColorPreset = (presetName: string, presetHex: string) => {
-    const cleanAccentName = presetName ? presetName.replace(' (Test)', '') : '';
+    const cleanAccentName = presetName
+      ? translateColorName(presetName.replace(' (Test)', ''), locale, presetHex)
+      : '';
     const shouldAutoUpdateName =
       !hasCustomNameEdit &&
       isDefaultGarmentName(name, subcategory, colorName, accentColorName);
@@ -391,20 +425,59 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     });
   };
 
-  const handleAddCustomColor = () => {
-    const trimmed = newCustomColorName.trim() || 'Meine Wunschfarbe';
-    const customList = loadCustomColors();
+  const syncCustomColors = async (updatedList: TextileColorPreset[]) => {
+    saveCustomColors(updatedList);
+    setCustomColors(updatedList);
+    const nextProfile: BiometricProfile = {
+      ...profile,
+      customColors: updatedList,
+    };
+    setColorPresets(getAllColorPresets(nextProfile));
+    if (onUpdateProfile) {
+      await onUpdateProfile(nextProfile);
+    }
+  };
+
+  const handleAddOrUpdateCustomColor = async () => {
+    const autoName = hexToGermanColorName(newCustomColorHex, locale).name;
+    const trimmed =
+      newCustomColorName.trim() || autoName || (isEn ? 'Custom Color' : 'Wunschfarbe');
     const newPreset: TextileColorPreset = {
       name: trimmed,
       hex: newCustomColorHex.toUpperCase(),
-      group: 'Accent',
+      group: classifyHexColorGroup(newCustomColorHex),
     };
-    const updated = [newPreset, ...customList.filter((c) => c.name !== trimmed)];
-    saveCustomColors(updated);
-    setColorPresets(getAllColorPresets());
+    const filtered = customColors.filter(
+      (c) =>
+        c.name.toLowerCase() !== trimmed.toLowerCase() &&
+        (!editingCustomColorOriginalName ||
+          c.name.toLowerCase() !== editingCustomColorOriginalName.toLowerCase())
+    );
+    const updated = [newPreset, ...filtered];
+    await syncCustomColors(updated);
     handleSelectColorPreset(newPreset.name, newPreset.hex);
-    setNewCustomColorName('');
+    setEditingCustomColorOriginalName(null);
+    setHasManualCustomColorName(false);
+    setNewCustomColorName(hexToGermanColorName(newCustomColorHex, locale).name);
     setShowNewColorCreator(false);
+  };
+
+  const handleStartEditCustomColor = (preset: TextileColorPreset) => {
+    setEditingCustomColorOriginalName(preset.name);
+    setNewCustomColorHex(preset.hex);
+    setNewCustomColorName(preset.name);
+    setHasManualCustomColorName(true);
+    setShowNewColorCreator(true);
+  };
+
+  const handleDeleteCustomColor = async (nameToDelete: string) => {
+    const updated = customColors.filter(
+      (c) => c.name.toLowerCase() !== nameToDelete.toLowerCase()
+    );
+    await syncCustomColors(updated);
+    if (editingCustomColorOriginalName === nameToDelete) {
+      setEditingCustomColorOriginalName(null);
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -434,8 +507,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
         .map((v) => v.toString(16).padStart(2, '0'))
         .join('')
         .toUpperCase();
-    setColorHex(hex);
-    setColorName('Farbe aus Foto');
+    const translated = hexToGermanColorName(hex, locale);
+    handleSelectColorPreset(translated.name, hex);
   };
 
   const liveComputation = useMemo(() => {
@@ -467,6 +540,11 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     return filtered.length > 0 ? filtered : SUBCATEGORIES_BY_CATEGORY[category];
   }, [category, activeScopes]);
 
+  const brandSuggestions = useMemo(
+    () => getFrequentAndPopularBrands(garments, profile),
+    [garments, profile]
+  );
+
   if (!isOpen) return null;
 
   const submitForm = async (keepOpenForDuplicate: boolean) => {
@@ -476,8 +554,34 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     }
     setNameError(null);
 
+    // If the user opened the custom color creator and picked a color without clicking "Farbe speichern",
+    // or if they typed a color name in the title (e.g. "Schwarze Winterjacke") while leaving default Salbeigrün (#8F9779),
+    // automatically apply the matching color so the garment is never saved with a mismatched color.
+    let finalColorHex = colorHex;
+    let finalColorName = colorName.trim() || hexToGermanColorName(colorHex, locale).name;
+
+    if (showNewColorCreator && newCustomColorHex) {
+      finalColorHex = newCustomColorHex.toUpperCase();
+      finalColorName =
+        newCustomColorName.trim() || hexToGermanColorName(newCustomColorHex, locale).name;
+    } else if (finalColorHex.toUpperCase() === '#8F9779') {
+      const inferredFromTitle = inferColorFromGarmentName(name.trim(), locale);
+      if (inferredFromTitle && inferredFromTitle.hex.toUpperCase() !== '#8F9779') {
+        finalColorHex = inferredFromTitle.hex;
+        finalColorName = inferredFromTitle.name;
+      }
+    }
+
+    const finalHsl = hexToHsl(finalColorHex);
+    const finalColorTemp = classifyColorTemp(finalHsl);
+
     const isAccessory = category === 'accessory';
-    const isFootwear = category === 'footwear';
+    const supportsAccent = category === 'footwear' || category === 'bottom';
+    const supportsPattern =
+      category === 'bottom' ||
+      category === 'base_top' ||
+      category === 'mid_layer' ||
+      category === 'outerwear';
     const laundryAllowed = canGarmentUseLaundry({ category, subcategory });
     const effectiveWaterResistant = Boolean(
       waterResistant ||
@@ -497,13 +601,14 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       name: name.trim(),
       category,
       subcategory,
-      colorName: colorName.trim() || 'Wunschfarbe',
-      colorHex,
+      colorName: finalColorName,
+      colorHex: finalColorHex,
       accentColorName:
-        isFootwear && accentColorHex ? accentColorName.trim() || 'Akzent' : undefined,
-      accentColorHex: isFootwear && accentColorHex ? accentColorHex : undefined,
-      hsl: liveComputation.hsl,
-      colorTemp: liveComputation.colorTemp,
+        supportsAccent && accentColorHex ? accentColorName.trim() || 'Akzent' : undefined,
+      accentColorHex: supportsAccent && accentColorHex ? accentColorHex : undefined,
+      pattern: supportsPattern && pattern !== 'solid' ? pattern : undefined,
+      hsl: finalHsl,
+      colorTemp: finalColorTemp,
       fit: isAccessory ? 'regular' : fit,
       neckline:
         category === 'bottom' || category === 'footwear' || category === 'accessory'
@@ -521,7 +626,6 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
         (category === 'base_top' || category === 'mid_layer') && hasPrint ? true : undefined,
       hasLogo:
         (category === 'base_top' || category === 'mid_layer') && hasLogo ? true : undefined,
-      wornOpen: isOpenableSubcategory(subcategory) ? wornOpen : undefined,
       isClean: laundryAllowed ? isClean : true,
       imageDataUrl,
       brand: brand.trim() || undefined,
@@ -558,6 +662,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
   const sizePills = COMMON_SIZE_SUGGESTIONS[getCategorySizeGroup(category)];
   const laundrySupported = canGarmentUseLaundry({ category, subcategory });
+  const supportsAccentColor = category === 'footwear' || category === 'bottom';
 
   return (
     <div
@@ -568,7 +673,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     >
       <div className="w-full h-full sm:h-auto sm:max-h-[90vh] max-w-3xl rounded-none sm:rounded-2xl bg-zinc-950 border-0 sm:border sm:border-zinc-800 shadow-2xl my-0 sm:my-8 overflow-hidden flex flex-col">
         {/* Top Modal Header */}
-        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
+        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 pt-[max(0.875rem,env(safe-area-inset-top,0px))] border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
           <div>
             <h2 id="modal-garment-title" className="text-base sm:text-lg font-semibold text-zinc-100">
               {initialGarment ? 'Kleidungsstück anpassen' : 'Kleidungsstück einfach hinzufügen'}
@@ -607,12 +712,12 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <GarmentVector
                 type={subcategory}
                 colorHex={colorHex}
-                accentColorHex={category === 'footwear' && accentColorHex ? accentColorHex : undefined}
+                accentColorHex={supportsAccentColor && accentColorHex ? accentColorHex : undefined}
+                pattern={pattern}
                 texture={texture}
                 neckline={neckline}
                 hasPrint={hasPrint}
                 hasLogo={hasLogo}
-                wornOpen={wornOpen}
                 className="w-20 h-20"
               />
             </div>
@@ -620,11 +725,6 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-medium text-zinc-400">
                   Bezeichnung im Kleiderschrank
-                  {hasCustomNameEdit && (
-                    <span className="ml-2 text-[10px] text-amber-400/90 font-normal">
-                      (Eigener Name bleibt bei Typwechsel erhalten)
-                    </span>
-                  )}
                 </span>
                 <span className={`px-2.5 py-0.5 rounded-md border text-[11px] font-medium ${scoreToneClass}`}>
                   {fitVerdictText} ({liveComputation.bio.score}%)
@@ -639,8 +739,15 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                   setHasCustomNameEdit(
                     !isDefaultGarmentName(nextVal, subcategory, colorName, accentColorName)
                   );
+                  if (colorHex.toUpperCase() === '#8F9779') {
+                    const inferred = inferColorFromGarmentName(nextVal, locale);
+                    if (inferred && inferred.hex.toUpperCase() !== '#8F9779') {
+                      setColorHex(inferred.hex);
+                      setColorName(inferred.name);
+                    }
+                  }
                 }}
-                placeholder="z.B. Hoodie Salbeigrün"
+                placeholder={isEn ? 'e.g. Hoodie Sage Green' : 'z.B. Hoodie Salbeigrün'}
                 className="w-full px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
               />
               {nameError && <p className="text-xs text-rose-400">{nameError}</p>}
@@ -654,13 +761,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                1. Was möchtest du hinzufügen?
+                1. Kategorie &amp; Schnitt
               </label>
-              <span className="text-[11px] text-zinc-500">
-                {category === 'accessory'
-                  ? 'Accessoires passen flexibel zu jedem Anlass'
-                  : 'Wärme, Stoff & Anlass werden automatisch passend vorbelegt'}
-              </span>
             </div>
 
             {/* Category Tabs */}
@@ -719,60 +821,177 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             </div>
           </div>
 
-          {/* STEP 2: Welche Farbe hat es? (Visual Color Swatches + Easy Custom Color Creator) */}
+          {/* STEP 2: Welche Farbe hat es? (Visual Color Swatches + Custom Color Manager) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                2. {category === 'footwear' ? 'Grundfarbe des Schuhs' : 'Welche Farbe hat es?'}{' '}
-                <span className="text-amber-400 ml-1">({colorName})</span>
+                2.{' '}
+                {category === 'footwear'
+                  ? isEn
+                    ? 'Primary shoe color'
+                    : 'Grundfarbe des Schuhs'
+                  : isEn
+                  ? 'Color'
+                  : 'Welche Farbe hat es?'}{' '}
+                <span className="text-amber-400 ml-1">
+                  ({translateColorName(colorName, locale, colorHex)})
+                </span>
               </label>
               <button
                 type="button"
-                onClick={() => setShowNewColorCreator((v) => !v)}
+                onClick={() => {
+                  setShowNewColorCreator((v) => !v);
+                  setEditingCustomColorOriginalName(null);
+                  setHasManualCustomColorName(false);
+                }}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-amber-300 hover:border-amber-500/50 transition-colors cursor-pointer"
               >
                 <Palette className="w-3.5 h-3.5" />
-                {showNewColorCreator ? 'Schließen' : '+ Eigene Farbe mischen'}
+                {showNewColorCreator
+                  ? isEn
+                    ? 'Close'
+                    : 'Schließen'
+                  : isEn
+                  ? '+ Custom Colors'
+                  : '+ Eigene Farben verwalten'}
               </button>
             </div>
 
             {showNewColorCreator && (
-              <div className="p-4 rounded-xl bg-zinc-900/90 border border-amber-500/30 space-y-3">
-                <p className="text-xs font-medium text-zinc-200">
-                  Neue Wunschfarbe zur Farbpalette hinzufügen (ohne Technik-Codes):
-                </p>
+              <div className="p-4 rounded-xl bg-zinc-900/90 border border-amber-500/30 space-y-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-zinc-200">
+                    {editingCustomColorOriginalName
+                      ? isEn
+                        ? `Edit custom color "${editingCustomColorOriginalName}":`
+                        : `Eigene Farbe „${editingCustomColorOriginalName}“ bearbeiten:`
+                      : isEn
+                      ? 'Add new color to palette:'
+                      : 'Neue Farbe zur Farbpalette hinzufügen:'}
+                  </p>
+                  <span className="text-[11px] text-amber-300/90">
+                    {isEn ? 'Detected shade:' : 'Erkannter Farbton:'}{' '}
+                    <strong>{hexToGermanColorName(newCustomColorHex, locale).name}</strong>
+                  </span>
+                </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer shrink-0">
                     <input
                       type="color"
                       value={newCustomColorHex}
-                      onChange={(e) => setNewCustomColorHex(e.target.value)}
+                      onChange={(e) => {
+                        const nextHex = e.target.value;
+                        setNewCustomColorHex(nextHex);
+                        if (!hasManualCustomColorName) {
+                          setNewCustomColorName(hexToGermanColorName(nextHex, locale).name);
+                        }
+                      }}
                       className="w-7 h-7 rounded cursor-pointer border-0 bg-transparent"
                     />
-                    <span className="text-xs text-zinc-300">Farbton antippen</span>
+                    <span className="text-xs text-zinc-300">
+                      {isEn ? 'Pick shade' : 'Farbton wählen'}
+                    </span>
                   </label>
-                  <input
-                    type="text"
-                    value={newCustomColorName}
-                    onChange={(e) => setNewCustomColorName(e.target.value)}
-                    placeholder="Farbname (z.B. Eisblau, Senfgelb, Flieder...)"
-                    className="flex-1 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                  />
+                  <div className="flex-1 flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={newCustomColorName}
+                      onChange={(e) => {
+                        setNewCustomColorName(e.target.value);
+                        setHasManualCustomColorName(Boolean(e.target.value.trim()));
+                      }}
+                      placeholder={`${isEn ? 'e.g.' : 'z. B.'} ${
+                        hexToGermanColorName(newCustomColorHex, locale).name
+                      }`}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                    />
+                    {hasManualCustomColorName &&
+                      newCustomColorName.trim() !==
+                        hexToGermanColorName(newCustomColorHex, locale).name && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewCustomColorName(
+                              hexToGermanColorName(newCustomColorHex, locale).name
+                            );
+                            setHasManualCustomColorName(false);
+                          }}
+                          className="px-2 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-[11px] text-amber-300 hover:border-amber-400 whitespace-nowrap cursor-pointer"
+                          title={
+                            isEn
+                              ? 'Use detected English color name'
+                              : 'Erkannten deutschen Farbnamen übernehmen'
+                          }
+                        >
+                          {isEn ? 'Suggestion:' : 'Vorschlag:'}{' '}
+                          {hexToGermanColorName(newCustomColorHex, locale).name}
+                        </button>
+                      )}
+                  </div>
                   <button
                     type="button"
-                    onClick={handleAddCustomColor}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer"
+                    onClick={handleAddOrUpdateCustomColor}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Farbe speichern &amp; wählen
+                    {editingCustomColorOriginalName
+                      ? isEn
+                        ? 'Save changes'
+                        : 'Änderung speichern'
+                      : isEn
+                      ? 'Save & select color'
+                      : 'Farbe speichern & wählen'}
                   </button>
                 </div>
+
+                {customColors.length > 0 && (
+                  <div className="pt-2.5 border-t border-zinc-800/80 space-y-1.5">
+                    <p className="text-[11px] text-zinc-400">
+                      {isEn ? 'Your custom colors:' : 'Deine eigenen Farben:'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {customColors.map((cc) => (
+                        <div
+                          key={`${cc.name}_${cc.hex}`}
+                          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200"
+                        >
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0"
+                            style={{ backgroundColor: cc.hex }}
+                          />
+                          <span>{cc.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditCustomColor(cc)}
+                            className="text-zinc-400 hover:text-amber-300 cursor-pointer p-0.5"
+                            title={isEn ? `Edit ${cc.name}` : `${cc.name} bearbeiten`}
+                          >
+                            <Edit3 className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomColor(cc.name)}
+                            className="text-zinc-500 hover:text-rose-400 cursor-pointer p-0.5"
+                            title={isEn ? `Delete ${cc.name}` : `${cc.name} löschen`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {colorPresets.map((preset) => {
                 const isSelected = colorHex.toUpperCase() === preset.hex.toUpperCase();
+                const displayLabel = translateColorName(
+                  preset.name.replace(' (Test)', ''),
+                  locale,
+                  preset.hex
+                );
                 return (
                   <button
                     key={`${preset.name}_${preset.hex}`}
@@ -788,22 +1007,22 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                       className="w-4 h-4 rounded-full border border-white/20 shrink-0"
                       style={{ backgroundColor: preset.hex }}
                     />
-                    <span className="text-[11px] font-medium truncate">
-                      {preset.name.replace(' (Test)', '')}
-                    </span>
+                    <span className="text-[11px] font-medium truncate">{displayLabel}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Shoe Accent Color Picker (for white/neutral shoes with colored stripes, heel tab, logo, or gusset) */}
-            {category === 'footwear' && (
+            {/* Secondary / Accent Color Picker for Footwear AND Bottoms (Hosen / Kurze Hosen) */}
+            {supportsAccentColor && (
               <div className="mt-4 pt-3.5 border-t border-zinc-800/80 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                     <span>
-                      Farbige Akzente am Schuh (Optional – z. B. Streifen, Ferse, Logo)
+                      {category === 'footwear'
+                        ? 'Farbige Akzente am Schuh (Optional – z. B. Streifen, Ferse, Logo)'
+                        : 'Sekundärfarbe bei Hose / Shorts (Optional – z. B. Streifen, Karos, Waschung)'}
                     </span>
                     {accentColorHex && (
                       <span className="text-amber-400">({accentColorName})</span>
@@ -815,7 +1034,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                       onClick={() => handleSelectAccentColorPreset('', '')}
                       className="text-[11px] text-zinc-400 hover:text-zinc-200 underline cursor-pointer"
                     >
-                      Akzent entfernen (Einfarbig)
+                      Sekundärfarbe entfernen (Einfarbig)
                     </button>
                   )}
                 </div>
@@ -831,13 +1050,18 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                     }`}
                   >
                     <span className="w-3.5 h-3.5 rounded-full border border-dashed border-zinc-500 shrink-0" />
-                    <span className="text-[11px] font-medium truncate">Einfarbig</span>
+                    <span className="text-[11px] font-medium truncate">Keine 2. Farbe</span>
                   </button>
 
                   {colorPresets.map((preset) => {
                     const isSelected =
                       Boolean(accentColorHex) &&
                       accentColorHex.toUpperCase() === preset.hex.toUpperCase();
+                    const displayAccentLabel = translateColorName(
+                      preset.name.replace(' (Test)', ''),
+                      locale,
+                      preset.hex
+                    );
                     return (
                       <button
                         key={`accent_${preset.name}_${preset.hex}`}
@@ -854,7 +1078,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                           style={{ backgroundColor: preset.hex }}
                         />
                         <span className="text-[11px] font-medium truncate">
-                          {preset.name.replace(' (Test)', '')}
+                          {displayAccentLabel}
                         </span>
                       </button>
                     );
@@ -864,7 +1088,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             )}
           </div>
 
-          {/* STEP 2b: Eigenschaften, Trageweise (Offen/Geschlossen), Print/Logo & Wetter-Tags */}
+          {/* STEP 2b: Eigenschaften, Muster (Hosen/Hemden/Oberteile), Print/Logo & Wetter-Tags */}
           {(category === 'base_top' ||
             category === 'mid_layer' ||
             category === 'outerwear' ||
@@ -872,14 +1096,46 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             category === 'bottom') && (
             <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                Eigenschaften &amp; Trageweise (Optional)
+                Muster &amp; Eigenschaften (Optional)
               </label>
+
+              {/* Pattern selector for bottoms, shirts, tops, sweaters, jackets */}
+              {(category === 'bottom' ||
+                category === 'base_top' ||
+                category === 'mid_layer' ||
+                category === 'outerwear') && (
+                <div className="space-y-1.5">
+                  <span className="block text-xs text-zinc-400">
+                    Stoffmuster (z. B. Kariert, Nadelstreifen, Gestreift):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(Object.keys(PATTERN_LABELS) as GarmentPattern[]).map((patKey) => {
+                      const isPatSelected = pattern === patKey;
+                      return (
+                        <button
+                          key={patKey}
+                          type="button"
+                          onClick={() => setPattern(patKey)}
+                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                            isPatSelected
+                              ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          {isPatSelected ? '✓ ' : ''}
+                          {PATTERN_LABELS[patKey]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Print & Logo options for T-Shirts, Tops, Pullovers, Hoodies, etc. */}
               {(category === 'base_top' || category === 'mid_layer') && (
                 <div className="space-y-1.5">
                   <span className="block text-xs text-zinc-400">
-                    Muster / Aufdruck (für T-Shirts, Pullover &amp; Oberteile):
+                    Aufdruck / Logo (für T-Shirts, Hemden &amp; Pullover):
                   </span>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -894,7 +1150,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      Unifarben / Clean
+                      Ohne Aufdruck / Clean
                     </button>
                     <button
                       type="button"
@@ -917,39 +1173,6 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                       }`}
                     >
                       {hasLogo ? '✓ ' : ''}Mit Logo
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Shirt / Overshirt / Cardigan / Vest: Worn Open vs. Closed */}
-              {isOpenableSubcategory(subcategory) && (
-                <div className="space-y-1.5">
-                  <span className="block text-xs text-zinc-400">
-                    Trageweise (Hemd / Overshirt / Cardigan / Weste):
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setWornOpen(false)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
-                        !wornOpen
-                          ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {!wornOpen ? '✓ ' : ''}Geschlossen getragen
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setWornOpen(true)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
-                        wornOpen
-                          ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {wornOpen ? '✓ ' : ''}Offen getragen (über T-Shirt)
                     </button>
                   </div>
                 </div>
@@ -1012,7 +1235,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             </div>
           )}
 
-          {/* STEP 3: Marke & Größe (Optional – mit automatischem Größen-Vorschlag) */}
+          {/* STEP 3: Marke & Größe (Optional – mit eigenen/häufigen Marken & Größen-Vorschlag) */}
           <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
@@ -1030,7 +1253,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               {/* Brand Selection */}
               <div className="space-y-2">
                 <label className="block text-xs font-medium text-zinc-400">
-                  Marke (z.B. Nike, Adidas, Levi&apos;s, Zara)
+                  Marke (eigene Marken &amp; Schnellauswahl)
                 </label>
                 <input
                   type="text"
@@ -1039,8 +1262,34 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                   placeholder="Marke eingeben oder unten antippen..."
                   className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
                 />
+                {brandSuggestions.ownBrands.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="block text-[10px] font-medium text-amber-300/90">
+                      Deine häufigen Marken:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {brandSuggestions.ownBrands.slice(0, 10).map((b) => {
+                        const active = brand.toLowerCase() === b.toLowerCase();
+                        return (
+                          <button
+                            key={`own_${b}`}
+                            type="button"
+                            onClick={() => handleBrandChange(active ? '' : b)}
+                            className={`px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors cursor-pointer ${
+                              active
+                                ? 'bg-amber-500/25 border-amber-400 text-amber-200 font-semibold'
+                                : 'bg-amber-500/10 border-amber-500/30 text-amber-200/90 hover:border-amber-400/60'
+                            }`}
+                          >
+                            {b}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5">
-                  {POPULAR_BRANDS.slice(0, 9).map((b) => {
+                  {brandSuggestions.popularBrands.slice(0, 9).map((b) => {
                     const active = brand.toLowerCase() === b.toLowerCase();
                     return (
                       <button
@@ -1064,7 +1313,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
               <div className="space-y-2">
                 <label className="block text-xs font-medium text-zinc-400 flex items-center gap-1">
                   <Ruler className="w-3.5 h-3.5 text-zinc-500" />
-                  Größe (wird automatisch vorgeschlagen)
+                  Größe
                 </label>
                 <input
                   type="text"
@@ -1142,33 +1391,28 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             {showAdvancedDetails && (
               <div className="mt-4 p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/60 space-y-4">
                 {category === 'accessory' ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-400 mb-1">
-                        Material / Oberfläche
-                      </label>
-                      <select
-                        value={texture}
-                        onChange={(e) => {
-                          const nextTex = e.target.value as TextureType;
-                          setTexture(nextTex);
-                          if (nextTex === 'tech_waterproof') {
-                            setWaterResistant(true);
-                            setRainproof(true);
-                          }
-                        }}
-                        className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                      >
-                        {(Object.keys(TEXTURE_LABELS) as TextureType[]).map((t) => (
-                          <option key={t} value={t}>
-                            {TEXTURE_LABELS[t]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <p className="text-xs text-zinc-400 bg-zinc-950/60 border border-zinc-800/70 rounded-lg px-3 py-2.5">
-                      Für Accessoires musst du keine Wärme-Stufe und keinen Stil-Anlass einordnen – sie werden automatisch flexibel zu deinen Outfits kombiniert.
-                    </p>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1">
+                      Material / Oberfläche
+                    </label>
+                    <select
+                      value={texture}
+                      onChange={(e) => {
+                        const nextTex = e.target.value as TextureType;
+                        setTexture(nextTex);
+                        if (nextTex === 'tech_waterproof') {
+                          setWaterResistant(true);
+                          setRainproof(true);
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                    >
+                      {(Object.keys(TEXTURE_LABELS) as TextureType[]).map((t) => (
+                        <option key={t} value={t}>
+                          {TEXTURE_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ) : (
                   <>

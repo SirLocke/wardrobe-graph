@@ -22,6 +22,57 @@ export const POPULAR_BRANDS: string[] = [
   'Birkenstock',
 ];
 
+/**
+ * Returns the user's own/frequent brands (from closet garments and saved brandSizeRules,
+ * sorted by frequency) along with remaining popular brands.
+ */
+export function getFrequentAndPopularBrands(
+  garments: Garment[] | undefined,
+  profile?: BiometricProfile
+): { ownBrands: string[]; popularBrands: string[] } {
+  const counts = new Map<string, { label: string; count: number }>();
+
+  if (profile?.brandSizeRules) {
+    for (const rule of profile.brandSizeRules) {
+      const clean = rule.brand?.trim();
+      if (!clean) continue;
+      const key = normalizeBrandKey(clean);
+      if (!key) continue;
+      const existing = counts.get(key);
+      if (existing) {
+        existing.count += 2;
+      } else {
+        counts.set(key, { label: clean, count: 2 });
+      }
+    }
+  }
+
+  if (garments) {
+    for (const g of garments) {
+      const clean = g.brand?.trim();
+      if (!clean) continue;
+      const key = normalizeBrandKey(clean);
+      if (!key) continue;
+      const existing = counts.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        counts.set(key, { label: clean, count: 1 });
+      }
+    }
+  }
+
+  const ownBrands = Array.from(counts.values())
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'de'))
+    .map((entry) => entry.label);
+
+  const ownKeys = new Set(ownBrands.map((b) => normalizeBrandKey(b)));
+  const popularBrands = POPULAR_BRANDS.filter((b) => !ownKeys.has(normalizeBrandKey(b)));
+
+  return { ownBrands, popularBrands };
+}
+
+
 export const COMMON_SIZE_SUGGESTIONS: Record<'top' | 'bottom' | 'shoes' | 'accessory', string[]> = {
   top: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '34', '36', '38', '40', '42'],
   bottom: ['XS', 'S', 'M', 'L', 'XL', '34', '36', '38', '40', '42', 'W28', 'W30', 'W32', 'W34'],

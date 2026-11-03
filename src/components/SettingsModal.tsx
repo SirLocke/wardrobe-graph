@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Check, Palette, Plus, Ruler, Settings2, Sparkles, Tag, Trash2, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Check, Edit3, Palette, Plus, Ruler, Settings2, Sparkles, Tag, Trash2, X } from 'lucide-react';
 import {
   deriveScopeFromTargets,
   getAllColorPresets,
@@ -16,18 +16,22 @@ import {
   WardrobePresetKey,
 } from '../data/seedData';
 import {
-  POPULAR_BRANDS,
+  getFrequentAndPopularBrands,
   removeBrandSizeRule,
   suggestSizeForGarment,
   upsertBrandSizeRule,
 } from '../engine/brandSizeMatcher';
 import { classifyColorTemp, hexToHsl, scoreGarmentBiometrics } from '../engine/colorMath';
 import {
+  classifyHexColorGroup,
+  hexToGermanColorName,
+  translateColorName,
+} from '../engine/colorNaming';
+import {
   AppLocale,
   BiometricProfile,
   Garment,
   GarmentSubcategory,
-  WardrobeScope,
   WardrobeScopeTarget,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
@@ -36,6 +40,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   profile: BiometricProfile;
+  garments?: Garment[];
   locale: AppLocale;
   onLocaleChange: (locale: AppLocale) => void;
   onSaveProfile: (profile: BiometricProfile) => Promise<void>;
@@ -47,6 +52,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   profile,
+  garments,
   locale,
   onLocaleChange,
   onSaveProfile,
@@ -56,10 +62,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const isEn = locale === 'en';
   const activeScopes: WardrobeScopeTarget[] = normalizeWardrobeScopes(profile);
 
-  const [customColors, setCustomColors] = useState<TextileColorPreset[]>(() => loadCustomColors());
-  const [allColors, setAllColors] = useState<TextileColorPreset[]>(() => getAllColorPresets());
-  const [newColorName, setNewColorName] = useState('');
+  const [customColors, setCustomColors] = useState<TextileColorPreset[]>(() =>
+    loadCustomColors(profile)
+  );
+  const [allColors, setAllColors] = useState<TextileColorPreset[]>(() =>
+    getAllColorPresets(profile)
+  );
+  const [newColorName, setNewColorName] = useState(
+    () => hexToGermanColorName('#6B8E78', locale).name
+  );
   const [newColorHex, setNewColorHex] = useState('#6B8E78');
+  const [hasManualColorName, setHasManualColorName] = useState(false);
+  const [editingColorOriginalName, setEditingColorOriginalName] = useState<string | null>(null);
 
   // Standard sizes & brand-specific size rule states
   const [defaultTopSize, setDefaultTopSize] = useState(profile.defaultSizes?.top || 'M');
@@ -69,22 +83,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [ruleSizeInput, setRuleSizeInput] = useState('L');
 
   // Selected color & optional brand for 1-click quick add
-  const [quickColor, setQuickColor] = useState<TextileColorPreset>(() => getAllColorPresets()[0]);
+  const [quickColor, setQuickColor] = useState<TextileColorPreset>(
+    () => getAllColorPresets(profile)[0]
+  );
   const [quickBrand, setQuickBrand] = useState<string>('');
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
+  const brandSuggestions = useMemo(
+    () => getFrequentAndPopularBrands(garments, profile),
+    [garments, profile]
+  );
+
   useEffect(() => {
     if (!isOpen) return;
-    const loaded = loadCustomColors();
+    const loaded = loadCustomColors(profile);
     setCustomColors(loaded);
-    const all = getAllColorPresets();
+    const all = getAllColorPresets(profile);
     setAllColors(all);
     setQuickColor(all[0]);
     setDefaultTopSize(profile.defaultSizes?.top || 'M');
     setDefaultBottomSize(profile.defaultSizes?.bottom || 'M');
     setDefaultShoeSize(profile.defaultSizes?.shoes || '42');
+    setEditingColorOriginalName(null);
+    setHasManualColorName(false);
+    setNewColorName(hexToGermanColorName(newColorHex, locale).name);
     setFeedbackToast(null);
-  }, [isOpen, profile.defaultSizes]);
+  }, [isOpen, profile]);
+
+  useEffect(() => {
+    if (!hasManualColorName) {
+      setNewColorName(hexToGermanColorName(newColorHex, locale).name);
+    }
+  }, [locale, newColorHex, hasManualColorName]);
 
   if (!isOpen) return null;
 
@@ -173,32 +203,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     });
   };
 
-  const handleCreateCustomColor = () => {
-    const trimmed = newColorName.trim() || (isEn ? 'My Custom Color' : 'Meine Wunschfarbe');
+  const handleCreateOrUpdateCustomColor = async () => {
+    const autoName = hexToGermanColorName(newColorHex, locale).name;
+    const trimmed =
+      newColorName.trim() || autoName || (isEn ? 'My Custom Color' : 'Meine Wunschfarbe');
     const entry: TextileColorPreset = {
       name: trimmed,
       hex: newColorHex.toUpperCase(),
-      group: 'Accent',
+      group: classifyHexColorGroup(newColorHex),
     };
-    const nextCustom = [entry, ...customColors.filter((c) => c.name !== trimmed)];
+    const nextCustom = [
+      entry,
+      ...customColors.filter(
+        (c) =>
+          c.name.toLowerCase() !== trimmed.toLowerCase() &&
+          (!editingColorOriginalName ||
+            c.name.toLowerCase() !== editingColorOriginalName.toLowerCase())
+      ),
+    ];
     saveCustomColors(nextCustom);
     setCustomColors(nextCustom);
-    const updatedAll = getAllColorPresets();
+    const nextProfile: BiometricProfile = {
+      ...profile,
+      customColors: nextCustom,
+    };
+    await onSaveProfile(nextProfile);
+    const updatedAll = getAllColorPresets(nextProfile);
     setAllColors(updatedAll);
     setQuickColor(entry);
-    setNewColorName('');
+    setEditingColorOriginalName(null);
+    setHasManualColorName(false);
+    setNewColorName(hexToGermanColorName(newColorHex, locale).name);
     showToast(
       isEn
         ? `Color "${trimmed}" saved and selected!`
-        : `Farbe „${trimmed}“ gespeichert & ausgewählt!`
+        : `Farbe „${trimmed}“ im Profil gespeichert & ausgewählt!`
     );
   };
 
-  const handleDeleteCustomColor = (nameToRemove: string) => {
-    const nextCustom = customColors.filter((c) => c.name !== nameToRemove);
+  const handleStartEditCustomColor = (cc: TextileColorPreset) => {
+    setEditingColorOriginalName(cc.name);
+    setNewColorHex(cc.hex);
+    setNewColorName(cc.name);
+    setHasManualColorName(true);
+  };
+
+  const handleDeleteCustomColor = async (nameToRemove: string) => {
+    const nextCustom = customColors.filter(
+      (c) => c.name.toLowerCase() !== nameToRemove.toLowerCase()
+    );
     saveCustomColors(nextCustom);
     setCustomColors(nextCustom);
-    setAllColors(getAllColorPresets());
+    const nextProfile: BiometricProfile = {
+      ...profile,
+      customColors: nextCustom,
+    };
+    await onSaveProfile(nextProfile);
+    setAllColors(getAllColorPresets(nextProfile));
+    if (editingColorOriginalName === nameToRemove) {
+      setEditingColorOriginalName(null);
+    }
   };
 
   const handleInstantAdd = async (subcategory: GarmentSubcategory) => {
@@ -206,7 +270,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const hsl = hexToHsl(quickColor.hex);
     const colorTemp = classifyColorTemp(hsl);
     const cleanSubLabel = SUBCATEGORY_LABELS[subcategory].split(' (')[0];
-    const cleanColor = quickColor.name.replace(' (Test)', '');
+    const cleanColor = translateColorName(
+      quickColor.name.replace(' (Test)', ''),
+      locale,
+      quickColor.hex
+    );
     const sizeSuggestion = suggestSizeForGarment(defaults.category, quickBrand, profile);
 
     const garment: Garment = {
@@ -264,7 +332,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     >
       <div className="w-full h-full sm:h-auto sm:max-h-[90vh] max-w-3xl rounded-none sm:rounded-2xl bg-zinc-950 border-0 sm:border sm:border-zinc-800 shadow-2xl my-0 sm:my-8 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
+        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 pt-[max(0.875rem,env(safe-area-inset-top,0px))] border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
               <Settings2 className="w-4 h-4" />
@@ -469,25 +537,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
               </div>
 
-              {/* Popular brand quick buttons */}
+              {/* Own & Popular brand quick buttons */}
               <div className="flex flex-wrap items-center gap-1.5">
-                {POPULAR_BRANDS.slice(0, 10).map((b) => {
-                  const isSelected = ruleBrandInput.toLowerCase() === b.toLowerCase();
-                  return (
-                    <button
-                      key={b}
-                      type="button"
-                      onClick={() => setRuleBrandInput(b)}
-                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-amber-500/15 border-amber-400 text-amber-200'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {b}
-                    </button>
-                  );
-                })}
+                {[...brandSuggestions.ownBrands, ...brandSuggestions.popularBrands]
+                  .slice(0, 12)
+                  .map((b) => {
+                    const isSelected = ruleBrandInput.toLowerCase() === b.toLowerCase();
+                    return (
+                      <button
+                        key={b}
+                        type="button"
+                        onClick={() => setRuleBrandInput(b)}
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500/15 border-amber-400 text-amber-200'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {b}
+                      </button>
+                    );
+                  })}
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
@@ -581,12 +651,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="text-xs font-medium text-zinc-300">
                   {isEn ? 'Selected color for Quick-Add:' : 'Gewählte Farbe für Schnell-Anlegen:'}{' '}
                   <span className="text-amber-400 font-semibold">
-                    {quickColor.name.replace(' (Test)', '')}
+                    {translateColorName(
+                      quickColor.name.replace(' (Test)', ''),
+                      locale,
+                      quickColor.hex
+                    )}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {allColors.slice(0, 14).map((c) => {
                     const active = c.hex.toUpperCase() === quickColor.hex.toUpperCase();
+                    const localizedSwatchLabel = translateColorName(
+                      c.name.replace(' (Test)', ''),
+                      locale,
+                      c.hex
+                    );
                     return (
                       <button
                         key={`${c.name}_${c.hex}`}
@@ -602,7 +681,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           className="w-3.5 h-3.5 rounded-full border border-white/20"
                           style={{ backgroundColor: c.hex }}
                         />
-                        <span>{c.name.replace(' (Test)', '')}</span>
+                        <span>{localizedSwatchLabel}</span>
                       </button>
                     );
                   })}
@@ -624,20 +703,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 >
                   {isEn ? 'No brand' : 'Ohne Marke'}
                 </button>
-                {['Nike', 'Adidas', "Levi's", 'Zara', 'H&M', 'Uniqlo', 'COS', 'Carhartt'].map((b) => (
-                  <button
-                    key={b}
-                    type="button"
-                    onClick={() => setQuickBrand(b)}
-                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium cursor-pointer ${
-                      quickBrand === b
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    {b}
-                  </button>
-                ))}
+                {[...brandSuggestions.ownBrands, ...brandSuggestions.popularBrands]
+                  .slice(0, 10)
+                  .map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setQuickBrand(b)}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium cursor-pointer ${
+                        quickBrand === b
+                          ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
               </div>
             </div>
 
@@ -677,29 +758,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 4: Eigene Farben einfach anlegen */}
+          {/* SECTION 4: Eigene Farben anlegen, bearbeiten & löschen */}
           <section className="space-y-3 pt-4 border-t border-zinc-800/80">
             <div>
               <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 <Palette className="w-4 h-4 text-amber-400" />
                 {isEn
-                  ? '4. Create Your Own Colors (No Hex Codes Needed)'
-                  : '4. Eigene Lieblingsfarben anlegen (ohne Hex-Codes)'}
+                  ? '4. Your Custom Colors (Create, Edit & Delete)'
+                  : '4. Eigene Lieblingsfarben anlegen & verwalten'}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isEn
-                  ? 'Tap the color circle, type a name (e.g. "Ice Blue" or "Soft Rose"), and save it for all garments.'
-                  : 'Tippe einfach auf den Farbkreis, gib deiner Farbe einen Namen (z.B. „Eisblau“, „Altrosa“, „Senfgelb“) und speichere sie.'}
+                  ? 'Pick any shade in the color wheel — the matching color name is suggested automatically and saved in your profile.'
+                  : 'Wähle deinen Farbton im Farbrad – der passende deutsche Farbname wird automatisch erkannt und fest in deinem Profil gespeichert.'}
               </p>
             </div>
 
             <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3">
+              <div className="flex items-center justify-between text-xs text-zinc-400">
+                <span>
+                  {editingColorOriginalName
+                    ? isEn
+                      ? `Edit color "${editingColorOriginalName}":`
+                      : `Farbe „${editingColorOriginalName}“ bearbeiten:`
+                    : isEn
+                    ? 'Pick shade & save:'
+                    : 'Farbton wählen & speichern:'}
+                </span>
+                <span className="text-amber-300">
+                  {isEn ? 'Detected color:' : 'Erkannter Farbname:'}{' '}
+                  <strong>{hexToGermanColorName(newColorHex, locale).name}</strong>
+                </span>
+              </div>
+
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer shrink-0">
                   <input
                     type="color"
                     value={newColorHex}
-                    onChange={(e) => setNewColorHex(e.target.value)}
+                    onChange={(e) => {
+                      const nextHex = e.target.value;
+                      setNewColorHex(nextHex);
+                      if (!hasManualColorName) {
+                        setNewColorName(hexToGermanColorName(nextHex, locale).name);
+                      }
+                    }}
                     className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
                   />
                   <span className="text-xs font-medium text-zinc-200">
@@ -710,22 +813,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <input
                   type="text"
                   value={newColorName}
-                  onChange={(e) => setNewColorName(e.target.value)}
+                  onChange={(e) => {
+                    setNewColorName(e.target.value);
+                    setHasManualColorName(Boolean(e.target.value.trim()));
+                  }}
                   placeholder={
                     isEn
-                      ? 'Color name (e.g. Ice Blue, Dusty Rose...)'
-                      : 'Name der Farbe (z.B. Eisblau, Altrosa, Tannengrün...)'
+                      ? `Color name (e.g. ${hexToGermanColorName(newColorHex, 'en').name})`
+                      : `Name der Farbe (z.B. ${hexToGermanColorName(newColorHex, 'de').name})`
                   }
                   className="flex-1 px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
                 />
 
                 <button
                   type="button"
-                  onClick={handleCreateCustomColor}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer"
+                  onClick={handleCreateOrUpdateCustomColor}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Plus className="w-4 h-4" />
-                  {isEn ? 'Save Color' : 'Farbe anlegen'}
+                  {editingColorOriginalName
+                    ? isEn
+                      ? 'Update Color'
+                      : 'Farbe aktualisieren'
+                    : isEn
+                    ? 'Save Color'
+                    : 'Farbe speichern'}
                 </button>
               </div>
 
@@ -740,23 +852,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {customColors.length > 0 && (
                 <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
                   <p className="text-[11px] font-medium text-zinc-400">
-                    {isEn ? 'Your saved custom colors:' : 'Deine eigenen gespeicherten Farben:'}
+                    {isEn
+                      ? 'Your saved custom colors (stored in your profile):'
+                      : 'Deine eigenen gespeicherten Farben (im Profil & Backup gesichert):'}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {customColors.map((cc) => (
                       <div
-                        key={cc.name}
+                        key={`${cc.name}_${cc.hex}`}
                         className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200"
                       >
                         <span
-                          className="w-3.5 h-3.5 rounded-full border border-white/20"
+                          className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0"
                           style={{ backgroundColor: cc.hex }}
                         />
                         <span>{cc.name}</span>
                         <button
                           type="button"
+                          onClick={() => handleStartEditCustomColor(cc)}
+                          className="text-zinc-400 hover:text-amber-300 cursor-pointer p-0.5"
+                          title={isEn ? 'Edit color' : 'Farbe bearbeiten'}
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleDeleteCustomColor(cc.name)}
-                          className="text-zinc-500 hover:text-rose-400"
+                          className="text-zinc-500 hover:text-rose-400 cursor-pointer p-0.5"
                           title={isEn ? 'Remove color' : 'Farbe löschen'}
                         >
                           <Trash2 className="w-3 h-3" />

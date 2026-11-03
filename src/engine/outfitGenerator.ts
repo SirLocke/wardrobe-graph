@@ -65,12 +65,14 @@ const TAILORED_SUBCATEGORIES: GarmentSubcategory[] = [
   'trenchcoat',
   'coat',
   'button_down_shirt',
+  'short_sleeve_shirt',
   'blouse',
   'turtleneck',
   'cardigan',
   'polo',
   'chino',
   'trousers',
+  'suit_trousers',
   'wide_leg_trousers',
   'midi_skirt',
   'boots',
@@ -133,8 +135,32 @@ export function passesHardContextFilter(
       if (context.excludedAccessorySubcategories?.includes(garment.subcategory)) {
         return false;
       }
+      // Weather & occasion rules for headwear, scarves, and sunglasses:
+      // Never suggest a winter beanie above 12°C or for formal/office occasions
+      if (
+        (garment.subcategory === 'beanie' || garment.subcategory === 'cap_beanie') &&
+        (context.temperatureC > 12 ||
+          context.occasion === 'formal_event' ||
+          context.occasion === 'smart_casual_office' ||
+          context.occasion === 'date_night')
+      ) {
+        return false;
+      }
+      // Caps are for mild/warm casual or sporty days (>= 10°C), not formal/office/date night
+      if (
+        garment.subcategory === 'cap' &&
+        (context.temperatureC < 10 ||
+          context.occasion === 'formal_event' ||
+          context.occasion === 'smart_casual_office' ||
+          context.occasion === 'date_night' ||
+          context.styleVibe === 'tailored_chic')
+      ) {
+        return false;
+      }
+      // Scarves only make sense in cool/cold weather (<= 14°C)
+      if (garment.subcategory === 'scarf' && context.temperatureC > 14) return false;
+      // Sunglasses only in dry/sunny weather (not in rain)
       if (garment.subcategory === 'sunglasses' && context.weather === 'rain_wet') return false;
-      if (garment.subcategory === 'scarf' && context.temperatureC >= 22) return false;
     }
     return true;
   }
@@ -603,10 +629,12 @@ export function scoreOutfitCombination(
   if (midLayer && baseTop) {
     if (midLayer.wornOpen === true) {
       styleVibeBonus += 3;
-      traces.push(`Offenes Layering: ${midLayer.name} locker offen über ${baseTop.name} getragen`);
+      traces.push(`Trage-Empfehlung: ${midLayer.name} offen über ${baseTop.name} tragen`);
     } else if (midLayer.wornOpen === false) {
-      traces.push(`Klassisch geschlossen: ${midLayer.name} zugeknöpft getragen`);
+      traces.push(`Trage-Empfehlung: ${midLayer.name} geschlossen über ${baseTop.name} tragen`);
     }
+  } else if (baseTop && (baseTop.subcategory === 'button_down_shirt' || baseTop.subcategory === 'short_sleeve_shirt')) {
+    traces.push(`Trage-Empfehlung: ${baseTop.name} klassisch geschlossen tragen`);
   }
 
   // Accessory synergy & styling traces (incl. short vs long socks explanation)
@@ -730,25 +758,105 @@ export function generateOutfitsForContext(
   const temp = context.temperatureC;
   const candidateCombos: Garment[][] = [];
 
+  const isSimpleUnderTee = (top: Garment): boolean =>
+    top.subcategory === 't_shirt' ||
+    top.subcategory === 'heavyweight_tee' ||
+    top.subcategory === 'tank_camisole' ||
+    top.subcategory === 'longsleeve';
+
+  const isShirtSubcategory = (sub: GarmentSubcategory): boolean =>
+    sub === 'button_down_shirt' || sub === 'short_sleeve_shirt';
+
+  const computeRecommendedMidLayerWornOpen = (top: Garment, mid: Garment): boolean | undefined => {
+    if (mid.subcategory === 'blazer' || mid.subcategory === 'fleece_vest') {
+      return true;
+    }
+    if (isShirtSubcategory(mid.subcategory)) {
+      // When a shirt is layered as a second layer over a T-shirt/tank, always wear it open!
+      return true;
+    }
+    if (mid.subcategory === 'overshirt' || mid.subcategory === 'cardigan') {
+      if (top.hasPrint) return true;
+      if (isShirtSubcategory(top.subcategory)) {
+        // Cardigan over a collared shirt can be worn open or buttoned; open shows the shirt nicely
+        return context.temperatureC >= 12;
+      }
+      if (context.temperatureC >= 15) return true;
+      if (context.occasion === 'casual' || context.styleVibe === 'street_relaxed') {
+        return context.temperatureC >= 11;
+      }
+      return false;
+    }
+    return undefined;
+  };
+
+  const withRecommendedWearStyle = (combo: Garment[]): Garment[] => {
+    const top = combo.find((g) => g.category === 'base_top');
+    const mid = combo.find((g) => g.category === 'mid_layer');
+    return combo.map((item) => {
+      if (item.category === 'base_top' && isShirtSubcategory(item.subcategory)) {
+        return { ...item, wornOpen: false };
+      }
+      if (item.category === 'mid_layer' && top && mid && item.id === mid.id) {
+        const rec = computeRecommendedMidLayerWornOpen(top, mid);
+        if (rec !== undefined) {
+          return { ...item, wornOpen: rec };
+        }
+      }
+      return item;
+    });
+  };
+
   const isRealisticEverydayLayering = (top: Garment, mid: Garment): boolean => {
+    if (top.id === mid.id) return false;
     if (top.neckline === 'hooded' && mid.neckline !== 'hooded') return false;
     // Avoid wearing a blouse under a sporty hoodie or sweatshirt
     if (
       top.subcategory === 'blouse' &&
-      (mid.subcategory === 'hoodie' || mid.subcategory === 'crewneck_sweater')
+      (mid.subcategory === 'hoodie' ||
+        mid.subcategory === 'crewneck_sweater' ||
+        mid.subcategory === 'overshirt')
     ) {
       return false;
     }
-    // If a button-down shirt is explicitly worn closed (buttoned up), avoid hiding a graphic print tee underneath
-    if (
-      mid.wornOpen === false &&
-      (mid.subcategory === 'button_down_shirt' || mid.subcategory === 'overshirt') &&
-      top.hasPrint
-    ) {
+    // Avoid layering a collared shirt under an overshirt or hoodie, or a short-sleeve shirt under heavy sweaters
+    if (isShirtSubcategory(top.subcategory)) {
+      if (
+        mid.subcategory === 'overshirt' ||
+        mid.subcategory === 'hoodie' ||
+        isShirtSubcategory(mid.subcategory)
+      ) {
+        return false;
+      }
+      if (
+        top.subcategory === 'short_sleeve_shirt' &&
+        (mid.subcategory === 'knit_sweater' ||
+          mid.subcategory === 'crewneck_sweater' ||
+          mid.subcategory === 'turtleneck')
+      ) {
+        return false;
+      }
+    }
+    // Never layer a rollkragen under a button-down shirt
+    if (top. neckline === 'turtleneck' && isShirtSubcategory(mid.subcategory)) {
       return false;
     }
     return true;
   };
+
+  // Shirts (button_down_shirt, short_sleeve_shirt) in base_top can ALSO act as an open layering piece over a simple tee!
+  const openableShirtLayersFromBase: Garment[] = baseTops
+    .filter(
+      (g) =>
+        isShirtSubcategory(g.subcategory) &&
+        (temp >= 14 || g.subcategory === 'button_down_shirt') &&
+        (temp <= 25 || g.subcategory === 'short_sleeve_shirt')
+    )
+    .map((shirt) => ({
+      ...shirt,
+      category: 'mid_layer',
+      wornOpen: true,
+    }));
 
   if (temp >= 21) {
     const hasLockedMid = slotMidLayers.some((g) => lockedSet.has(g.id));
@@ -757,40 +865,81 @@ export function generateOutfitsForContext(
         for (const shoe of slotFootwears) {
           if (hasLockedMid) {
             for (const mid of slotMidLayers) {
-              candidateCombos.push([top, mid, bottom, shoe]);
+              candidateCombos.push(withRecommendedWearStyle([top, mid, bottom, shoe]));
             }
           } else {
-            candidateCombos.push([top, bottom, shoe]);
+            candidateCombos.push(withRecommendedWearStyle([top, bottom, shoe]));
+            // At 21-25°C, also allow an open short-sleeve or light shirt over a simple T-shirt/tank
+            if (temp <= 25 && isSimpleUnderTee(top) && top.thermalRating <= 1) {
+              for (const openShirt of openableShirtLayersFromBase) {
+                if (openShirt.id === top.id) continue;
+                if (openShirt.thermalRating <= 2) {
+                  candidateCombos.push(
+                    withRecommendedWearStyle([top, openShirt, bottom, shoe])
+                  );
+                }
+              }
+            }
           }
         }
       }
     }
   } else if (temp >= 14 && temp <= 20) {
     const hasLockedOuter = slotOuterwears.some((g) => lockedSet.has(g.id));
+    const effectiveMidPool =
+      slotMidLayers.some((g) => lockedSet.has(g.id))
+        ? slotMidLayers
+        : [...slotMidLayers, ...openableShirtLayersFromBase];
+
     for (const top of slotBaseTops) {
-      for (const mid of slotMidLayers) {
+      // Also allow solo long-sleeve button_down_shirt with light outerwear or solo at 17-20°C
+      if (isShirtSubcategory(top.subcategory) && temp >= 17 && !slotMidLayers.some((g) => lockedSet.has(g.id))) {
+        for (const bottom of slotBottoms) {
+          for (const shoe of slotFootwears) {
+            if (hasLockedOuter) {
+              for (const out of slotOuterwears) {
+                candidateCombos.push(withRecommendedWearStyle([top, out, bottom, shoe]));
+              }
+            } else {
+              candidateCombos.push(withRecommendedWearStyle([top, bottom, shoe]));
+            }
+          }
+        }
+      }
+
+      for (const mid of effectiveMidPool) {
+        if (isShirtSubcategory(mid.subcategory) && !isSimpleUnderTee(top)) continue;
         if (!isRealisticEverydayLayering(top, mid)) continue;
         for (const bottom of slotBottoms) {
           for (const shoe of slotFootwears) {
             if (hasLockedOuter) {
               for (const out of slotOuterwears) {
-                candidateCombos.push([top, mid, out, bottom, shoe]);
+                candidateCombos.push(withRecommendedWearStyle([top, mid, out, bottom, shoe]));
               }
             } else {
-              candidateCombos.push([top, mid, bottom, shoe]);
+              candidateCombos.push(withRecommendedWearStyle([top, mid, bottom, shoe]));
             }
           }
         }
       }
     }
   } else {
+    const effectiveMidPool =
+      slotMidLayers.some((g) => lockedSet.has(g.id))
+        ? slotMidLayers
+        : [
+            ...slotMidLayers,
+            ...openableShirtLayersFromBase.filter((s) => s.subcategory === 'button_down_shirt'),
+          ];
     for (const top of slotBaseTops) {
-      for (const mid of slotMidLayers) {
+      if (top.subcategory === 'short_sleeve_shirt' && !lockedSet.has(top.id)) continue;
+      for (const mid of effectiveMidPool) {
+        if (isShirtSubcategory(mid.subcategory) && !isSimpleUnderTee(top)) continue;
         if (!isRealisticEverydayLayering(top, mid)) continue;
         for (const out of slotOuterwears) {
           for (const bottom of slotBottoms) {
             for (const shoe of slotFootwears) {
-              candidateCombos.push([top, mid, out, bottom, shoe]);
+              candidateCombos.push(withRecommendedWearStyle([top, mid, out, bottom, shoe]));
             }
           }
         }
@@ -1106,18 +1255,72 @@ export function generateOutfitsForContext(
         }
       }
 
-      // 2. Attach remaining enabled non-sock accessories
-      for (const [subcat, candidates] of unlockedBySubcategory.entries()) {
-        if (subcat === 'socks' || subcat === 'socks_short') continue;
-        if (attachedSubcategories.has(subcat) || candidates.length === 0) continue;
-        const sortedCandidates = [...candidates].sort((a, b) => {
-          const scoreA = scoreGarmentBiometrics(a, profile).score;
-          const scoreB = scoreGarmentBiometrics(b, profile).score;
-          return scoreB - scoreA;
-        });
-        const chosen = sortedCandidates[outfitIdx % sortedCandidates.length];
-        attachedAccessories.push(chosen);
-        attachedSubcategories.add(subcat);
+      // 2. Attach a curated, varied subset of non-sock accessories per outfit
+      // so not all 3 outfits get every single accessory at once.
+      const nonSockSubcats = Array.from(unlockedBySubcategory.keys()).filter(
+        (sub) => sub !== 'socks' && sub !== 'socks_short' && !attachedSubcategories.has(sub)
+      );
+
+      if (nonSockSubcats.length > 0) {
+        // Decide how many non-sock accessories this outfit gets (1 or 2, varied by outfitIdx)
+        const maxExtras =
+          context.temperatureC <= 10
+            ? (outfitIdx % 2 === 0 ? 2 : 1)
+            : (outfitIdx % 3 === 2 ? 1 : 2);
+
+        const hasHeadwearAlready =
+          attachedSubcategories.has('cap') ||
+          attachedSubcategories.has('beanie') ||
+          attachedSubcategories.has('cap_beanie');
+        const hasEyewearAlready =
+          attachedSubcategories.has('glasses') || attachedSubcategories.has('sunglasses');
+
+        let addedExtras = 0;
+        const rotOffset = (outfitIdx * 2 + variationSeed) % nonSockSubcats.length;
+        const rotatedSubcats = nonSockSubcats.map(
+          (_, idx) => nonSockSubcats[(idx + rotOffset) % nonSockSubcats.length]
+        );
+        // When this outfit is the designated 1-in-3 headwear outfit, evaluate headwear first so it isn't crowded out
+        if ((outfitIdx + variationSeed) % 3 === 1) {
+          rotatedSubcats.sort((a, b) => {
+            const aHead = a === 'cap' || a === 'beanie' || a === 'cap_beanie' ? 0 : 1;
+            const bHead = b === 'cap' || b === 'beanie' || b === 'cap_beanie' ? 0 : 1;
+            return aHead - bHead;
+          });
+        }
+
+        for (const subcat of rotatedSubcats) {
+          if (addedExtras >= maxExtras) break;
+          const candidates = unlockedBySubcategory.get(subcat) || [];
+          if (candidates.length === 0) continue;
+
+          const isHeadwear =
+            subcat === 'cap' || subcat === 'beanie' || subcat === 'cap_beanie';
+          const isEyewear = subcat === 'glasses' || subcat === 'sunglasses';
+
+          // Never attach two headwear items or two eyewear items to the same outfit
+          if (isHeadwear && (hasHeadwearAlready || attachedSubcategories.has('cap') || attachedSubcategories.has('beanie') || attachedSubcategories.has('cap_beanie'))) {
+            continue;
+          }
+          if (isEyewear && (hasEyewearAlready || attachedSubcategories.has('glasses') || attachedSubcategories.has('sunglasses'))) {
+            continue;
+          }
+
+          // Only include a cap or beanie on at most 1 of the 3 outfits (unless locked)
+          if (isHeadwear && (outfitIdx + variationSeed) % 3 !== 1) {
+            continue;
+          }
+
+          const sortedCandidates = [...candidates].sort((a, b) => {
+            const scoreA = scoreGarmentBiometrics(a, profile).score;
+            const scoreB = scoreGarmentBiometrics(b, profile).score;
+            return scoreB - scoreA;
+          });
+          const chosen = sortedCandidates[(outfitIdx + variationSeed) % sortedCandidates.length];
+          attachedAccessories.push(chosen);
+          attachedSubcategories.add(subcat);
+          addedExtras++;
+        }
       }
     }
 

@@ -53,6 +53,11 @@ export interface BiometricProfile {
    * Default: ['t_shirt', 'heavyweight_tee', 'longsleeve', 'polo', 'tank_camisole', 'crop_top', 'bodysuit', 'socks', 'socks_short']
    */
   autoLaundrySubcategories?: GarmentSubcategory[];
+  customColors?: Array<{
+    name: string;
+    hex: string;
+    group: 'Neutrals' | 'Earth & Olive' | 'Blue & Cool' | 'Accent';
+  }>;
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear' | 'accessory';
@@ -60,21 +65,22 @@ export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' 
 export type GarmentSubcategory =
   // Base Tops (Menswear, Womenswear & Unisex)
   | 't_shirt' | 'heavyweight_tee' | 'polo' | 'longsleeve'
+  | 'button_down_shirt' | 'short_sleeve_shirt'
   | 'blouse' | 'tank_camisole' | 'crop_top' | 'bodysuit'
   // Mid Layers
-  | 'overshirt' | 'button_down_shirt' | 'crewneck_sweater' | 'knit_sweater' | 'turtleneck' | 'hoodie' | 'cardigan'
+  | 'overshirt' | 'crewneck_sweater' | 'knit_sweater' | 'turtleneck' | 'hoodie' | 'cardigan'
   | 'blazer' | 'vest_gilet' | 'fleece_vest' | 'wrap_top'
   // Outerwear
   | 'light_jacket' | 'coat' | 'parka' | 'blouson'
   | 'trenchcoat' | 'leather_jacket' | 'puffer_jacket' | 'down_jacket' | 'fleece_jacket' | 'rain_jacket'
   // Bottoms & Skirts
-  | 'chino' | 'denim' | 'trousers' | 'cargo' | 'shorts'
+  | 'chino' | 'denim' | 'trousers' | 'suit_trousers' | 'cargo' | 'shorts'
   | 'wide_leg_trousers' | 'midi_skirt' | 'mini_skirt'
   // Footwear
   | 'sneaker_clean' | 'sneaker_chunky' | 'boots' | 'loafer_derby' | 'runner'
   | 'heeled_ankle_boot' | 'ballet_flat' | 'sandal_strappy'
-  // Accessories (Uhren, Brillen, Sonnenbrillen, Ketten, Armbänder, Gürtel, Taschen, Lange & Kurze Socken etc.)
-  | 'watch' | 'glasses' | 'sunglasses' | 'necklace' | 'bracelet' | 'belt' | 'bag_backpack' | 'scarf' | 'cap_beanie' | 'socks' | 'socks_short';
+  // Accessories (Uhren, Brillen, Sonnenbrillen, Ketten, Armbänder, Gürtel, Taschen, Lange & Kurze Socken, Mütze, Cap etc.)
+  | 'watch' | 'glasses' | 'sunglasses' | 'necklace' | 'bracelet' | 'belt' | 'bag_backpack' | 'scarf' | 'cap' | 'beanie' | 'cap_beanie' | 'socks' | 'socks_short';
 
 export type FitType = 'slim' | 'regular' | 'relaxed' | 'boxy_oversized';
 export type NecklineType = 'crewneck' | 'heavy_crewneck' | 'v_neck' | 'stand_collar' | 'shirt_collar' | 'turtleneck' | 'hooded' | 'none';
@@ -92,6 +98,14 @@ export type TextureType =
   | 'tech_waterproof'
   | 'leather_suede';
 
+export type GarmentPattern =
+  | 'solid'
+  | 'checked'
+  | 'pinstripe'
+  | 'striped'
+  | 'herringbone'
+  | 'dotted';
+
 export interface Garment {
   id: string;
   name: string;
@@ -99,8 +113,9 @@ export interface Garment {
   subcategory: GarmentSubcategory;
   colorName: string;
   colorHex: string;
-  accentColorName?: string;         // Optional secondary/accent color name (e.g. colored stripes/heel tab on white sneakers)
+  accentColorName?: string;         // Optional secondary/accent color name (e.g. colored stripes/heel tab on white sneakers or check/stripe color on trousers)
   accentColorHex?: string;          // Optional secondary/accent color hex (#RRGGBB)
+  pattern?: GarmentPattern;         // Optional pattern (Uni, Kariert, Nadelstreifen, Gestreift, Fischgrät, Gepunktet)
   // Auto-calculated on save via Color Math utility:
   hsl: { h: number; s: number; l: number };
   colorTemp: 'warm' | 'cool' | 'neutral';
@@ -116,7 +131,7 @@ export interface Garment {
   rainproof?: boolean;              // Regenfest / Wasserdicht tag
   hasPrint?: boolean;               // Mit Print / Grafik-Motiv (T-Shirts, Pullover, Hoodies)
   hasLogo?: boolean;                // Mit sichtbarem Marken-Logo / Brust-Logo
-  wornOpen?: boolean;               // Hemd / Overshirt / Cardigan: true = offen über T-Shirt, false = geschlossen
+  wornOpen?: boolean;               // Dynamically set by outfitGenerator for wearing recommendation (Offen vs. Geschlossen)
   targetScope?: WardrobeScopeTarget;
   isClean: boolean;
   brand?: string;                   // Optional brand tag (e.g. "Nike", "Adidas", "Levi's", "Zara")

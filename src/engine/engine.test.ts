@@ -253,7 +253,7 @@ test('mcpHandler: executes initialize, tools/list, and tools/call (add_garment +
   ).content[0].text;
   const parsedPayload = JSON.parse(contentText);
   assert.equal(parsedPayload.status, 'created');
-  assert.equal(parsedPayload.totalWardrobeCount, 22);
+  assert.equal(parsedPayload.totalWardrobeCount, 23);
   assert.ok(parsedPayload.biometricScore >= 80);
 });
 
@@ -505,7 +505,7 @@ test('userExactProfile & accessories: handles copper hair, warm undertone, blue-
   const hasAccessory = bestOutfit.items.some((g) => g.category === 'accessory');
   assert.equal(hasAccessory, true, 'Best outfit in sunny weather should include an accessory');
 
-  // Verify configurable accessory toggles (Socken, Mütze/Cap, Armband) on SEED_WARDROBE_GARMENTS
+  // Verify configurable accessory toggles (Socken, Cap, Mütze, Armband) on SEED_WARDROBE_GARMENTS
   const defaultOutfits = generateOutfitsForContext(
     SEED_WARDROBE_GARMENTS,
     userProfile,
@@ -519,10 +519,12 @@ test('userExactProfile & accessories: handles copper hair, warm undertone, blue-
   );
   const topDefaultSubcats = defaultOutfits[0].items.map((i) => i.subcategory);
   assert.ok(topDefaultSubcats.includes('socks'), 'Default outfit should include socks');
-  assert.ok(topDefaultSubcats.includes('cap_beanie'), 'Default outfit should include cap_beanie');
-  assert.ok(topDefaultSubcats.includes('bracelet'), 'Default outfit should include bracelet');
+  assert.ok(
+    !topDefaultSubcats.includes('beanie'),
+    'Mild 18°C outfit must NOT include a warm winter beanie'
+  );
 
-  // Exclude cap_beanie and bracelet, keep socks enabled
+  // Exclude cap, beanie and bracelet, keep socks enabled
   const filteredOutfits = generateOutfitsForContext(
     SEED_WARDROBE_GARMENTS,
     userProfile,
@@ -531,13 +533,14 @@ test('userExactProfile & accessories: handles copper hair, warm undertone, blue-
       weather: 'sunny_dry',
       occasion: 'casual',
       lockedGarmentIds: [],
-      excludedAccessorySubcategories: ['cap_beanie', 'bracelet'],
+      excludedAccessorySubcategories: ['cap', 'beanie', 'bracelet'],
     },
     3
   );
   const topFilteredSubcats = filteredOutfits[0].items.map((i) => i.subcategory);
   assert.ok(topFilteredSubcats.includes('socks'), 'Filtered outfit should still include socks');
-  assert.ok(!topFilteredSubcats.includes('cap_beanie'), 'Filtered outfit must NOT include excluded cap_beanie');
+  assert.ok(!topFilteredSubcats.includes('cap'), 'Filtered outfit must NOT include excluded cap');
+  assert.ok(!topFilteredSubcats.includes('beanie'), 'Filtered outfit must NOT include excluded beanie');
   assert.ok(!topFilteredSubcats.includes('bracelet'), 'Filtered outfit must NOT include excluded bracelet');
 
   // Master toggle includeAccessories: false disables all unlocked accessories
@@ -953,5 +956,156 @@ test('laundry & winterJacket & techWaterproof & variationSeed & categoryRecommen
     'Incrementing variationSeed should generate a different batch of outfits'
   );
 });
+
+test('colorNaming & categorization & dynamicWornOpen & capBeanieSplit & customColors: verifies new product rules', async () => {
+  const { hexToGermanColorName, inferColorFromGarmentName, translateColorName } = await import(
+    './colorNaming'
+  );
+  const { SUBCATEGORIES_BY_CATEGORY, getAllColorPresets } = await import('../data/seedData');
+  const { getFrequentAndPopularBrands } = await import('./brandSizeMatcher');
+
+  // 1) Hex-to-Color-Name translation (DE & EN) & title color inference
+  assert.equal(hexToGermanColorName('#141414', 'de').name, 'Schwarz');
+  assert.equal(hexToGermanColorName('#141414', 'en').name, 'Black');
+  assert.equal(hexToGermanColorName('#8F9779', 'de').name, 'Salbeigrün');
+  assert.equal(hexToGermanColorName('#8F9779', 'en').name, 'Sage Green');
+  assert.equal(hexToGermanColorName('#1F3A2E', 'de').name, 'Tannengrün');
+  assert.equal(hexToGermanColorName('#1F3A2E', 'en').name, 'Forest Green');
+  assert.equal(hexToGermanColorName('#1C2838', 'de').name, 'Marineblau');
+  assert.equal(hexToGermanColorName('#1C2838', 'en').name, 'Navy Blue');
+  assert.equal(hexToGermanColorName('#36393C', 'de').name, 'Anthrazit');
+  assert.equal(hexToGermanColorName('#36393C', 'en').name, 'Charcoal');
+  assert.equal(hexToGermanColorName('#D8C8B0', 'de').name, 'Sandbeige');
+  assert.equal(hexToGermanColorName('#D8C8B0', 'en').name, 'Sand Beige');
+
+  assert.equal(translateColorName('Tannengrün', 'en', '#1F3A2E'), 'Forest Green');
+  assert.equal(translateColorName('Forest Green', 'de', '#1F3A2E'), 'Tannengrün');
+  assert.equal(translateColorName('Anthrazit', 'en', '#36393C'), 'Charcoal');
+
+  const inferredBlackDe = inferColorFromGarmentName('Schwarze Winterjacke', 'de');
+  assert.ok(inferredBlackDe, 'Should infer color from "Schwarze Winterjacke"');
+  assert.equal(inferredBlackDe?.hex, '#141414');
+  assert.equal(inferredBlackDe?.name, 'Schwarz');
+
+  const inferredForestEn = inferColorFromGarmentName('Forest Green Wool Coat', 'en');
+  assert.ok(inferredForestEn, 'Should infer color from "Forest Green Wool Coat"');
+  assert.equal(inferredForestEn?.hex, '#1F3A2E');
+  assert.equal(inferredForestEn?.name, 'Forest Green');
+
+  // 2) Categorization rules (AGENTS.md)
+  assert.ok(
+    SUBCATEGORIES_BY_CATEGORY.base_top.includes('button_down_shirt'),
+    'button_down_shirt must be in base_top'
+  );
+  assert.ok(
+    SUBCATEGORIES_BY_CATEGORY.base_top.includes('short_sleeve_shirt'),
+    'short_sleeve_shirt must be in base_top'
+  );
+  assert.ok(
+    !SUBCATEGORIES_BY_CATEGORY.mid_layer.includes('button_down_shirt'),
+    'button_down_shirt must not be in mid_layer'
+  );
+  assert.ok(
+    SUBCATEGORIES_BY_CATEGORY.bottom.includes('suit_trousers'),
+    'suit_trousers must be in bottom'
+  );
+  assert.ok(
+    SUBCATEGORIES_BY_CATEGORY.accessory.includes('cap') &&
+      SUBCATEGORIES_BY_CATEGORY.accessory.includes('beanie'),
+    'cap and beanie must be separate subcategories in accessory'
+  );
+
+  // 3) Cap vs. Beanie temperature logic (no beanie at 22°C, beanie allowed at 5°C, never both)
+  const warm22Outfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 22,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+    },
+    3
+  );
+  for (const outfit of warm22Outfits) {
+    assert.equal(
+      outfit.items.some((i) => i.subcategory === 'beanie'),
+      false,
+      'Must never recommend a warm beanie at 22°C'
+    );
+  }
+
+  const cold5Outfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 5,
+      weather: 'cloudy_windy',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+    },
+    3
+  );
+  assert.ok(
+    cold5Outfits.some((o) => o.items.some((i) => i.subcategory === 'beanie')),
+    'Should recommend a beanie in cold 5°C weather'
+  );
+  for (const outfit of cold5Outfits) {
+    const hasCap = outfit.items.some((i) => i.subcategory === 'cap');
+    const hasBeanie = outfit.items.some((i) => i.subcategory === 'beanie');
+    assert.equal(hasCap && hasBeanie, false, 'An outfit must never contain both cap and beanie');
+  }
+
+  // 4) Dynamic wornOpen wearing recommendation computed by outfitGenerator
+  const mildOutfits = generateOutfitsForContext(
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: ['seed_mid_1'], // Overshirt Dunkel-Oliv over a base_top
+    },
+    3
+  );
+  assert.ok(mildOutfits.length > 0);
+  const overshirtInOutfit = mildOutfits[0].items.find((i) => i.id === 'seed_mid_1');
+  assert.equal(
+    overshirtInOutfit?.wornOpen,
+    true,
+    'Overshirt combined with a base_top at 18°C should receive dynamic wornOpen: true recommendation'
+  );
+
+  // 5) Own / frequent brands appear in ownBrands and are excluded from popularBrands duplicates
+  const customBrandGarments = [
+    ...SEED_WARDROBE_GARMENTS,
+    {
+      ...SEED_WARDROBE_GARMENTS[0],
+      id: 'own_brand_1',
+      brand: 'MeineLieblingsMarke',
+    },
+  ];
+  const brandResult = getFrequentAndPopularBrands(customBrandGarments, DEFAULT_BIOMETRIC_PROFILE);
+  assert.ok(
+    brandResult.ownBrands.includes('MeineLieblingsMarke'),
+    'User brand from garments must be included in ownBrands'
+  );
+  assert.ok(
+    brandResult.ownBrands.length > 0 && brandResult.popularBrands.length > 0,
+    'Should return both ownBrands and popularBrands'
+  );
+
+  // 6) Custom colors in BiometricProfile are merged into getAllColorPresets(profile)
+  const profileWithCustomColor = {
+    ...DEFAULT_BIOMETRIC_PROFILE,
+    customColors: [{ name: 'Mein Ozeanblau', hex: '#1B4F72', group: 'Blue & Cool' as const }],
+  };
+  const allPresets = getAllColorPresets(profileWithCustomColor);
+  assert.ok(
+    allPresets.some((c) => c.hex === '#1B4F72' && c.name === 'Mein Ozeanblau'),
+    'Profile customColors must be included in getAllColorPresets'
+  );
+});
+
 
 

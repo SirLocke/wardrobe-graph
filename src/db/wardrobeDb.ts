@@ -1,11 +1,14 @@
 import Dexie, { type Table } from 'dexie';
 import {
   DEFAULT_BIOMETRIC_PROFILE,
+  loadCustomColors,
   SAMPLE_WORN_HISTORY,
+  saveCustomColors,
   SEED_WARDROBE_GARMENTS,
   WARDROBE_PRESETS,
 } from '../data/seedData';
 import { classifyColorTemp, hexToHsl } from '../engine/colorMath';
+import { inferColorFromGarmentName, resolveGermanColorNameToHex } from '../engine/colorNaming';
 import { BiometricProfile, Garment, WornOutfitRecord } from '../types/wardrobe';
 
 const SEED_META_BY_ID = new Map(
@@ -19,6 +22,11 @@ function backfillProfileAndGarments(
   rawProfile: BiometricProfile,
   rawGarments: Garment[]
 ): { profile: BiometricProfile; garments: Garment[] } {
+  const mergedCustomColors = loadCustomColors(rawProfile);
+  if (mergedCustomColors.length > 0) {
+    saveCustomColors(mergedCustomColors);
+  }
+
   const profile: BiometricProfile = {
     ...DEFAULT_BIOMETRIC_PROFILE,
     ...rawProfile,
@@ -27,14 +35,58 @@ function backfillProfileAndGarments(
       rawProfile.brandSizeRules && rawProfile.brandSizeRules.length > 0
         ? rawProfile.brandSizeRules
         : DEFAULT_BIOMETRIC_PROFILE.brandSizeRules,
+    customColors: mergedCustomColors.length > 0 ? mergedCustomColors : rawProfile.customColors,
   };
 
   const garments: Garment[] = rawGarments.map((g) => {
-    const hsl = hexToHsl(g.colorHex || '#8F9779');
+    let category = g.category;
+    let subcategory = g.subcategory;
+
+    // Migrate button_down_shirt & short_sleeve_shirt to base_top
+    if (subcategory === 'button_down_shirt' || subcategory === 'short_sleeve_shirt') {
+      category = 'base_top';
+    }
+
+    // Migrate legacy cap_beanie into distinct 'cap' vs 'beanie'
+    if (subcategory === 'cap_beanie') {
+      const lowerName = (g.name || '').toLowerCase();
+      if (lowerName.includes('cap') || lowerName.includes('kappe') || lowerName.includes('cappy') || lowerName.includes('basecap')) {
+        subcategory = 'cap';
+      } else {
+        subcategory = 'beanie';
+      }
+    }
+
+    // Repair garment color if it was saved with default Salbeigrün (#8F9779) while the garment name or colorName specifies another color
+    let colorHex = g.colorHex || '#8F9779';
+    let colorName = g.colorName || 'Salbeigrün';
+    if (
+      colorHex.toUpperCase() === '#8F9779' &&
+      !g.id.startsWith('seed_') &&
+      !g.id.startsWith('fem_') &&
+      !g.id.startsWith('uni_')
+    ) {
+      const inferredFromTitle = inferColorFromGarmentName(g.name || '');
+      if (inferredFromTitle && inferredFromTitle.hex.toUpperCase() !== '#8F9779') {
+        colorHex = inferredFromTitle.hex;
+        colorName = inferredFromTitle.name;
+      } else if (colorName && colorName.toLowerCase() !== 'salbeigrün') {
+        const resolved = resolveGermanColorNameToHex(colorName);
+        if (resolved) {
+          colorHex = resolved;
+        }
+      }
+    }
+
+    const hsl = hexToHsl(colorHex);
     const colorTemp = classifyColorTemp(hsl);
     const seedMeta = SEED_META_BY_ID.get(g.id);
     return {
       ...g,
+      category,
+      subcategory,
+      colorHex,
+      colorName,
       name: seedMeta && g.id.startsWith('seed_acc_') ? seedMeta.name : g.name,
       hsl,
       colorTemp,
@@ -206,9 +258,11 @@ export async function loadOrSeedWardrobeData(): Promise<{
       rawGarments.some(isUserCustomGarment);
 
     if (hasLocalUserData && rawProfile) {
-      // Local client has user data. Push to server to ensure server is in sync, then return local data.
-      void syncStateToServer(rawProfile, rawGarments);
-      return { profile: rawProfile, garments: rawGarments };
+      const migrated = backfillProfileAndGarments(rawProfile, rawGarments);
+      await db.profiles.put(migrated.profile);
+      await db.garments.bulkPut(migrated.garments);
+      void syncStateToServer(migrated.profile, migrated.garments);
+      return migrated;
     }
   } catch {
     // IndexedDB access issue, proceed to server

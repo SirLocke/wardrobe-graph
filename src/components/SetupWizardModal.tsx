@@ -265,7 +265,8 @@ const ACCESSORY_QUICK_ITEMS: GarmentSubcategory[] = [
   'bracelet',
   'bag_backpack',
   'scarf',
-  'cap_beanie',
+  'cap',
+  'beanie',
   'socks',
   'socks_short',
 ];
@@ -669,7 +670,7 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
     >
       <div className="w-full h-full sm:h-auto sm:max-h-[90vh] max-w-3xl rounded-none sm:rounded-2xl bg-zinc-950 border-0 sm:border sm:border-zinc-800 shadow-2xl my-0 sm:my-8 overflow-hidden flex flex-col">
         {/* Top Header */}
-        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-zinc-800/90 bg-zinc-950/95 backdrop-blur-md">
+        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 pt-[max(0.875rem,env(safe-area-inset-top,0px))] border-b border-zinc-800/90 bg-zinc-950/95 backdrop-blur-md">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
               <Wand2 className="w-4 h-4" />

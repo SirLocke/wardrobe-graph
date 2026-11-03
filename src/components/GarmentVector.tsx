@@ -1,15 +1,16 @@
 import React, { useId } from 'react';
-import { GarmentSubcategory, NecklineType, TextureType } from '../types/wardrobe';
+import { GarmentPattern, GarmentSubcategory, NecklineType, TextureType } from '../types/wardrobe';
 
 export interface GarmentVectorProps {
   type: GarmentSubcategory;
   colorHex: string;
   accentColorHex?: string;
+  pattern?: GarmentPattern;
   texture?: TextureType;
   neckline?: NecklineType;
   className?: string;
   /**
-   * When true, openable garments (jackets, coats, trenchcoats, blazers, overshirts, cardigans, vests)
+   * When true, openable garments (jackets, coats, trenchcoats, blazers, overshirts, shirts, cardigans, vests)
    * render with an open front placket/lapel so underlying layers are visible when stacked.
    */
   openFront?: boolean;
@@ -21,12 +22,13 @@ export interface GarmentVectorProps {
 /**
  * Dynamic SVG Garment Avatar component that renders tailored architectural silhouettes
  * (Menswear, Womenswear & Unisex) colored with the exact garment hex code, studio lighting
- * depth gradient, and SVG fabric texture patterns.
+ * depth gradient, and SVG fabric texture & weave patterns.
  */
 export const GarmentVector: React.FC<GarmentVectorProps> = ({
   type,
   colorHex,
   accentColorHex,
+  pattern = 'solid',
   texture = 'smooth_cotton',
   neckline,
   className = 'w-16 h-16',
@@ -38,6 +40,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
   const effectiveOpenFront = openFront || Boolean(wornOpen);
   const uid = useId().replace(/:/g, '');
   const patternId = `tex-${uid}`;
+  const weavePatternId = `weave-${uid}`;
   const gradId = `grad-${uid}`;
   const hasAccent = Boolean(
     accentColorHex && accentColorHex.toUpperCase() !== colorHex.toUpperCase()
@@ -120,6 +123,89 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
         return (
           <pattern id={patternId} width="12" height="10" patternUnits="userSpaceOnUse">
             <line x1="0" y1="5" x2="12" y2="5" stroke={patternStroke} strokeWidth="0.95" />
+          </pattern>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const weaveStroke = hasAccent
+    ? accentColorHex!
+    : isVeryDark
+    ? 'rgba(255,255,255,0.28)'
+    : 'rgba(0,0,0,0.26)';
+
+  const renderWeavePattern = () => {
+    switch (pattern) {
+      case 'checked':
+        return (
+          <pattern id={weavePatternId} width="12" height="12" patternUnits="userSpaceOnUse">
+            <path
+              d="M0 6 H12 M6 0 V12"
+              stroke={weaveStroke}
+              strokeWidth="1.2"
+              strokeOpacity={hasAccent ? '0.75' : '0.55'}
+            />
+            <path
+              d="M0 2 H12 M2 0 V12"
+              stroke={weaveStroke}
+              strokeWidth="0.5"
+              strokeOpacity={hasAccent ? '0.45' : '0.3'}
+            />
+          </pattern>
+        );
+      case 'pinstripe':
+        return (
+          <pattern id={weavePatternId} width="7" height="10" patternUnits="userSpaceOnUse">
+            <line
+              x1="3.5"
+              y1="0"
+              x2="3.5"
+              y2="10"
+              stroke={weaveStroke}
+              strokeWidth="0.9"
+              strokeDasharray="2,1"
+              strokeOpacity={hasAccent ? '0.8' : '0.6'}
+            />
+          </pattern>
+        );
+      case 'striped':
+        return (
+          <pattern id={weavePatternId} width="8" height="8" patternUnits="userSpaceOnUse">
+            <line
+              x1="4"
+              y1="0"
+              x2="4"
+              y2="8"
+              stroke={weaveStroke}
+              strokeWidth="1.8"
+              strokeOpacity={hasAccent ? '0.75' : '0.5'}
+            />
+          </pattern>
+        );
+      case 'herringbone':
+        return (
+          <pattern id={weavePatternId} width="8" height="8" patternUnits="userSpaceOnUse">
+            <path
+              d="M0 4 L4 0 L8 4 M0 8 L4 4 L8 8"
+              fill="none"
+              stroke={weaveStroke}
+              strokeWidth="1"
+              strokeOpacity={hasAccent ? '0.7' : '0.5'}
+            />
+          </pattern>
+        );
+      case 'dotted':
+        return (
+          <pattern id={weavePatternId} width="8" height="8" patternUnits="userSpaceOnUse">
+            <circle
+              cx="4"
+              cy="4"
+              r="1.3"
+              fill={weaveStroke}
+              fillOpacity={hasAccent ? '0.8' : '0.55'}
+            />
           </pattern>
         );
       default:
@@ -481,6 +567,67 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
             <line x1="33" y1="78" x2="67" y2="78" stroke={detailStroke} strokeWidth="2.2" />
           </g>
         );
+
+      case 'short_sleeve_shirt': {
+        if (effectiveOpenFront) {
+          return (
+            <g>
+              {/* Left open short-sleeve panel */}
+              <path
+                d="M31 17 L40 13 L45 20 L44 82 L32 82 L32 39 L21 45 L13 30 Z"
+                fill={fillUrl}
+                stroke={strokeColor}
+                strokeWidth="2.1"
+                strokeLinejoin="round"
+              />
+              {/* Right open short-sleeve panel */}
+              <path
+                d="M69 17 L60 13 L55 20 L56 82 L68 82 L68 39 L79 45 L87 30 Z"
+                fill={fillUrl}
+                stroke={strokeColor}
+                strokeWidth="2.1"
+                strokeLinejoin="round"
+              />
+              {/* Camp / Shirt Collar */}
+              <path
+                d="M39 13 L44 23 L46 18 M61 13 L56 23 L54 18"
+                fill={fillUrl}
+                stroke={strokeColor}
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+              <line x1="15" y1="28" x2="23" y2="42" stroke={detailStroke} strokeWidth="1.4" />
+              <line x1="85" y1="28" x2="77" y2="42" stroke={detailStroke} strokeWidth="1.4" />
+            </g>
+          );
+        }
+        return (
+          <g>
+            {!isOverlay && <path d="M40 13 L50 20 L60 13 Z" fill={collarShadow} />}
+            <path
+              d="M31 18 L40 13 L50 18 L60 13 L69 18 L87 30 L79 45 L68 39 L68 83 L32 83 L32 39 L21 45 L13 30 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.1"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M39 13 L45 23 L50 18 L55 23 L61 13"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2"
+              strokeLinejoin="round"
+            />
+            <line x1="48.5" y1="18" x2="48.5" y2="83" stroke={detailStroke} strokeWidth="1.2" />
+            <line x1="51.5" y1="18" x2="51.5" y2="83" stroke={detailStroke} strokeWidth="1.2" />
+            {[27, 38, 49, 60, 71].map((cy) => (
+              <circle key={cy} cx="50" cy={cy} r="1.1" fill={strokeColor} />
+            ))}
+            <line x1="15" y1="28" x2="23" y2="42" stroke={detailStroke} strokeWidth="1.4" />
+            <line x1="85" y1="28" x2="77" y2="42" stroke={detailStroke} strokeWidth="1.4" />
+          </g>
+        );
+      }
 
       case 'overshirt':
       case 'button_down_shirt': {
@@ -844,6 +991,59 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
           </g>
         );
 
+      case 'suit_trousers':
+        return (
+          <g>
+            {/* Tailored Dress / Suit Trousers with crisp center creases (Bügelfalte) and extended waist tab */}
+            <path
+              d="M29 11 L71 11 L72.5 89 L54.5 89 L50 34 L45.5 89 L27.5 89 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.1"
+              strokeLinejoin="round"
+            />
+            <line x1="29" y1="18" x2="71" y2="18" stroke={strokeColor} strokeWidth="1.8" />
+            {/* Extended tailored button tab at waist */}
+            <rect
+              x="47"
+              y="11"
+              width="9"
+              height="7"
+              rx="1"
+              fill={!isOverlay && hasAccent && pattern === 'solid' ? accentColorHex : fillUrl}
+              stroke={strokeColor}
+              strokeWidth="1.5"
+            />
+            <circle cx="53.5" cy="14.5" r="1.1" fill={strokeColor} />
+            <path d="M50 18 L50 32" stroke={detailStroke} strokeWidth="1.5" />
+            {/* Slanted dress pockets */}
+            <line x1="29" y1="21" x2="36" y2="31" stroke={detailStroke} strokeWidth="1.4" />
+            <line x1="71" y1="21" x2="64" y2="31" stroke={detailStroke} strokeWidth="1.4" />
+            {/* Sharp full-length center crease lines (Bügelfalten) */}
+            <line
+              x1="39.5"
+              y1="19"
+              x2="36.5"
+              y2="88"
+              stroke={!isOverlay && hasAccent && pattern === 'solid' ? accentColorHex : strokeColor}
+              strokeWidth="1.4"
+              strokeOpacity="0.65"
+            />
+            <line
+              x1="60.5"
+              y1="19"
+              x2="63.5"
+              y2="88"
+              stroke={!isOverlay && hasAccent && pattern === 'solid' ? accentColorHex : strokeColor}
+              strokeWidth="1.4"
+              strokeOpacity="0.65"
+            />
+            {/* Turn-up cuff lines at ankle */}
+            <line x1="27.5" y1="85.5" x2="45.5" y2="85.5" stroke={detailStroke} strokeWidth="1.4" />
+            <line x1="54.5" y1="85.5" x2="72.5" y2="85.5" stroke={detailStroke} strokeWidth="1.4" />
+          </g>
+        );
+
       case 'chino':
       case 'denim':
       case 'trousers':
@@ -861,6 +1061,13 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               strokeLinejoin="round"
             />
             <line x1="28" y1="18.5" x2="72" y2="18.5" stroke={strokeColor} strokeWidth="1.8" />
+            {!isOverlay && hasAccent && pattern === 'solid' && (
+              <>
+                <line x1="28" y1="14.5" x2="72" y2="14.5" stroke={accentColorHex} strokeWidth="2.4" strokeOpacity="0.85" />
+                <line x1="25.5" y1="86" x2="45.5" y2="86" stroke={accentColorHex} strokeWidth="2.2" strokeOpacity="0.85" />
+                <line x1="54.5" y1="86" x2="74.5" y2="86" stroke={accentColorHex} strokeWidth="2.2" strokeOpacity="0.85" />
+              </>
+            )}
             {[35, 44, 56, 65].map((lx) => (
               <line key={lx} x1={lx} y1="11" x2={lx} y2="18.5" stroke={strokeColor} strokeWidth="1.8" />
             ))}
@@ -901,6 +1108,13 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               strokeLinejoin="round"
             />
             <line x1="26" y1="22.5" x2="74" y2="22.5" stroke={strokeColor} strokeWidth="1.8" />
+            {!isOverlay && hasAccent && pattern === 'solid' && (
+              <>
+                <line x1="26" y1="18.5" x2="74" y2="18.5" stroke={accentColorHex} strokeWidth="2.4" strokeOpacity="0.85" />
+                <line x1="23.5" y1="60" x2="47" y2="60" stroke={accentColorHex} strokeWidth="2.2" strokeOpacity="0.85" />
+                <line x1="53" y1="60" x2="76.5" y2="60" stroke={accentColorHex} strokeWidth="2.2" strokeOpacity="0.85" />
+              </>
+            )}
             <path d="M50 22.5 L50 34 Q53 34 53 31" fill="none" stroke={detailStroke} strokeWidth="1.5" />
             <path d="M26 24 Q33 30 35 22.5 M74 24 Q67 30 65 22.5" fill="none" stroke={detailStroke} strokeWidth="1.4" />
           </g>
@@ -1008,12 +1222,14 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               strokeWidth="2.2"
               strokeLinejoin="round"
             />
-            <path
-              d="M35 22 L48 22 L47 47 Q41 50 34 47 Z"
-              fill={!isOverlay && hasAccent ? accentColorHex : 'rgba(0,0,0,0.32)'}
-              stroke={detailStroke}
-              strokeWidth="1.5"
-            />
+            {!isOverlay && (
+              <path
+                d="M35 22 L48 22 L47 47 Q41 50 34 47 Z"
+                fill={hasAccent ? accentColorHex : 'rgba(0,0,0,0.28)'}
+                stroke={detailStroke}
+                strokeWidth="1.5"
+              />
+            )}
             <line x1="16" y1="73" x2="89" y2="73" stroke="#b45309" strokeWidth="1.2" opacity="0.7" />
             <rect x="15" y="74" width="75" height="6.5" rx="2" fill="#18181b" stroke={strokeColor} strokeWidth="1.8" />
           </g>
@@ -1323,18 +1539,55 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
           </g>
         );
 
+      case 'cap':
+        return (
+          <g>
+            {/* 6-Panel Baseball Cap Crown */}
+            <path
+              d="M22 58 C22 25 74 23 76 56 L22 58 Z"
+              fill={fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.3"
+              strokeLinejoin="round"
+            />
+            {/* Top Crown Squatchee Button */}
+            <circle cx="48" cy="28" r="2.2" fill={!isOverlay && hasAccent ? accentColorHex : strokeColor} />
+            {/* Panel Seam Lines */}
+            <path d="M48 28 Q37 40 35 57 M48 28 Q58 40 60 56" fill="none" stroke={seamStroke} strokeWidth="1.3" />
+            {/* Eyelets */}
+            <circle cx="41" cy="38" r="1" fill={detailStroke} />
+            <circle cx="55" cy="38" r="1" fill={detailStroke} />
+            {/* Curved Peaked Visor / Brim extending right-forward */}
+            <path
+              d="M20 57 Q48 53 76 55 L92 62 C93 66 84 68 72 67 C54 65 34 61 20 57 Z"
+              fill={!isOverlay && hasAccent ? accentColorHex : fillUrl}
+              stroke={strokeColor}
+              strokeWidth="2.2"
+              strokeLinejoin="round"
+            />
+            {/* Visor Stitch Line */}
+            <path
+              d="M32 59 Q58 60 85 63"
+              fill="none"
+              stroke={detailStroke}
+              strokeWidth="1.2"
+            />
+          </g>
+        );
+
+      case 'beanie':
       case 'cap_beanie':
         return (
           <g>
-            {/* Dome shape */}
+            {/* Knit Beanie Dome shape */}
             <path
               d="M24 64 C24 26 76 26 76 64 Z"
               fill={fillUrl}
               stroke={strokeColor}
               strokeWidth="2.4"
             />
-            {/* Top dart seam */}
-            <path d="M50 26 L50 45" stroke={detailStroke} strokeWidth="1.4" />
+            {/* Top crown dart seams */}
+            <path d="M50 26 L50 45 M38 31 Q43 40 42 54 M62 31 Q57 40 58 54" fill="none" stroke={detailStroke} strokeWidth="1.3" />
             {/* Folded Ribbed Cuff */}
             <rect
               x="21"
@@ -1342,7 +1595,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
               width="58"
               height="15"
               rx="3"
-              fill={fillUrl}
+              fill={!isOverlay && hasAccent ? accentColorHex : fillUrl}
               stroke={strokeColor}
               strokeWidth="2.2"
             />
@@ -1508,6 +1761,7 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
   };
 
   const hasPattern = texture !== 'smooth_cotton' && texture !== 'leather_suede';
+  const hasWeavePattern = Boolean(pattern && pattern !== 'solid');
 
   return (
     <svg
@@ -1518,17 +1772,23 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
     >
       <defs>
         {renderTexturePattern()}
+        {renderWeavePattern()}
         <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.07)" />
-          <stop offset="50%" stopColor="rgba(255,255,255,0)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.16)" />
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.06" />
+          <stop offset="50%" stopColor="#FFFFFF" stopOpacity="0" />
+          <stop offset="100%" stopColor="#000000" stopOpacity="0.14" />
         </linearGradient>
       </defs>
       {renderSilhouette(colorHex, false)}
       <g className="pointer-events-none">{renderSilhouette(`url(#${gradId})`, true)}</g>
       {hasPattern && (
-        <g opacity="0.85" className="pointer-events-none">
+        <g opacity="0.75" className="pointer-events-none">
           {renderSilhouette(`url(#${patternId})`, true)}
+        </g>
+      )}
+      {hasWeavePattern && (
+        <g opacity="0.9" className="pointer-events-none">
+          {renderSilhouette(`url(#${weavePatternId})`, true)}
         </g>
       )}
       {hasPrint && !effectiveOpenFront && (

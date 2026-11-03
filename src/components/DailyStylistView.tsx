@@ -29,6 +29,7 @@ import {
   DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES,
   OCCASION_LABELS,
   OCCASION_LABELS_EN,
+  PATTERN_LABELS,
   STYLE_VIBE_META,
   SUBCATEGORY_LABELS,
   TEXTURE_LABELS,
@@ -98,7 +99,7 @@ const AUTO_LAUNDRY_GROUPS: Array<{
     id: 'shirts',
     labelDe: 'Hemden & Blusen',
     labelEn: 'Shirts & Blouses',
-    subcategories: ['button_down_shirt', 'blouse'],
+    subcategories: ['button_down_shirt', 'short_sleeve_shirt', 'blouse'],
   },
   {
     id: 'midlayers',
@@ -124,6 +125,7 @@ const AUTO_LAUNDRY_GROUPS: Array<{
       'denim',
       'chino',
       'trousers',
+      'suit_trousers',
       'wide_leg_trousers',
       'cargo',
       'shorts',
@@ -148,7 +150,8 @@ const ACCESSORY_SUGGESTION_CHIPS: Array<{
 }> = [
   { subcategory: 'socks', labelDe: 'Lange Socken', labelEn: 'Long Socks', alwaysShow: true },
   { subcategory: 'socks_short', labelDe: 'Kurze Socken', labelEn: 'Short Socks', alwaysShow: true },
-  { subcategory: 'cap_beanie', labelDe: 'Mütze / Cap', labelEn: 'Cap / Beanie', alwaysShow: true },
+  { subcategory: 'cap', labelDe: 'Cap', labelEn: 'Cap', alwaysShow: true },
+  { subcategory: 'beanie', labelDe: 'Mütze', labelEn: 'Beanie', alwaysShow: true },
   { subcategory: 'bracelet', labelDe: 'Armband', labelEn: 'Bracelet', alwaysShow: true },
   { subcategory: 'watch', labelDe: 'Uhr', labelEn: 'Watch', alwaysShow: true },
   { subcategory: 'sunglasses', labelDe: 'Sonnenbrille', labelEn: 'Sunglasses', alwaysShow: true },
@@ -523,6 +526,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       type={g.subcategory}
                       colorHex={g.colorHex}
                       accentColorHex={g.accentColorHex}
+                      pattern={g.pattern}
                       texture={g.texture}
                       neckline={g.neckline}
                       hasPrint={g.hasPrint}
@@ -1024,6 +1028,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     type={item.subcategory}
                                     colorHex={item.colorHex}
                                     accentColorHex={item.accentColorHex}
+                                    pattern={item.pattern}
                                     texture={item.texture}
                                     neckline={item.neckline}
                                     hasPrint={item.hasPrint}
@@ -1039,7 +1044,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
                               {/* Item Details */}
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400">
                                   <span>{SUBCATEGORY_LABELS[item.subcategory]}</span>
                                   {item.brand && (
                                     <>
@@ -1051,6 +1056,14 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     <>
                                       <span aria-hidden="true">·</span>
                                       <span>Gr. {item.size}</span>
+                                    </>
+                                  )}
+                                  {item.pattern && item.pattern !== 'solid' && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span className="text-amber-300">
+                                        {PATTERN_LABELS[item.pattern].split(' (')[0]}
+                                      </span>
                                     </>
                                   )}
                                   {item.hasPrint && (
@@ -1066,12 +1079,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     </>
                                   )}
                                   {item.wornOpen !== undefined && (
-                                    <>
-                                      <span aria-hidden="true">·</span>
-                                      <span className="text-zinc-300">
-                                        {item.wornOpen ? 'Offen getragen' : 'Geschlossen'}
-                                      </span>
-                                    </>
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-[10px] text-amber-200 font-medium">
+                                      {item.wornOpen
+                                        ? 'Empfehlung: Offen über T-Shirt'
+                                        : 'Empfehlung: Geschlossen getragen'}
+                                    </span>
                                   )}
                                   {item.isWishlistSandbox && (
                                     <>
@@ -1239,6 +1251,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                 type={item.subcategory}
                                 colorHex={item.colorHex}
                                 accentColorHex={item.accentColorHex}
+                                pattern={item.pattern}
                                 texture={item.texture}
                                 neckline={item.neckline}
                                 hasPrint={item.hasPrint}
@@ -1253,6 +1266,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             <p className="text-xs font-medium text-zinc-100 line-clamp-2 min-h-[2rem] leading-snug">
                               {item.name}
                             </p>
+                            {item.wornOpen !== undefined && (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-[10px] text-amber-200 font-medium">
+                                {item.wornOpen ? 'Offen über T-Shirt' : 'Geschlossen getragen'}
+                              </span>
+                            )}
                             <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
                               <span
                                 className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0"

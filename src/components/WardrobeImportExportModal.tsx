@@ -240,7 +240,7 @@ export const WardrobeImportExportModal: React.FC<WardrobeImportExportModalProps>
     >
       <div className="w-full h-full sm:h-auto sm:max-h-[90vh] max-w-4xl rounded-none sm:rounded-2xl bg-zinc-950 border-0 sm:border sm:border-zinc-800 shadow-2xl my-0 sm:my-8 overflow-hidden flex flex-col">
         {/* Top Modal Header */}
-        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
+        <div className="shrink-0 sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 pt-[max(0.875rem,env(safe-area-inset-top,0px))] border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
           <div>
             <h2 id="import-export-modal-title" className="text-base sm:text-lg font-semibold text-zinc-100">
               Kleiderschrank Import / Export &amp; Backup

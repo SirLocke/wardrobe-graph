@@ -16,6 +16,7 @@ import {
   CATEGORY_LABELS,
   FIT_LABELS,
   NECKLINE_LABELS,
+  PATTERN_LABELS,
   SUBCATEGORY_LABELS,
   TEXTURE_LABELS,
   WARDROBE_PRESETS,
@@ -501,6 +502,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                           type={garment.subcategory}
                           colorHex={garment.colorHex}
                           accentColorHex={garment.accentColorHex}
+                          pattern={garment.pattern}
                           texture={garment.texture}
                           neckline={garment.neckline}
                           hasPrint={garment.hasPrint}
@@ -539,6 +541,11 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                             </span>
                           </>
                         )}
+                        {garment.pattern && garment.pattern !== 'solid' && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-[10px] font-medium text-amber-300">
+                            {PATTERN_LABELS[garment.pattern].split(' (')[0]}
+                          </span>
+                        )}
                         {garment.brand && (
                           <span className="px-1.5 py-0.5 rounded bg-zinc-800/90 border border-zinc-700/80 text-[10px] font-medium text-amber-300">
                             {garment.brand}
@@ -557,11 +564,6 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                         {garment.hasLogo && (
                           <span className="px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-[10px] text-indigo-300 font-medium">
                             Logo
-                          </span>
-                        )}
-                        {garment.wornOpen !== undefined && (
-                          <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px] text-zinc-300 font-medium">
-                            {garment.wornOpen ? 'Offen getragen' : 'Geschlossen'}
                           </span>
                         )}
                         {isRainReady && garment.category !== 'accessory' && (
@@ -653,6 +655,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                     type={popupEntry.garment.subcategory}
                     colorHex={popupEntry.garment.colorHex}
                     accentColorHex={popupEntry.garment.accentColorHex}
+                    pattern={popupEntry.garment.pattern}
                     texture={popupEntry.garment.texture}
                     neckline={popupEntry.garment.neckline}
                     hasPrint={popupEntry.garment.hasPrint}

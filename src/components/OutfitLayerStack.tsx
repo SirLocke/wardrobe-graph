@@ -13,6 +13,7 @@ interface OutfitLayerStackProps {
 const OPENABLE_MID_LAYERS: GarmentSubcategory[] = [
   'overshirt',
   'button_down_shirt',
+  'short_sleeve_shirt',
   'cardigan',
   'blazer',
   'fleece_vest',
@@ -24,17 +25,24 @@ const OPENABLE_MID_LAYERS: GarmentSubcategory[] = [
  */
 export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
   items,
-  profile,
   onEditGarment,
 }) => {
-  const baseTop = items.find((i) => i.category === 'base_top');
-  const midLayer = items.find((i) => i.category === 'mid_layer');
+  const baseTops = items.filter((i) => i.category === 'base_top');
+  const explicitMidLayer = items.find((i) => i.category === 'mid_layer');
+  const baseTop = baseTops[0];
+  // If an outfit combines a T-shirt + an open shirt (both category base_top), render the open shirt as the midLayer
+  const midLayer = explicitMidLayer || (baseTops.length > 1 ? baseTops[1] : undefined);
   const outerwear = items.find((i) => i.category === 'outerwear');
   const bottom = items.find((i) => i.category === 'bottom');
   const footwear = items.find((i) => i.category === 'footwear');
   const accessories = items.filter((i) => i.category === 'accessory');
 
-  const headAccessory = accessories.find((a) => a.subcategory === 'cap_beanie');
+  const headAccessory = accessories.find(
+    (a) =>
+      a.subcategory === 'cap' ||
+      a.subcategory === 'beanie' ||
+      a.subcategory === 'cap_beanie'
+  );
   const eyewearAccessory = accessories.find(
     (a) => a.subcategory === 'sunglasses' || a.subcategory === 'glasses'
   );
@@ -138,6 +146,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                   type={headAccessory.subcategory}
                   colorHex={headAccessory.colorHex}
                   accentColorHex={headAccessory.accentColorHex}
+                  pattern={headAccessory.pattern}
                   texture={headAccessory.texture}
                   className="w-14 h-14 drop-shadow-[0_3px_6px_rgba(0,0,0,0.75)]"
                 />
@@ -157,6 +166,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                   type={eyewearAccessory.subcategory}
                   colorHex={eyewearAccessory.colorHex}
                   accentColorHex={eyewearAccessory.accentColorHex}
+                  pattern={eyewearAccessory.pattern}
                   texture={eyewearAccessory.texture}
                   className="w-11 h-11 drop-shadow-[0_2px_5px_rgba(0,0,0,0.75)]"
                 />
@@ -177,7 +187,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
               style={{
                 transform:
                   midLayer && !isMidLayerOpenable
-                    ? 'translateY(-4px) scale(0.94)'
+                    ? 'translateY(-7px) scale(0.97)'
                     : 'translateY(0px) scale(0.96)',
                 zIndex: 10,
               }}
@@ -187,8 +197,11 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 type={baseTop.subcategory}
                 colorHex={baseTop.colorHex}
                 accentColorHex={baseTop.accentColorHex}
+                pattern={baseTop.pattern}
                 texture={baseTop.texture}
                 neckline={baseTop.neckline}
+                openFront={Boolean(baseTop.wornOpen) && !midLayer}
+                wornOpen={Boolean(baseTop.wornOpen) && !midLayer}
                 hasPrint={baseTop.hasPrint}
                 hasLogo={baseTop.hasLogo}
                 className="w-32 h-32 drop-shadow-[0_4px_10px_rgba(0,0,0,0.65)]"
@@ -206,7 +219,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
               style={{
                 transform: isMidLayerOpenable
                   ? 'translateY(1px) scale(1.03)'
-                  : 'translateY(3px) scale(1.01)',
+                  : 'translateY(5px) scale(1.0)',
                 zIndex: 20,
               }}
               title={`${midLayer.name} (${midLayer.colorName}) – Klicken zum Bearbeiten`}
@@ -215,6 +228,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 type={midLayer.subcategory}
                 colorHex={midLayer.colorHex}
                 accentColorHex={midLayer.accentColorHex}
+                pattern={midLayer.pattern}
                 texture={midLayer.texture}
                 neckline={midLayer.neckline}
                 openFront={isMidLayerOpenable && Boolean(baseTop)}
@@ -243,6 +257,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 type={outerwear.subcategory}
                 colorHex={outerwear.colorHex}
                 accentColorHex={outerwear.accentColorHex}
+                pattern={outerwear.pattern}
                 texture={outerwear.texture}
                 neckline={outerwear.neckline}
                 openFront={true}
@@ -384,6 +399,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
               type={bottom.subcategory}
               colorHex={bottom.colorHex}
               accentColorHex={bottom.accentColorHex}
+              pattern={bottom.pattern}
               texture={bottom.texture}
               neckline={bottom.neckline}
               className="w-32 h-32 drop-shadow-[0_6px_12px_rgba(0,0,0,0.7)]"
