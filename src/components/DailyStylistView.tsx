@@ -9,6 +9,7 @@ import {
   Cloud,
   CloudRain,
   Edit3,
+  Heart,
   History,
   Info,
   Layers,
@@ -53,6 +54,7 @@ import {
   AppLocale,
   BiometricProfile,
   CustomOccasion,
+  FavoriteOutfitRecord,
   Garment,
   GarmentCategory,
   GarmentSubcategory,
@@ -65,6 +67,7 @@ import {
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 import { OutfitLayerStack } from './OutfitLayerStack';
+import { buildOutfitSignature } from './WardrobeStatsView';
 
 interface DailyStylistViewProps {
   garments: Garment[];
@@ -73,8 +76,10 @@ interface DailyStylistViewProps {
   locale?: AppLocale;
   wornHistory?: WornOutfitRecord[];
   onChangeContext: (next: OutfitContext) => void;
-  onLogOutfitWorn: (outfit: GeneratedOutfit, title: string) => Promise<void>;
+  onLogOutfitWorn: (outfit: GeneratedOutfit, title: string) => Promise<WornOutfitRecord | void>;
   onDeleteWornRecord?: (recordId: string) => Promise<void>;
+  onToggleFavoriteOutfit?: (fav: FavoriteOutfitRecord) => Promise<void>;
+  onOpenStatsTab?: () => void;
   onWashAllGarments: () => Promise<void>;
   onOpenAddModal: () => void;
   onEditGarment?: (garment: Garment) => void;
@@ -82,6 +87,14 @@ interface DailyStylistViewProps {
   onOpenSettings?: () => void;
   onOpenProfileTab?: () => void;
   onUpdateProfile?: (nextProfile: BiometricProfile) => Promise<void>;
+}
+
+interface SessionWornEntry {
+  outfit: GeneratedOutfit;
+  recordId: string;
+  outfitTitle: string;
+  laundryCount: number;
+  slotIndex: number;
 }
 
 const AUTO_LAUNDRY_GROUPS: Array<{
@@ -230,6 +243,8 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   onChangeContext,
   onLogOutfitWorn,
   onDeleteWornRecord,
+  onToggleFavoriteOutfit,
+  onOpenStatsTab,
   onWashAllGarments,
   onOpenAddModal,
   onEditGarment,
@@ -241,6 +256,8 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   const isEn = locale === 'en';
   const [showAnchorPicker, setShowAnchorPicker] = useState(false);
   const [wornFeedbackId, setWornFeedbackId] = useState<string | null>(null);
+  const [sessionWornById, setSessionWornById] = useState<Record<string, SessionWornEntry>>({});
+  const [latestWornBanner, setLatestWornBanner] = useState<SessionWornEntry | null>(null);
   const [sharedFeedbackId, setSharedFeedbackId] = useState<string | null>(null);
   const [incomingSharedOutfit, setIncomingSharedOutfit] = useState<ReturnType<
     typeof decodeSharedOutfit
@@ -253,6 +270,16 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   );
   const [editingOutfitId, setEditingOutfitId] = useState<string | null>(null);
   const [editingOutfitNameDraft, setEditingOutfitNameDraft] = useState('');
+
+  useEffect(() => {
+    setSessionWornById({});
+  }, [
+    context.temperatureC,
+    context.weather,
+    context.occasion,
+    context.customOccasionId,
+    context.variationSeed,
+  ]);
 
   useEffect(() => {
     try {
@@ -284,6 +311,15 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     () => (Array.isArray(profile.customOccasions) ? profile.customOccasions : []),
     [profile.customOccasions]
   );
+
+  const favoriteSignatures = useMemo(() => {
+    const set = new Set<string>();
+    for (const fav of profile.favoriteOutfits || []) {
+      set.add(fav.id);
+      set.add(buildOutfitSignature(fav.garmentIds));
+    }
+    return set;
+  }, [profile.favoriteOutfits]);
 
   const activeCustomOccasion = useMemo(
     () => resolveActiveCustomOccasion(context, profile),
@@ -413,9 +449,38 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     setEditingCustomOccasionId(null);
   };
 
-  const outfits = useMemo(() => {
+  const generatedOutfits = useMemo(() => {
     return generateOutfitsForContext(garments, profile, context, 5);
   }, [garments, profile, context]);
+
+  const outfits = useMemo(() => {
+    const wornEntries = Object.values(sessionWornById) as SessionWornEntry[];
+    if (wornEntries.length === 0) return generatedOutfits;
+
+    const garmentById = new Map(garments.map((g) => [g.id, g]));
+    const refreshedWornEntries = wornEntries
+      .map((entry) => ({
+        ...entry,
+        outfit: {
+          ...entry.outfit,
+          items: entry.outfit.items.map((item) => {
+            const latest = garmentById.get(item.id);
+            return latest ? { ...latest, wornOpen: item.wornOpen } : item;
+          }),
+        },
+      }))
+      .sort((a, b) => a.slotIndex - b.slotIndex);
+
+    const wornIdSet = new Set(refreshedWornEntries.map((e) => e.outfit.id));
+    const remainingGenerated = generatedOutfits.filter((o) => !wornIdSet.has(o.id));
+
+    const combined: GeneratedOutfit[] = [...remainingGenerated];
+    for (const entry of refreshedWornEntries) {
+      const idx = Math.min(Math.max(0, entry.slotIndex), combined.length);
+      combined.splice(idx, 0, entry.outfit);
+    }
+    return combined.slice(0, Math.max(5, refreshedWornEntries.length));
+  }, [generatedOutfits, sessionWornById, garments]);
 
   const dirtyCount = useMemo(
     () => garments.filter((g) => canGarmentUseLaundry(g) && !g.isClean).length,
@@ -546,12 +611,79 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     setEditingOutfitId(null);
   };
 
-  const handleMarkWorn = async (outfit: GeneratedOutfit, title: string) => {
-    await onLogOutfitWorn(outfit, title);
+  const handleMarkWorn = async (
+    outfit: GeneratedOutfit,
+    title: string,
+    slotIndex: number
+  ) => {
+    const existingEntry = sessionWornById[outfit.id];
+    if (existingEntry) {
+      await handleUndoWornOutfit(outfit.id);
+      return;
+    }
+
+    const record = await onLogOutfitWorn(outfit, title);
+    const laundryCount = record?.dirtyMarkedGarmentIds
+      ? record.dirtyMarkedGarmentIds.length
+      : outfit.items.filter(
+          (g) => canGarmentUseLaundry(g) && activeAutoLaundrySubs.includes(g.subcategory)
+        ).length;
+
+    const entry: SessionWornEntry = {
+      outfit,
+      recordId: record?.id || '',
+      outfitTitle: title,
+      laundryCount,
+      slotIndex,
+    };
+
+    setSessionWornById((prev) => ({
+      ...prev,
+      [outfit.id]: entry,
+    }));
+    setLatestWornBanner(entry);
     setWornFeedbackId(outfit.id);
     setTimeout(() => {
       setWornFeedbackId((prev) => (prev === outfit.id ? null : prev));
-    }, 2500);
+    }, 5000);
+  };
+
+  const handleUndoWornOutfit = async (outfitId: string) => {
+    const entry = sessionWornById[outfitId];
+    setSessionWornById((prev) => {
+      const next = { ...prev };
+      delete next[outfitId];
+      return next;
+    });
+    setLatestWornBanner((prev) => (prev?.outfit.id === outfitId ? null : prev));
+    setWornFeedbackId((prev) => (prev === outfitId ? null : prev));
+    if (entry?.recordId && onDeleteWornRecord) {
+      await onDeleteWornRecord(entry.recordId);
+    }
+  };
+
+  const handleDeleteHistoryRecord = async (recordId: string) => {
+    setSessionWornById((prev) => {
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(next) as Array<[string, SessionWornEntry]>) {
+        if (v.recordId === recordId) {
+          delete next[k];
+        }
+      }
+      return next;
+    });
+    setLatestWornBanner((prev) => (prev?.recordId === recordId ? null : prev));
+    if (onDeleteWornRecord) {
+      await onDeleteWornRecord(recordId);
+    }
+  };
+
+  const scrollToWearHistory = () => {
+    setIsHistoryExpanded(true);
+    const el = document.getElementById('wear-history-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const handleShareOutfit = async (outfit: GeneratedOutfit, title: string) => {
@@ -1319,8 +1451,86 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             </button>
           </div>
 
-          {outfits.map((outfit) => {
-            const isWornJustNow = wornFeedbackId === outfit.id;
+          {latestWornBanner && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-2xl bg-emerald-950/35 border border-emerald-500/50 px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg"
+            >
+              <div className="flex items-start sm:items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5 sm:mt-0">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-semibold text-emerald-200 truncate">
+                    {isEn
+                      ? `✓ "${latestWornBanner.outfitTitle}" logged for today`
+                      : `✓ „${latestWornBanner.outfitTitle}“ für heute eingetragen`}
+                  </p>
+                  <p className="text-[11px] text-zinc-300 mt-0.5">
+                    {isEn
+                      ? `Wear counter (+1×) updated${
+                          latestWornBanner.laundryCount > 0
+                            ? ` · ${latestWornBanner.laundryCount} ${
+                                latestWornBanner.laundryCount === 1 ? 'item' : 'items'
+                              } placed in laundry`
+                            : ''
+                        }`
+                      : `Trage-Zähler (+1×) aktualisiert${
+                          latestWornBanner.laundryCount > 0
+                            ? ` · ${latestWornBanner.laundryCount} ${
+                                latestWornBanner.laundryCount === 1 ? 'Teil' : 'Teile'
+                              } in die Wäsche gelegt`
+                            : ''
+                        }`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {onOpenStatsTab && (
+                  <button
+                    type="button"
+                    onClick={onOpenStatsTab}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-amber-400/60 text-xs font-medium text-amber-200 cursor-pointer touch-manipulation"
+                  >
+                    <Heart className="w-3.5 h-3.5 text-rose-400" />
+                    <span>{isEn ? 'Stats & Favorites' : 'Statistik & Favoriten'}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={scrollToWearHistory}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer touch-manipulation"
+                >
+                  <History className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isEn ? 'View History ↓' : 'Zuletzt getragen ↓'}</span>
+                </button>
+                {onDeleteWornRecord && latestWornBanner.recordId && (
+                  <button
+                    type="button"
+                    onClick={() => handleUndoWornOutfit(latestWornBanner.outfit.id)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-rose-500/60 text-xs font-medium text-zinc-300 hover:text-rose-200 cursor-pointer touch-manipulation"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isEn ? 'Undo' : 'Rückgängig'}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setLatestWornBanner(null)}
+                  aria-label={isEn ? 'Dismiss notice' : 'Hinweis schließen'}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {outfits.map((outfit, outfitSlotIndex) => {
+            const sessionWorn = sessionWornById[outfit.id];
+            const isWornToday = Boolean(sessionWorn) || wornFeedbackId === outfit.id;
             const hasSandboxItem = outfit.items.some((i) => i.isWishlistSandbox);
             const sortedAnatomicalItems = [...outfit.items].sort(
               (a, b) =>
@@ -1333,11 +1543,21 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             const outfitTitle =
               customOutfitNames[outfit.id] || getShortOutfitTitle(outfit.items);
             const isEditingTitle = editingOutfitId === outfit.id;
+            const coreSigIds = coreAnatomicalItems.map((i) => i.id);
+            const outfitSig = buildOutfitSignature(
+              coreSigIds.length > 0 ? coreSigIds : outfit.items.map((i) => i.id)
+            );
+            const isFavoriteOutfit =
+              favoriteSignatures.has(outfit.id) || favoriteSignatures.has(outfitSig);
 
             return (
               <article
                 key={outfit.id}
-                className="rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 transition-colors hover:border-zinc-700/80 space-y-4"
+                className={`rounded-2xl border p-5 sm:p-6 transition-colors space-y-4 ${
+                  isWornToday
+                    ? 'bg-emerald-950/15 border-emerald-500/60 shadow-lg'
+                    : 'bg-zinc-900/45 border-zinc-800/90 hover:border-zinc-700/80'
+                }`}
               >
                 {/* Minimal, Non-Verbose Card Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-800/70">
@@ -1365,7 +1585,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-sm font-semibold text-zinc-100 truncate">
                           {outfitTitle}
                         </h2>
@@ -1381,6 +1601,12 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
+                        {isWornToday && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/45 text-[11px] text-emerald-300 font-semibold">
+                            <Check className="w-3 h-3" />
+                            <span>{isEn ? 'Selected for today' : 'Heute ausgewählt'}</span>
+                          </span>
+                        )}
                         {hasSandboxItem && (
                           <span className="text-xs text-sky-300 font-medium">
                             · {isEn ? 'Test Item' : 'Mit Test-Stück'}
@@ -1391,6 +1617,47 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto shrink-0">
+                    {onToggleFavoriteOutfit && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onToggleFavoriteOutfit({
+                            id: outfitSig,
+                            title: outfitTitle,
+                            garmentIds: outfit.items.map((i) => i.id),
+                            garments: outfit.items,
+                            savedAt: new Date().toISOString(),
+                            totalScore: outfit.totalScore,
+                            occasion: context.occasion,
+                            temperatureC: context.temperatureC,
+                          })
+                        }
+                        title={
+                          isFavoriteOutfit
+                            ? isEn
+                              ? 'Remove from Favorite Outfits'
+                              : 'Aus Lieblings-Outfits entfernen'
+                            : isEn
+                            ? 'Save as Favorite Outfit'
+                            : 'Als Lieblings-Outfit speichern'
+                        }
+                        className={`inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                          isFavoriteOutfit
+                            ? 'bg-rose-500/15 border-rose-500/50 text-rose-200 font-semibold'
+                            : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-rose-200'
+                        }`}
+                      >
+                        <Heart
+                          className={`w-3.5 h-3.5 ${
+                            isFavoriteOutfit
+                              ? 'fill-rose-400 text-rose-400'
+                              : 'text-rose-400'
+                          }`}
+                        />
+                        <span>{isFavoriteOutfit ? (isEn ? 'Saved' : 'Favorit') : (isEn ? 'Favorite' : 'Merken')}</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => handleShareOutfit(outfit, outfitTitle)}
@@ -1424,24 +1691,36 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => handleMarkWorn(outfit, outfitTitle)}
+                      onClick={() => handleMarkWorn(outfit, outfitTitle, outfitSlotIndex)}
                       className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
-                        isWornJustNow
-                          ? 'bg-emerald-500 text-zinc-950 font-semibold'
+                        isWornToday
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold'
                           : 'bg-zinc-100 text-zinc-950 hover:bg-white font-semibold'
                       }`}
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>
-                        {isWornJustNow
+                        {isWornToday
                           ? isEn
-                            ? 'Marked as worn'
-                            : 'Getragen'
+                            ? 'Worn Today'
+                            : 'Heute angezogen'
                           : isEn
                           ? 'Wear Today'
                           : 'Heute anziehen'}
                       </span>
                     </button>
+
+                    {isWornToday && sessionWorn?.recordId && onDeleteWornRecord && (
+                      <button
+                        type="button"
+                        onClick={() => handleUndoWornOutfit(outfit.id)}
+                        title={isEn ? 'Undo wear selection' : 'Auswahl rückgängig machen'}
+                        className="inline-flex items-center justify-center gap-1 min-h-[42px] px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-rose-500/60 text-xs font-medium text-zinc-300 hover:text-rose-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'Undo' : 'Rückgängig'}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1553,6 +1832,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                         {item.wearCount}× getragen
                                       </span>
                                     </>
+                                  )}
+                                  {canGarmentUseLaundry(item) && !item.isClean && (
+                                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/35 text-[10px] text-emerald-300 font-medium">
+                                      {isEn ? 'In Laundry' : 'Im Wäschekorb'}
+                                    </span>
                                   )}
                                 </div>
                                 <p className="text-sm font-semibold text-zinc-100 truncate mt-0.5">
@@ -1764,8 +2048,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
       {/* Worn Outfit History ("Zuletzt getragen" placed below the outfit recommendations) */}
       <section
+        id="wear-history-section"
         aria-label={isEn ? 'Wear History' : 'Zuletzt getragene Outfits'}
-        className="rounded-2xl bg-zinc-900/40 border border-zinc-800/80 p-4 sm:p-5 space-y-3.5"
+        className="rounded-2xl bg-zinc-900/40 border border-zinc-800/80 p-4 sm:p-5 space-y-3.5 scroll-mt-20"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -1895,7 +2180,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     <div className="flex items-center justify-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-900">
                       <button
                         type="button"
-                        onClick={() => onDeleteWornRecord(record.id)}
+                        onClick={() => handleDeleteHistoryRecord(record.id)}
                         title={
                           isEn
                             ? 'Remove this history entry & revert wear counts'
@@ -2118,6 +2403,60 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 {isEn ? 'Close' : 'Schließen'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Confirmation Toast when an outfit was just marked as worn */}
+      {wornFeedbackId && latestWornBanner && latestWornBanner.outfit.id === wornFeedbackId && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-20 md:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-40 rounded-2xl bg-zinc-950/95 backdrop-blur-md border border-emerald-500/60 p-3.5 shadow-2xl flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-emerald-200 truncate">
+                {isEn
+                  ? `✓ "${latestWornBanner.outfitTitle}" worn today`
+                  : `✓ „${latestWornBanner.outfitTitle}“ heute angezogen`}
+              </p>
+              <p className="text-[11px] text-zinc-400 truncate">
+                {isEn
+                  ? `+1× wear count${
+                      latestWornBanner.laundryCount > 0
+                        ? ` · ${latestWornBanner.laundryCount} in laundry`
+                        : ''
+                    }`
+                  : `Zähler +1×${
+                      latestWornBanner.laundryCount > 0
+                        ? ` · ${latestWornBanner.laundryCount} ${
+                            latestWornBanner.laundryCount === 1 ? 'Teil' : 'Teile'
+                          } in der Wäsche`
+                        : ''
+                    }`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={scrollToWearHistory}
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-[11px] font-medium text-zinc-200 cursor-pointer"
+            >
+              {isEn ? 'History ↓' : 'Historie ↓'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setWornFeedbackId(null)}
+              aria-label={isEn ? 'Close' : 'Schließen'}
+              className="p-1 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       )}

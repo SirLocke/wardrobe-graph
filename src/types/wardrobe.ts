@@ -60,6 +60,7 @@ export interface BiometricProfile {
   }>;
   customOccasions?: CustomOccasion[];
   defaultStylePreferences?: DefaultStylePreferences;
+  favoriteOutfits?: FavoriteOutfitRecord[];
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear' | 'accessory';
@@ -310,6 +311,7 @@ export interface WornOutfitRecord {
   wornDate: string; // ISO timestamp
   outfitTitle: string;
   garmentIds: string[];
+  dirtyMarkedGarmentIds?: string[];
   garments: Garment[];
   contextSummary?: {
     temperatureC?: number;
@@ -318,4 +320,15 @@ export interface WornOutfitRecord {
     styleVibe?: StyleVibe;
   };
   totalScore?: number;
+}
+
+export interface FavoriteOutfitRecord {
+  id: string;
+  title: string;
+  garmentIds: string[];
+  garments: Garment[];
+  savedAt: string; // ISO timestamp
+  totalScore?: number;
+  occasion?: OccasionType;
+  temperatureC?: number;
 }

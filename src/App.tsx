@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BarChart3,
   Compass,
   Grid,
   Plus,
@@ -25,6 +26,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { SetupWizardModal } from './components/SetupWizardModal';
 import { SmartClosetView } from './components/SmartClosetView';
 import { WardrobeImportExportModal } from './components/WardrobeImportExportModal';
+import { buildOutfitSignature, WardrobeStatsView } from './components/WardrobeStatsView';
 import {
   canGarmentUseLaundry,
   DEFAULT_BIOMETRIC_PROFILE,
@@ -54,6 +56,7 @@ import {
   AppLocale,
   BiometricProfile,
   ContextBottleneck,
+  FavoriteOutfitRecord,
   Garment,
   GeneratedOutfit,
   OutfitContext,
@@ -62,7 +65,7 @@ import {
   WornOutfitRecord,
 } from './types/wardrobe';
 
-export type ActiveTab = 'stylist' | 'closet' | 'gaps' | 'profile';
+export type ActiveTab = 'stylist' | 'closet' | 'stats' | 'gaps' | 'profile';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('stylist');
@@ -185,24 +188,32 @@ export default function App() {
     );
   };
 
-  const handleLogOutfitWorn = async (outfit: GeneratedOutfit, outfitTitle: string) => {
+  const handleLogOutfitWorn = async (
+    outfit: GeneratedOutfit,
+    outfitTitle: string
+  ): Promise<WornOutfitRecord> => {
     const wornDate = new Date().toISOString();
     const outfitItemIds = new Set(outfit.items.map((i) => i.id));
+    const dirtyMarkedGarmentIds: string[] = [];
 
     // Update wear count and lastWornDate on all items in the outfit
     // Automatically put configured subcategories (default: T-Shirts/Tops & Socks) in the laundry
     const updatedGarments = garments.map((g) => {
       if (!outfitItemIds.has(g.id)) return g;
       const shouldMarkDirty = shouldAutoMarkDirtyOnWear(g, profile);
+      const nextClean = !canGarmentUseLaundry(g)
+        ? true
+        : shouldMarkDirty
+        ? false
+        : g.isClean;
+      if (g.isClean && !nextClean) {
+        dirtyMarkedGarmentIds.push(g.id);
+      }
       return {
         ...g,
         wearCount: (g.wearCount || 0) + 1,
         lastWornDate: wornDate,
-        isClean: !canGarmentUseLaundry(g)
-          ? true
-          : shouldMarkDirty
-          ? false
-          : g.isClean,
+        isClean: nextClean,
       };
     });
 
@@ -216,6 +227,7 @@ export default function App() {
       wornDate,
       outfitTitle,
       garmentIds: outfit.items.map((i) => i.id),
+      dirtyMarkedGarmentIds,
       garments: wornItemsSnapshot,
       contextSummary: {
         temperatureC: context.temperatureC,
@@ -226,27 +238,31 @@ export default function App() {
       totalScore: outfit.totalScore,
     };
 
-    await logOutfitAsWornInDb(record, updatedGarments);
+    // Optimistic UI update so feedback is instantaneous
     setGarments(updatedGarments);
     setWornHistory((prev) => [record, ...prev]);
+    await logOutfitAsWornInDb(record, updatedGarments);
+    return record;
   };
 
   const handleDeleteWornRecord = async (recordId: string) => {
     const target = wornHistory.find((r) => r.id === recordId);
     if (!target) return;
     const itemIds = new Set(target.garmentIds);
+    const dirtyIdsToRestore = new Set(target.dirtyMarkedGarmentIds || target.garmentIds);
 
     const updatedGarments = garments.map((g) => {
       if (!itemIds.has(g.id)) return g;
       return {
         ...g,
         wearCount: Math.max(0, (g.wearCount || 1) - 1),
+        isClean: dirtyIdsToRestore.has(g.id) ? true : g.isClean,
       };
     });
 
-    await deleteWornOutfitRecordFromDb(recordId, updatedGarments);
     setGarments(updatedGarments);
     setWornHistory((prev) => prev.filter((r) => r.id !== recordId));
+    await deleteWornOutfitRecordFromDb(recordId, updatedGarments);
   };
 
   const handleWashAllGarments = async () => {
@@ -258,6 +274,48 @@ export default function App() {
   const handleUpdateProfile = async (nextProfile: BiometricProfile) => {
     setProfile(nextProfile);
     await saveBiometricProfile(nextProfile);
+  };
+
+  const handleToggleFavoriteOutfit = async (fav: FavoriteOutfitRecord) => {
+    const current = Array.isArray(profile.favoriteOutfits) ? profile.favoriteOutfits : [];
+    const targetSig = buildOutfitSignature(fav.garmentIds);
+    const exists = current.some(
+      (item) => item.id === fav.id || buildOutfitSignature(item.garmentIds) === targetSig
+    );
+    const nextFavorites = exists
+      ? current.filter(
+          (item) =>
+            item.id !== fav.id && buildOutfitSignature(item.garmentIds) !== targetSig
+        )
+      : [fav, ...current];
+
+    await handleUpdateProfile({
+      ...profile,
+      favoriteOutfits: nextFavorites,
+    });
+  };
+
+  const handleWearOutfitItemsToday = async (
+    items: Garment[],
+    title: string,
+    totalScore: number = 90
+  ): Promise<WornOutfitRecord> => {
+    const syntheticOutfit: GeneratedOutfit = {
+      id: `fav_wear_${Date.now()}`,
+      items,
+      totalScore,
+      breakdown: {
+        biometricBase: 30,
+        contrastCalibration: 18,
+        colorHarmony: 18,
+        silhouetteBalance: 14,
+        textureContrast: 10,
+        rawBiometricAvg: 88,
+        lightnessDelta: 22,
+      },
+      traces: [],
+    };
+    return handleLogOutfitWorn(syntheticOutfit, title);
   };
 
   const handleToggleSandboxGarment = async (virtualGarment: Garment) => {
@@ -427,20 +485,51 @@ export default function App() {
     }
   };
 
-  const handleImportBackupFile = async (file: File) => {
+  const handleImportBackupFile = async (
+    file: File
+  ): Promise<{ ok: boolean; count: number; error?: string }> => {
     try {
-      const text = await file.text();
+      let text = '';
+      if (typeof file.text === 'function') {
+        try {
+          text = await file.text();
+        } catch {
+          text = '';
+        }
+      }
+      if (!text) {
+        text = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve(typeof reader.result === 'string' ? reader.result : '');
+          reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+          reader.readAsText(file, 'utf-8');
+        });
+      }
+
       const parsed = parseAndNormalizeWardrobeImport(text);
-      if (parsed.ok && parsed.garments.length > 0) {
+      if (parsed.ok && (parsed.garments.length > 0 || parsed.profile)) {
         await handleStructuredImport(
           parsed.garments,
           'replace',
-          parsed.profile ? { ...parsed.profile, isDemoMode: false } : { ...profile, isDemoMode: false },
+          parsed.profile
+            ? { ...parsed.profile, isDemoMode: false }
+            : { ...profile, isDemoMode: false },
           parsed.wornHistory
         );
+        return { ok: true, count: parsed.garments.length };
       }
-    } catch {
-      // Ignore malformed JSON
+      return {
+        ok: false,
+        count: 0,
+        error: parsed.error || 'Keine Kleidungsstücke in der Datei gefunden.',
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        count: 0,
+        error: (err as Error).message || 'Ungültige Backup-Datei.',
+      };
     }
   };
 
@@ -491,10 +580,10 @@ export default function App() {
             <span>{isEn ? 'OUTFIT PLANNER' : 'OUTFIT-PLANER'}</span>
           </a>
 
-          {/* Zone 2: 4 concise single-line text navigation links */}
+          {/* Zone 2: Concise single-line text navigation links */}
           <nav
             aria-label="Hauptnavigation"
-            className="hidden md:flex items-center gap-7 text-sm font-medium"
+            className="hidden md:flex items-center gap-5 lg:gap-7 text-sm font-medium"
           >
             {(
               [
@@ -506,13 +595,27 @@ export default function App() {
                   id: 'closet',
                   label: isEn
                     ? `My Closet (${garments.length})`
-                    : `Mein Kleiderschrank (${garments.length})`,
+                    : `Kleiderschrank (${garments.length})`,
+                },
+                {
+                  id: 'stats',
+                  label: isEn
+                    ? `Stats & Favorites${
+                        profile.favoriteOutfits?.length
+                          ? ` (${profile.favoriteOutfits.length})`
+                          : ''
+                      }`
+                    : `Statistik & Favoriten${
+                        profile.favoriteOutfits?.length
+                          ? ` (${profile.favoriteOutfits.length})`
+                          : ''
+                      }`,
                 },
                 {
                   id: 'gaps',
                   label: isEn
                     ? `What's Missing? (${gapReport.orphanPieces.length})`
-                    : `Was fehlt mir? (${gapReport.orphanPieces.length})`,
+                    : `Was fehlt? (${gapReport.orphanPieces.length})`,
                 },
                 {
                   id: 'profile',
@@ -631,6 +734,8 @@ export default function App() {
                 onChangeContext={setContext}
                 onLogOutfitWorn={handleLogOutfitWorn}
                 onDeleteWornRecord={handleDeleteWornRecord}
+                onToggleFavoriteOutfit={handleToggleFavoriteOutfit}
+                onOpenStatsTab={() => setActiveTab('stats')}
                 onWashAllGarments={handleWashAllGarments}
                 onOpenAddModal={openAddNewGarment}
                 onEditGarment={openEditGarment}
@@ -655,6 +760,20 @@ export default function App() {
                 onDeleteGarment={handleDeleteGarment}
                 onToggleClean={handleToggleClean}
                 onLockAndStyle={handleLockItemInStylist}
+              />
+            )}
+
+            {activeTab === 'stats' && (
+              <WardrobeStatsView
+                garments={garments}
+                profile={profile}
+                wornHistory={wornHistory}
+                locale={locale}
+                onToggleFavoriteOutfit={handleToggleFavoriteOutfit}
+                onWearOutfitToday={handleWearOutfitItemsToday}
+                onDeleteWornRecord={handleDeleteWornRecord}
+                onLockItemInStylist={handleLockItemInStylist}
+                onJumpToStylist={() => setActiveTab('stylist')}
               />
             )}
 
@@ -730,12 +849,13 @@ export default function App() {
       {/* Mobile Bottom Navigation Bar (Thumb Zone with iOS Safe Area) */}
       <nav
         aria-label="Mobile Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/90 grid grid-cols-4 items-center min-h-16 h-auto py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] touch-manipulation shadow-2xl"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/90 grid grid-cols-5 items-center min-h-16 h-auto py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] touch-manipulation shadow-2xl"
       >
         {(
           [
             { id: 'stylist', label: 'Outfits', icon: Compass },
             { id: 'closet', label: isEn ? 'Closet' : 'Schrank', icon: Shirt },
+            { id: 'stats', label: isEn ? 'Stats' : 'Statistik', icon: BarChart3 },
             { id: 'gaps', label: isEn ? 'Missing' : 'Was fehlt?', icon: Grid },
             { id: 'profile', label: isEn ? 'My Colors' : 'Mein Typ', icon: UserCheck },
           ] as const

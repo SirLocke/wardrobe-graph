@@ -170,12 +170,50 @@ export const WardrobeImportExportModal: React.FC<WardrobeImportExportModalProps>
     }, 2200);
   };
 
+  const readFileTextSafely = async (file: File): Promise<string> => {
+    if (typeof file.text === 'function') {
+      try {
+        return await file.text();
+      } catch {
+        // Fallback to FileReader for iOS Safari / WebKit edge cases
+      }
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+      reader.readAsText(file, 'utf-8');
+    });
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    const text = await file.text();
-    setImportText(text);
-    setActiveSection('import_json');
+    try {
+      const text = await readFileTextSafely(file);
+      setImportText(text);
+      setActiveSection('import_json');
+      const check = parseAndNormalizeWardrobeImport(text);
+      if (check.ok && check.garments.length > 0 && check.profile) {
+        // Full backup file detected — default to replace mode so full state restores cleanly
+        setImportMode('replace');
+      }
+    } catch {
+      // Ignore read error
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        setImportText(text);
+        setActiveSection('import_json');
+      }
+    } catch {
+      // Clipboard API permission denied or unsupported
+    }
   };
 
   const handleExecuteImport = async () => {
@@ -443,26 +481,59 @@ export const WardrobeImportExportModal: React.FC<WardrobeImportExportModalProps>
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setImportText(SAMPLE_LLM_SNIPPET)}
-                    className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-amber-300 cursor-pointer whitespace-nowrap"
-                  >
-                    Beispiel-LLM-Antwort einfügen
-                  </button>
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-200 cursor-pointer whitespace-nowrap">
-                    <Upload className="w-3.5 h-3.5 text-sky-400" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 cursor-pointer whitespace-nowrap touch-manipulation active:scale-95">
+                    <Upload className="w-3.5 h-3.5 shrink-0" />
                     <span>.json Datei wählen</span>
                     <input
                       type="file"
-                      accept="application/json,.json,.txt,.md"
+                      accept=".json,application/json,text/plain"
                       onChange={handleFileUpload}
-                      className="hidden"
+                      className="sr-only"
                     />
                   </label>
+                  <button
+                    type="button"
+                    onClick={handlePasteFromClipboard}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-600 text-xs font-medium text-zinc-200 cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Aus Zwischenablage</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportText(SAMPLE_LLM_SNIPPET)}
+                    className="px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-amber-300 cursor-pointer whitespace-nowrap"
+                  >
+                    Beispiel einfügen
+                  </button>
                 </div>
               </div>
+
+              {/* Immediate Action Banner at Top when Valid JSON is Loaded */}
+              {parsedImport && parsedImport.ok && parsedImport.garments.length > 0 && (
+                <div className="rounded-xl bg-emerald-950/40 border border-emerald-500/50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 text-xs text-emerald-200 font-medium">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      {parsedImport.garments.length}{' '}
+                      {parsedImport.garments.length === 1 ? 'Kleidungsstück' : 'Kleidungsstücke'}{' '}
+                      bereit zum Importieren
+                      {parsedImport.profile ? ' (inkl. Profil & Einstellungen)' : ''}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleExecuteImport}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 min-h-[40px] rounded-lg bg-emerald-400 hover:bg-emerald-300 text-xs font-semibold text-zinc-950 cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 shrink-0"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>
+                      Jetzt importieren ({importMode === 'merge' ? 'Hinzufügen' : 'Ersetzen'})
+                    </span>
+                  </button>
+                </div>
+              )}
 
               {/* Paste Textarea */}
               <div>

@@ -131,11 +131,22 @@ export class WardrobeDatabase extends Dexie {
 
 export const db = new WardrobeDatabase();
 
+export function isPublicClientOnly(): boolean {
+  if (
+    typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    import.meta.env.VITE_PUBLIC_CLIENT_ONLY === 'true'
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Helper to determine if a garment is user-created (not part of the initial seed catalog)
  */
 function isUserCustomGarment(g: Garment): boolean {
-  return !g.id.startsWith('seed_') && !g.id.startsWith('fem_');
+  return !g.id.startsWith('seed_') && !g.id.startsWith('fem_') && !g.id.startsWith('uni_');
 }
 
 /**
@@ -147,6 +158,7 @@ export async function syncStateToServer(
   garments: Garment[],
   wornHistory?: WornOutfitRecord[]
 ): Promise<void> {
+  if (isPublicClientOnly()) return;
   try {
     const history =
       wornHistory !== undefined
@@ -171,6 +183,7 @@ export async function pullStateFromServer(): Promise<{
   garments: Garment[];
   wornHistory?: WornOutfitRecord[];
 } | null> {
+  if (isPublicClientOnly()) return null;
   try {
     const res = await fetch('/api/wardrobe');
     if (!res.ok) return null;
@@ -410,7 +423,8 @@ export async function logOutfitAsWornInDb(
       await db.garments.bulkPut(updatedGarments);
     });
     const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-    void syncStateToServer(profile, updatedGarments);
+    const history = await db.wornHistory.orderBy('wornDate').reverse().toArray();
+    void syncStateToServer(profile, updatedGarments, history);
   } catch {
     // Fallback silent
   }
@@ -426,7 +440,8 @@ export async function deleteWornOutfitRecordFromDb(
       await db.garments.bulkPut(updatedGarments);
     });
     const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-    void syncStateToServer(profile, updatedGarments);
+    const history = await db.wornHistory.orderBy('wornDate').reverse().toArray();
+    void syncStateToServer(profile, updatedGarments, history);
   } catch {
     // Fallback silent
   }

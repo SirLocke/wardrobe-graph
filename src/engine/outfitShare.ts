@@ -155,10 +155,56 @@ export function decodeSharedOutfit(encoded: string): {
   }
 }
 
-export function buildBrandOrShopUrl(garment: Pick<Garment, 'name' | 'brand' | 'colorName' | 'subcategory' | 'texture' | 'buyUrl'>): string {
-  if (garment.buyUrl && /^https?:\/\//i.test(garment.buyUrl.trim())) {
-    return garment.buyUrl.trim();
+export function isExampleGarment(garment: Pick<Garment, 'id' | 'buyUrl'>): boolean {
+  if (garment.buyUrl && /^https?:\/\//i.test(garment.buyUrl.trim())) return true;
+  return (
+    garment.id.startsWith('seed_') ||
+    garment.id.startsWith('fem_') ||
+    garment.id.startsWith('uni_')
+  );
+}
+
+function getRuntimeEnvVar(key: string): string | undefined {
+  if (
+    typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    typeof (import.meta.env as Record<string, unknown>)[key] === 'string'
+  ) {
+    return (import.meta.env as Record<string, string>)[key];
   }
+  if (
+    typeof process !== 'undefined' &&
+    process.env &&
+    typeof process.env[key] === 'string'
+  ) {
+    return process.env[key];
+  }
+  return undefined;
+}
+
+export function appendAffiliateParam(url: string, param?: string): string {
+  if (!param || !param.trim()) return url;
+  const clean = param.trim().replace(/^[?&]+/, '');
+  if (!clean) return url;
+  const paramKey = clean.split('=')[0];
+  if (url.includes(`?${paramKey}=`) || url.includes(`&${paramKey}=`)) {
+    return url;
+  }
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}${clean}`;
+}
+
+export function buildBrandOrShopUrl(
+  garment: Pick<Garment, 'name' | 'brand' | 'colorName' | 'subcategory' | 'texture' | 'buyUrl'>,
+  configOverride?: { baseUrl?: string; affiliateParam?: string }
+): string {
+  const affiliateParam =
+    configOverride?.affiliateParam ?? getRuntimeEnvVar('VITE_SHOP_AFFILIATE_PARAM');
+
+  if (garment.buyUrl && /^https?:\/\//i.test(garment.buyUrl.trim())) {
+    return appendAffiliateParam(garment.buyUrl.trim(), affiliateParam);
+  }
+
   const subLabel = SUBCATEGORY_LABELS[garment.subcategory]?.split(' (')[0] || '';
   const texLabel = TEXTURE_LABELS[garment.texture]?.split(' (')[0] || '';
   const parts = [
@@ -170,5 +216,21 @@ export function buildBrandOrShopUrl(garment: Pick<Garment, 'name' | 'brand' | 'c
     .map((p) => p.trim())
     .filter(Boolean);
   const query = encodeURIComponent(parts.join(' '));
-  return `https://www.google.com/search?tbm=shop&q=${query}`;
+
+  const rawBase = configOverride?.baseUrl ?? getRuntimeEnvVar('VITE_SHOP_BASE_URL');
+  let targetUrl: string;
+
+  if (rawBase && rawBase.trim()) {
+    const base = rawBase.trim();
+    if (base.includes('{query}')) {
+      targetUrl = base.replace('{query}', query);
+    } else {
+      const sep = base.includes('?') ? '&' : '?';
+      targetUrl = `${base}${sep}q=${query}`;
+    }
+  } else {
+    targetUrl = `https://www.google.com/search?tbm=shop&q=${query}`;
+  }
+
+  return appendAffiliateParam(targetUrl, affiliateParam);
 }

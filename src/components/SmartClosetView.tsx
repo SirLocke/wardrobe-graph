@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  ArrowUpRight,
   Check,
   Edit3,
   FileCode2,
@@ -24,6 +25,7 @@ import {
 } from '../data/seedData';
 import { matchesGarmentSearch, normalizeBrandKey } from '../engine/brandSizeMatcher';
 import { scoreGarmentBiometrics } from '../engine/colorMath';
+import { buildBrandOrShopUrl, isExampleGarment } from '../engine/outfitShare';
 import {
   AppLocale,
   BiometricProfile,
@@ -620,14 +622,28 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                     </span>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => onLockAndStyle(garment.id)}
-                    className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Outfit darum bauen</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isExampleGarment(garment) && (
+                      <a
+                        href={buildBrandOrShopUrl(garment)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 min-h-[42px] px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700/80 hover:border-amber-400 text-xs font-medium text-amber-300 hover:text-amber-200 transition-colors whitespace-nowrap touch-manipulation active:scale-95"
+                      >
+                        <span>{isEn ? 'Shop' : 'Im Shop'}</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => onLockAndStyle(garment.id)}
+                      className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Outfit darum bauen</span>
+                    </button>
+                  </div>
                 </div>
               </article>
             );
@@ -714,7 +730,18 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               </p>
             </div>
 
-            <div className="shrink-0 flex justify-end p-4 border-t border-zinc-800/80 bg-zinc-900/40">
+            <div className="shrink-0 flex items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-900/40 gap-3">
+              {isExampleGarment(popupEntry.garment) ? (
+                <a
+                  href={buildBrandOrShopUrl(popupEntry.garment)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[42px] rounded-lg bg-zinc-900 border border-zinc-700/80 hover:border-amber-400 text-xs font-medium text-amber-300 hover:text-amber-200 transition-colors whitespace-nowrap touch-manipulation active:scale-95"
+                >
+                  <span>{isEn ? 'Find in Shop' : 'Im Shop ansehen'}</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </a>
+              ) : <div />}
               <button
                 type="button"
                 onClick={() => setPopupEntry(null)}

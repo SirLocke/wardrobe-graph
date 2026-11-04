@@ -39,7 +39,9 @@ interface BiometricProfileViewProps {
   onUpdateProfile: (next: BiometricProfile) => Promise<void>;
   onOpenImportExportModal: () => void;
   onExportBackup: () => void;
-  onImportBackupFile: (file: File) => Promise<void>;
+  onImportBackupFile: (
+    file: File
+  ) => Promise<{ ok: boolean; count: number; error?: string } | void>;
   onResetToSeed: () => Promise<void>;
   onStartOwnClosetWizard?: () => void;
 }
@@ -226,17 +228,26 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
               <span>Backup speichern</span>
             </button>
 
-            <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-200 hover:bg-zinc-800 cursor-pointer whitespace-nowrap">
+            <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-200 hover:bg-zinc-800 cursor-pointer whitespace-nowrap touch-manipulation active:scale-95">
               <Upload className="w-3.5 h-3.5 text-sky-400" />
               <span>Backup laden</span>
               <input
                 type="file"
-                accept="application/json"
-                onChange={(e) => {
+                accept=".json,application/json,text/plain"
+                onChange={async (e) => {
                   const f = e.target.files?.[0];
-                  if (f) onImportBackupFile(f);
+                  e.target.value = '';
+                  if (!f) return;
+                  const result = await onImportBackupFile(f);
+                  if (result && result.ok) {
+                    setStatusBanner(
+                      `✓ Backup erfolgreich geladen: ${result.count} Kleidungsstücke wiederhergestellt!`
+                    );
+                  } else if (result && result.error) {
+                    setStatusBanner(`Fehler beim Laden: ${result.error}`);
+                  }
                 }}
-                className="hidden"
+                className="sr-only"
               />
             </label>
 

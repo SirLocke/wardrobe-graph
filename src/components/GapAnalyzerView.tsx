@@ -261,6 +261,16 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                        <a
+                          href={buildBrandOrShopUrl(virtualGarment)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-amber-300 hover:text-amber-200 hover:border-amber-400/60 transition-colors whitespace-nowrap touch-manipulation active:scale-95"
+                        >
+                          <span>Im Shop suchen</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </a>
+
                         <button
                           type="button"
                           onClick={() => setPopupRec(rec)}
@@ -608,7 +618,17 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
               )}
             </div>
 
-            <div className="shrink-0 flex justify-end p-4 border-t border-zinc-800/80 bg-zinc-900/40">
+            <div className="shrink-0 flex items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-900/40 gap-3">
+              <a
+                href={buildBrandOrShopUrl(popupRec.virtualGarment)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[42px] rounded-lg bg-zinc-900 border border-zinc-700/80 hover:border-amber-400 text-xs font-medium text-amber-300 hover:text-amber-200 transition-colors whitespace-nowrap touch-manipulation active:scale-95"
+              >
+                <span>Im Shop suchen</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </a>
+
               <button
                 type="button"
                 onClick={() => setPopupRec(null)}

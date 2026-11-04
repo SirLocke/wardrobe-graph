@@ -8,9 +8,11 @@ import {
 } from './colorMath';
 import { generateOutfitsForContext } from './outfitGenerator';
 import {
+  appendAffiliateParam,
   buildBrandOrShopUrl,
   decodeSharedOutfit,
   encodeSharedOutfit,
+  isExampleGarment,
 } from './outfitShare';
 import { analyzeWardrobeGaps } from './gapAnalyzer';
 import {
@@ -1186,6 +1188,70 @@ test('outfitGenerator: supports expanded occasions (homeoffice_lounge, beach_vac
   const shopUrl = buildBrandOrShopUrl(decoded!.garments[0]);
   assert.ok(shopUrl.startsWith('https://'), 'Should generate valid https shop URL');
 });
+
+test('outfitShare & shopAffiliate: buildBrandOrShopUrl, appendAffiliateParam, and isExampleGarment', () => {
+  // 1) isExampleGarment
+  assert.equal(isExampleGarment({ id: 'seed_top_1' }), true, 'seed_ is example');
+  assert.equal(isExampleGarment({ id: 'fem_top_1' }), true, 'fem_ is example');
+  assert.equal(isExampleGarment({ id: 'uni_top_1' }), true, 'uni_ is example');
+  assert.equal(isExampleGarment({ id: 'custom_user_piece_123' }), false, 'custom user piece is NOT example');
+  assert.equal(
+    isExampleGarment({ id: 'custom_user_piece_123', buyUrl: 'https://shop.com/shirt' }),
+    true,
+    'custom piece with buyUrl is considered linkable'
+  );
+
+  // 2) appendAffiliateParam
+  assert.equal(
+    appendAffiliateParam('https://google.com/search?q=test', 'tag=partner-21'),
+    'https://google.com/search?q=test&tag=partner-21'
+  );
+  assert.equal(
+    appendAffiliateParam('https://amazon.de/dp/B123', 'tag=partner-21'),
+    'https://amazon.de/dp/B123?tag=partner-21'
+  );
+  assert.equal(
+    appendAffiliateParam('https://amazon.de/dp/B123?tag=partner-21', 'tag=partner-21'),
+    'https://amazon.de/dp/B123?tag=partner-21',
+    'Should not duplicate existing tag'
+  );
+  assert.equal(
+    appendAffiliateParam('https://amazon.de/dp/B123', '?tag=partner-21'),
+    'https://amazon.de/dp/B123?tag=partner-21',
+    'Should trim leading ?'
+  );
+
+  // 3) buildBrandOrShopUrl with custom base URL and affiliate parameter
+  const sampleGarment = {
+    name: 'Merinowoll-Pullover',
+    brand: 'Arket',
+    colorName: 'Dunkelblau',
+    subcategory: 'knit_sweater' as const,
+    texture: 'fine_knit' as const,
+  };
+
+  const amazonUrl = buildBrandOrShopUrl(sampleGarment, {
+    baseUrl: 'https://www.amazon.de/s?k={query}',
+    affiliateParam: 'tag=mypartner-21',
+  });
+  assert.ok(amazonUrl.startsWith('https://www.amazon.de/s?k='), 'Should use custom Amazon base');
+  assert.ok(amazonUrl.includes('tag=mypartner-21'), 'Should contain affiliate tag');
+  assert.ok(amazonUrl.includes('Arket'), 'Should include brand');
+
+  // 4) buildBrandOrShopUrl with direct buyUrl
+  const directGarment = {
+    name: 'Chino Hose',
+    colorName: 'Beige',
+    subcategory: 'chino' as const,
+    texture: 'twill_chino' as const,
+    buyUrl: 'https://www.zalando.de/artikel-123.html',
+  };
+  const zalandoUrl = buildBrandOrShopUrl(directGarment, {
+    affiliateParam: 'ref=myzalando',
+  });
+  assert.equal(zalandoUrl, 'https://www.zalando.de/artikel-123.html?ref=myzalando');
+});
+
 
 
 
