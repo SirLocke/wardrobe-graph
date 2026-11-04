@@ -776,11 +776,11 @@ export const WardrobeStatsView: React.FC<WardrobeStatsViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 overflow-x-auto py-1">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       {combo.garments.map((g) => (
                         <div
                           key={g.id}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800/80 shrink-0 text-[11px]"
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800/80 text-[11px]"
                         >
                           <GarmentVector
                             type={g.subcategory}
@@ -790,7 +790,7 @@ export const WardrobeStatsView: React.FC<WardrobeStatsViewProps> = ({
                             neckline={g.neckline}
                             className="w-5 h-5 shrink-0"
                           />
-                          <span className="text-zinc-300 max-w-[110px] truncate">
+                          <span className="text-zinc-300">
                             {g.name}
                           </span>
                         </div>
@@ -1163,11 +1163,11 @@ export const WardrobeStatsView: React.FC<WardrobeStatsViewProps> = ({
                       {record.outfitTitle}
                     </p>
 
-                    <div className="flex items-center gap-2 overflow-x-auto py-1">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       {record.garments.map((g) => (
                         <div
                           key={g.id}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800/80 shrink-0 text-[11px]"
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800/80 text-[11px]"
                         >
                           <GarmentVector
                             type={g.subcategory}
@@ -1177,7 +1177,7 @@ export const WardrobeStatsView: React.FC<WardrobeStatsViewProps> = ({
                             neckline={g.neckline}
                             className="w-5 h-5 shrink-0"
                           />
-                          <span className="text-zinc-300 max-w-[110px] truncate">
+                          <span className="text-zinc-300">
                             {g.name}
                           </span>
                         </div>

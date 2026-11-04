@@ -238,10 +238,10 @@ export default function App() {
       totalScore: outfit.totalScore,
     };
 
-    // Optimistic UI update so feedback is instantaneous
+    // Optimistic UI update so feedback is 0ms instantaneous
     setGarments(updatedGarments);
     setWornHistory((prev) => [record, ...prev]);
-    await logOutfitAsWornInDb(record, updatedGarments);
+    void logOutfitAsWornInDb(record, updatedGarments);
     return record;
   };
 
@@ -262,7 +262,7 @@ export default function App() {
 
     setGarments(updatedGarments);
     setWornHistory((prev) => prev.filter((r) => r.id !== recordId));
-    await deleteWornOutfitRecordFromDb(recordId, updatedGarments);
+    void deleteWornOutfitRecordFromDb(recordId, updatedGarments);
   };
 
   const handleWashAllGarments = async () => {
