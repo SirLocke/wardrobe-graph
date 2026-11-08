@@ -1,38 +1,272 @@
-import React from 'react';
-import { BiometricProfile, Garment, GarmentSubcategory } from '../types/wardrobe';
+import React, { useEffect, useState } from 'react';
+import { Eye, EyeOff, Layers } from 'lucide-react';
+import {
+  AppLocale,
+  BiometricProfile,
+  Garment,
+  GarmentSubcategory,
+} from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 
-interface OutfitLayerStackProps {
+export type UpperLayerPresetMode = 'all' | 'no_outerwear' | 'base_only';
+
+export interface OutfitLayerStackProps {
   items: Garment[];
   profile: BiometricProfile;
   lockedGarmentIds: string[];
+  locale?: AppLocale;
   onToggleLock?: (garmentId: string) => void;
   onEditGarment?: (garment: Garment) => void;
+  hiddenLayerIds?: string[];
+  onChangeHiddenLayerIds?: (nextHiddenIds: string[]) => void;
+  openOverrides?: Record<string, boolean>;
+  onToggleOpenOverride?: (garmentId: string, currentEffectiveOpen: boolean) => void;
 }
 
-const OPENABLE_MID_LAYERS: GarmentSubcategory[] = [
+export const OPENABLE_SUBCATEGORIES: GarmentSubcategory[] = [
   'overshirt',
   'button_down_shirt',
   'short_sleeve_shirt',
   'cardigan',
   'blazer',
   'fleece_vest',
+  'blouson',
+  'light_jacket',
+  'leather_jacket',
+  'puffer_jacket',
+  'down_jacket',
+  'fleece_jacket',
+  'rain_jacket',
+  'coat',
+  'parka',
+  'trenchcoat',
 ];
 
+export function isGarmentOpenable(garment: Garment | undefined): boolean {
+  if (!garment) return false;
+  if (garment.category === 'outerwear') return true;
+  return OPENABLE_SUBCATEGORIES.includes(garment.subcategory);
+}
+
+export interface UpperLayersBreakdown {
+  baseTop?: Garment;
+  midLayer?: Garment;
+  outerwear?: Garment;
+  upperLayers: Garment[];
+  hasMultipleUpperLayers: boolean;
+}
+
 /**
- * Renders the complete outfit "übereinander" (anatomically stacked from head to toe
- * + layered across the torso so base_top, mid_layer, and outerwear overlap realistically).
+ * Extracts the up to 3 anatomical torso layers (baseTop, midLayer, outerwear)
+ * from an outfit item list.
  */
-export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
-  items,
-  onEditGarment,
-}) => {
+export function getOutfitUpperLayers(items: Garment[]): UpperLayersBreakdown {
   const baseTops = items.filter((i) => i.category === 'base_top');
   const explicitMidLayer = items.find((i) => i.category === 'mid_layer');
   const baseTop = baseTops[0];
-  // If an outfit combines a T-shirt + an open shirt (both category base_top), render the open shirt as the midLayer
   const midLayer = explicitMidLayer || (baseTops.length > 1 ? baseTops[1] : undefined);
   const outerwear = items.find((i) => i.category === 'outerwear');
+
+  const upperLayers = [baseTop, midLayer, outerwear].filter(
+    (g): g is Garment => g !== undefined
+  );
+
+  return {
+    baseTop,
+    midLayer,
+    outerwear,
+    upperLayers,
+    hasMultipleUpperLayers: upperLayers.length > 1,
+  };
+}
+
+export interface ResolvedUpperLayerState {
+  baseTop?: Garment;
+  midLayer?: Garment;
+  outerwear?: Garment;
+  showBaseTop: boolean;
+  showMidLayer: boolean;
+  showOuterwear: boolean;
+  isMidLayerOpen: boolean;
+  isOuterwearOpen: boolean;
+  activePreset: UpperLayerPresetMode;
+  topmostVisibleLayer?: Garment;
+  underneathLayer?: Garment;
+}
+
+/**
+ * Resolves which torso layers are currently visible and whether openable layers
+ * are rendered open or closed, ensuring at least one torso layer always stays visible.
+ */
+export function resolveUpperLayerState(
+  items: Garment[],
+  hiddenLayerIds: string[] = [],
+  openOverrides: Record<string, boolean> = {}
+): ResolvedUpperLayerState {
+  const { baseTop, midLayer, outerwear } = getOutfitUpperLayers(items);
+  const hiddenSet = new Set(hiddenLayerIds);
+
+  let showBaseTop = Boolean(baseTop && !hiddenSet.has(baseTop.id));
+  let showMidLayer = Boolean(midLayer && !hiddenSet.has(midLayer.id));
+  let showOuterwear = Boolean(outerwear && !hiddenSet.has(outerwear.id));
+
+  // Safeguard: never hide all torso layers at once; fall back to innermost layer
+  if (!showBaseTop && !showMidLayer && !showOuterwear) {
+    if (baseTop) showBaseTop = true;
+    else if (midLayer) showMidLayer = true;
+    else if (outerwear) showOuterwear = true;
+  }
+
+  const defaultMidOpen =
+    midLayer !== undefined &&
+    (midLayer.wornOpen !== undefined
+      ? midLayer.wornOpen
+      : isGarmentOpenable(midLayer));
+
+  const isMidLayerOpen =
+    midLayer !== undefined &&
+    (openOverrides[midLayer.id] !== undefined
+      ? openOverrides[midLayer.id]
+      : defaultMidOpen);
+
+  const isOuterwearOpen =
+    outerwear !== undefined &&
+    (openOverrides[outerwear.id] !== undefined ? openOverrides[outerwear.id] : true);
+
+  let activePreset: UpperLayerPresetMode = 'all';
+  if (outerwear && !showOuterwear && midLayer && showMidLayer) {
+    activePreset = 'no_outerwear';
+  } else if (
+    baseTop &&
+    showBaseTop &&
+    (!midLayer || !showMidLayer) &&
+    (!outerwear || !showOuterwear) &&
+    (Boolean(midLayer) || Boolean(outerwear))
+  ) {
+    activePreset = 'base_only';
+  }
+
+  const topmostVisibleLayer = showOuterwear
+    ? outerwear
+    : showMidLayer
+    ? midLayer
+    : showBaseTop
+    ? baseTop
+    : undefined;
+
+  const underneathLayer =
+    topmostVisibleLayer?.id === outerwear?.id
+      ? showMidLayer
+        ? midLayer
+        : showBaseTop
+        ? baseTop
+        : undefined
+      : topmostVisibleLayer?.id === midLayer?.id
+      ? showBaseTop
+        ? baseTop
+        : undefined
+      : undefined;
+
+  return {
+    baseTop,
+    midLayer,
+    outerwear,
+    showBaseTop,
+    showMidLayer,
+    showOuterwear,
+    isMidLayerOpen,
+    isOuterwearOpen,
+    activePreset,
+    topmostVisibleLayer,
+    underneathLayer,
+  };
+}
+
+/**
+ * Computes the hidden layer IDs for a given preset ('all' | 'no_outerwear' | 'base_only').
+ */
+export function computeHiddenIdsForPreset(
+  items: Garment[],
+  preset: UpperLayerPresetMode
+): string[] {
+  const { midLayer, outerwear } = getOutfitUpperLayers(items);
+  if (preset === 'all') return [];
+  if (preset === 'no_outerwear') {
+    return outerwear ? [outerwear.id] : [];
+  }
+  // 'base_only'
+  const toHide: string[] = [];
+  if (outerwear) toHide.push(outerwear.id);
+  if (midLayer) toHide.push(midLayer.id);
+  return toHide;
+}
+
+/**
+ * Renders the complete outfit "übereinander" (anatomically stacked from head to toe
+ * + layered across the torso so base_top, mid_layer, and outerwear overlap realistically),
+ * with an interactive layer toggle to inspect what is worn underneath.
+ */
+export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
+  items,
+  locale = 'de',
+  onEditGarment,
+  hiddenLayerIds: controlledHiddenIds,
+  onChangeHiddenLayerIds,
+  openOverrides: controlledOpenOverrides,
+  onToggleOpenOverride,
+}) => {
+  const isEn = locale === 'en';
+  const itemSignature = items.map((i) => i.id).join('|');
+
+  const [internalHiddenIds, setInternalHiddenIds] = useState<string[]>([]);
+  const [internalOpenOverrides, setInternalOpenOverrides] = useState<
+    Record<string, boolean>
+  >({});
+
+  // Reset internal overrides when the outfit items change
+  useEffect(() => {
+    setInternalHiddenIds([]);
+    setInternalOpenOverrides({});
+  }, [itemSignature]);
+
+  const effectiveHiddenIds = controlledHiddenIds ?? internalHiddenIds;
+  const effectiveOpenOverrides = controlledOpenOverrides ?? internalOpenOverrides;
+
+  const setHiddenIds = (next: string[]) => {
+    if (onChangeHiddenLayerIds) {
+      onChangeHiddenLayerIds(next);
+    } else {
+      setInternalHiddenIds(next);
+    }
+  };
+
+  const handleToggleOpen = (garmentId: string, currentEffectiveOpen: boolean) => {
+    if (onToggleOpenOverride) {
+      onToggleOpenOverride(garmentId, currentEffectiveOpen);
+    } else {
+      setInternalOpenOverrides((prev) => ({
+        ...prev,
+        [garmentId]: !currentEffectiveOpen,
+      }));
+    }
+  };
+
+  const {
+    baseTop,
+    midLayer,
+    outerwear,
+    showBaseTop,
+    showMidLayer,
+    showOuterwear,
+    isMidLayerOpen,
+    isOuterwearOpen,
+    activePreset,
+    topmostVisibleLayer,
+    underneathLayer,
+  } = resolveUpperLayerState(items, effectiveHiddenIds, effectiveOpenOverrides);
+
+  const { upperLayers, hasMultipleUpperLayers } = getOutfitUpperLayers(items);
+
   const bottom = items.find((i) => i.category === 'bottom');
   const footwear = items.find((i) => i.category === 'footwear');
   const accessories = items.filter((i) => i.category === 'accessory');
@@ -56,12 +290,6 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
     (a) => a.subcategory === 'socks' || a.subcategory === 'socks_short'
   );
 
-  const isMidLayerOpenable =
-    midLayer !== undefined &&
-    (midLayer.wornOpen !== undefined
-      ? midLayer.wornOpen
-      : OPENABLE_MID_LAYERS.includes(midLayer.subcategory));
-
   const isShortsOrSkirt =
     bottom?.subcategory === 'shorts' ||
     bottom?.subcategory === 'mini_skirt' ||
@@ -71,8 +299,6 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
   const isBoot = footwear?.subcategory === 'boots';
   const isAnkleBoot = footwear?.subcategory === 'heeled_ankle_boot';
 
-  // Exact horizontal & vertical bounds so socks are always clearly visible above the shoe collar
-  // while never poking out on the sides of boots
   const sockBounds = isBoot
     ? {
         x1: 33,
@@ -104,8 +330,41 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
   const sockStrokeColor = isSockLight ? 'rgba(24,24,27,0.68)' : 'rgba(255,255,255,0.42)';
   const sockRibColor = isSockLight ? 'rgba(24,24,27,0.28)' : 'rgba(255,255,255,0.26)';
 
+  // Check if the currently topmost visible layer can be toggled open/closed over an underneath layer
+  const canToggleTopmostOpen =
+    topmostVisibleLayer !== undefined &&
+    underneathLayer !== undefined &&
+    isGarmentOpenable(topmostVisibleLayer);
+
+  const isTopmostCurrentlyOpen =
+    topmostVisibleLayer?.id === outerwear?.id
+      ? isOuterwearOpen
+      : topmostVisibleLayer?.id === midLayer?.id
+      ? isMidLayerOpen
+      : false;
+
+  const handleToggleIndividualLayer = (layerId: string) => {
+    const isCurrentlyHidden = effectiveHiddenIds.includes(layerId);
+    if (isCurrentlyHidden) {
+      setHiddenIds(effectiveHiddenIds.filter((id) => id !== layerId));
+    } else {
+      // Only allow hiding if at least one other upper layer remains visible
+      const visibleAfterHide = upperLayers.filter(
+        (g) => g.id !== layerId && !effectiveHiddenIds.includes(g.id)
+      );
+      if (visibleAfterHide.length > 0) {
+        setHiddenIds([...effectiveHiddenIds, layerId]);
+      } else if (baseTop && layerId !== baseTop.id) {
+        // Reveal baseTop if user hid the last outer layer
+        setHiddenIds(
+          upperLayers.filter((g) => g.id !== baseTop.id).map((g) => g.id)
+        );
+      }
+    }
+  };
+
   return (
-    <div className="relative flex flex-col items-center justify-between rounded-xl bg-zinc-950/95 border border-zinc-800/90 p-3.5 select-none overflow-hidden min-h-[360px]">
+    <div className="relative flex flex-col items-center justify-between rounded-xl bg-zinc-950/95 border border-zinc-800/90 p-3 select-none overflow-hidden min-h-[370px]">
       {/* Subtle architectural grid lines & vertical studio axis */}
       <div
         className="pointer-events-none absolute inset-0 opacity-25"
@@ -116,22 +375,164 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
       />
       <div className="pointer-events-none absolute top-4 bottom-4 left-1/2 -translate-x-1/2 w-px bg-gradient-to-b from-zinc-800/0 via-zinc-800/70 to-zinc-800/0" />
 
-      {/* Header badge: Simple 2D Outfit View */}
-      <div className="relative z-10 w-full flex items-center justify-between text-[10px] font-mono text-zinc-500 pb-1">
-        <span className="uppercase tracking-wider text-zinc-400">Outfit-Ansicht</span>
-        <span>{items.length} Teile</span>
+      {/* Top Bar: Layer Switcher & Open/Closed Toggle for Upper Garments */}
+      <div className="relative z-30 w-full space-y-1.5 pb-1.5 border-b border-zinc-900/90">
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
+          {hasMultipleUpperLayers ? (
+            <div
+              className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-zinc-900/90 border border-zinc-800"
+              role="group"
+              aria-label={isEn ? 'Upper layer view' : 'Oberteil-Schichten umschalten'}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setHiddenIds(computeHiddenIdsForPreset(items, 'all'))
+                }
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                  activePreset === 'all'
+                    ? 'bg-zinc-100 text-zinc-950 font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                {isEn ? 'All Layers' : 'Komplett'}
+              </button>
+
+              {outerwear && midLayer && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHiddenIds(computeHiddenIdsForPreset(items, 'no_outerwear'))
+                  }
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                    activePreset === 'no_outerwear'
+                      ? 'bg-amber-400 text-zinc-950 font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-100'
+                  }`}
+                >
+                  {isEn ? 'No Jacket' : 'Ohne Jacke'}
+                </button>
+              )}
+
+              {baseTop && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHiddenIds(computeHiddenIdsForPreset(items, 'base_only'))
+                  }
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                    activePreset === 'base_only'
+                      ? 'bg-amber-400 text-zinc-950 font-semibold'
+                      : 'text-zinc-300 hover:text-zinc-100'
+                  }`}
+                >
+                  <Eye className="w-3 h-3" />
+                  <span>{isEn ? 'Underneath' : 'Drunter'}</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+              {isEn ? 'Outfit View' : 'Outfit-Ansicht'}
+            </span>
+          )}
+
+          {/* 1-Click Open / Closed Toggle for the current outer/mid top */}
+          {canToggleTopmostOpen && topmostVisibleLayer && (
+            <button
+              type="button"
+              onClick={() =>
+                handleToggleOpen(topmostVisibleLayer.id, isTopmostCurrentlyOpen)
+              }
+              title={
+                isEn
+                  ? 'Toggle top layer open or closed to see how it looks'
+                  : 'Oberteil offen oder geschlossen darstellen'
+              }
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                isTopmostCurrentlyOpen
+                  ? 'bg-amber-500/15 border-amber-500/45 text-amber-200'
+                  : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+              }`}
+            >
+              <Layers className="w-3 h-3 text-amber-400" />
+              <span>
+                {isTopmostCurrentlyOpen
+                  ? isEn
+                    ? 'Open'
+                    : 'Offen'
+                  : isEn
+                  ? 'Closed'
+                  : 'Geschlossen'}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {/* Individual clickable upper layer chips so user sees every top layer & what is underneath */}
+        {hasMultipleUpperLayers && (
+          <div className="flex flex-wrap items-center gap-1">
+            {upperLayers.map((layer) => {
+              const isVisible =
+                (layer.id === baseTop?.id && showBaseTop) ||
+                (layer.id === midLayer?.id && showMidLayer) ||
+                (layer.id === outerwear?.id && showOuterwear);
+              const isBase = layer.id === baseTop?.id;
+              const rolePrefix = isBase
+                ? isEn
+                  ? 'Under: '
+                  : 'Drunter: '
+                : '';
+
+              return (
+                <button
+                  key={layer.id}
+                  type="button"
+                  onClick={() => handleToggleIndividualLayer(layer.id)}
+                  title={
+                    isVisible
+                      ? isEn
+                        ? `Hide ${layer.name} to see underneath`
+                        : `${layer.name} ausblenden, um Schicht drunter zu sehen`
+                      : isEn
+                      ? `Show ${layer.name}`
+                      : `${layer.name} einblenden`
+                  }
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] transition-all cursor-pointer max-w-full ${
+                    isVisible
+                      ? 'bg-zinc-900/95 border-zinc-700/90 text-zinc-200 font-medium'
+                      : 'bg-zinc-950/60 border-zinc-800/60 text-zinc-500 line-through opacity-75 hover:opacity-100'
+                  }`}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full border border-white/25 shrink-0"
+                    style={{ backgroundColor: layer.colorHex }}
+                  />
+                  <span className="truncate max-w-[115px]">
+                    {rolePrefix}
+                    {layer.name}
+                  </span>
+                  {isVisible ? (
+                    <Eye className="w-2.5 h-2.5 text-amber-400/80 shrink-0" />
+                  ) : (
+                    <EyeOff className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Pure 2D Clothing & Accessories Composition (No face, no body, all pieces clickable) */}
       <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center py-1">
-        {/* 1. HEADWEAR & EYEWEAR ZONE (Natural head gap above collar so beanie never sits squished on neckline) */}
+        {/* 1. HEADWEAR & EYEWEAR ZONE */}
         {(headAccessory || eyewearAccessory) && (
           <div
             className={`relative flex flex-col items-center justify-center z-30 ${
               eyewearAccessory ? '-mb-2.5' : '-mb-0.5'
             }`}
           >
-            {/* Clickable Cap / Beanie */}
             {headAccessory && (
               <div
                 onClick={() => onEditGarment?.(headAccessory)}
@@ -153,7 +554,6 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
               </div>
             )}
 
-            {/* Clickable Glasses / Sunglasses sitting right below headwear & above collar */}
             {eyewearAccessory && (
               <div
                 onClick={() => onEditGarment?.(eyewearAccessory)}
@@ -177,17 +577,19 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
 
         {/* 2. TORSO ZONE (2D Layered Tops + Draped Scarf + 2D Watch & Bracelet below Sleeve Cuffs) */}
         <div className="relative w-36 h-36 flex items-center justify-center z-20">
-          {/* Layer A: Base-Top (innermost) */}
-          {baseTop && (
+          {/* Layer A: Base-Top (innermost — "Drunter") */}
+          {baseTop && showBaseTop && (
             <div
               onClick={() => onEditGarment?.(baseTop)}
-              className={`absolute inset-0 flex items-center justify-center transition-transform ${
+              className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${
                 onEditGarment ? 'cursor-pointer hover:brightness-110' : ''
               }`}
               style={{
                 transform:
-                  midLayer && !isMidLayerOpenable
+                  showMidLayer && !isMidLayerOpen
                     ? 'translateY(-7px) scale(0.97)'
+                    : !showMidLayer && !showOuterwear
+                    ? 'translateY(2px) scale(1.02)'
                     : 'translateY(0px) scale(0.96)',
                 zIndex: 10,
               }}
@@ -200,8 +602,8 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 pattern={baseTop.pattern}
                 texture={baseTop.texture}
                 neckline={baseTop.neckline}
-                openFront={Boolean(baseTop.wornOpen) && !midLayer}
-                wornOpen={Boolean(baseTop.wornOpen) && !midLayer}
+                openFront={Boolean(baseTop.wornOpen) && !showMidLayer}
+                wornOpen={Boolean(baseTop.wornOpen) && !showMidLayer}
                 hasPrint={baseTop.hasPrint}
                 hasLogo={baseTop.hasLogo}
                 className="w-32 h-32 drop-shadow-[0_4px_10px_rgba(0,0,0,0.65)]"
@@ -210,16 +612,16 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
           )}
 
           {/* Layer B: Mid-Layer */}
-          {midLayer && (
+          {midLayer && showMidLayer && (
             <div
               onClick={() => onEditGarment?.(midLayer)}
-              className={`absolute inset-0 flex items-center justify-center transition-transform ${
+              className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${
                 onEditGarment ? 'cursor-pointer hover:brightness-110' : ''
               }`}
               style={{
-                transform: isMidLayerOpenable
+                transform: isMidLayerOpen && showBaseTop
                   ? 'translateY(1px) scale(1.03)'
-                  : 'translateY(5px) scale(1.0)',
+                  : 'translateY(4px) scale(1.01)',
                 zIndex: 20,
               }}
               title={`${midLayer.name} (${midLayer.colorName}) – Klicken zum Bearbeiten`}
@@ -231,8 +633,8 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 pattern={midLayer.pattern}
                 texture={midLayer.texture}
                 neckline={midLayer.neckline}
-                openFront={isMidLayerOpenable && Boolean(baseTop)}
-                wornOpen={isMidLayerOpenable && Boolean(baseTop)}
+                openFront={isMidLayerOpen && showBaseTop}
+                wornOpen={isMidLayerOpen && showBaseTop}
                 hasPrint={midLayer.hasPrint}
                 hasLogo={midLayer.hasLogo}
                 className="w-34 h-34 drop-shadow-[0_6px_14px_rgba(0,0,0,0.75)]"
@@ -241,10 +643,10 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
           )}
 
           {/* Layer C: Outerwear */}
-          {outerwear && (
+          {outerwear && showOuterwear && (
             <div
               onClick={() => onEditGarment?.(outerwear)}
-              className={`absolute inset-0 flex items-center justify-center transition-transform ${
+              className={`absolute inset-0 flex items-center justify-center transition-all duration-200 ${
                 onEditGarment ? 'cursor-pointer hover:brightness-110' : ''
               }`}
               style={{
@@ -260,7 +662,8 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                 pattern={outerwear.pattern}
                 texture={outerwear.texture}
                 neckline={outerwear.neckline}
-                openFront={true}
+                openFront={isOuterwearOpen && (showMidLayer || showBaseTop)}
+                wornOpen={isOuterwearOpen && (showMidLayer || showBaseTop)}
                 hasPrint={outerwear.hasPrint}
                 hasLogo={outerwear.hasLogo}
                 className="w-36 h-36 drop-shadow-[0_8px_18px_rgba(0,0,0,0.85)]"
@@ -367,7 +770,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
           )}
         </div>
 
-        {/* 2b. WAIST BELT ZONE (Full waistband width w-16 = 56px belt width aligned onto trouser waist) */}
+        {/* 2b. WAIST BELT ZONE */}
         {beltAccessory && (
           <div
             onClick={() => onEditGarment?.(beltAccessory)}
@@ -386,7 +789,7 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
           </div>
         )}
 
-        {/* 3. BOTTOM ZONE (Trousers / Denim / Chino / Shorts, no cartoon legs) */}
+        {/* 3. BOTTOM ZONE */}
         {bottom && (
           <div
             onClick={() => onEditGarment?.(bottom)}
@@ -414,14 +817,12 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
               isShortsOrSkirt ? '-mt-1.5' : '-mt-3'
             }`}
           >
-            {/* Left & Right Paired Shoes with Socks tucked strictly inside the shoe/boot collar */}
             <div className="flex items-center justify-center gap-1">
               {(['left', 'right'] as const).map((side) => (
                 <div
                   key={side}
                   className={`relative w-12 h-12 ${side === 'left' ? '-scale-x-100 transform' : ''}`}
                 >
-                  {/* Subtly hinted sock layered behind the shoe collar (strictly within boot shaft width) */}
                   {socksAccessory && (
                     <svg
                       viewBox="0 0 100 100"
@@ -441,7 +842,6 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                         strokeWidth="1.9"
                         strokeLinejoin="round"
                       />
-                      {/* Top elastic cuff band line for clear visual definition */}
                       <line
                         x1={sockBounds.x1 + 1}
                         y1={sockBounds.y1 + 3.5}
@@ -450,7 +850,6 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                         stroke={sockRibColor}
                         strokeWidth="1.2"
                       />
-                      {/* Subtle 2D ribbed cuff lines on long socks */}
                       {!isShortSock &&
                         sockBounds.ribX.map((rx) => (
                           <line
@@ -466,7 +865,6 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                     </svg>
                   )}
 
-                  {/* Clickable Hitbox for the exposed upper sock cuff above the shoe collar */}
                   {socksAccessory && onEditGarment && (
                     <div
                       onClick={(e) => {
@@ -478,7 +876,6 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
                     />
                   )}
 
-                  {/* Shoe SVG on top (z-20) so the sock is genuinely under the shoe SVG */}
                   <div
                     onClick={() => onEditGarment?.(footwear)}
                     className={`relative z-20 w-12 h-12 ${
@@ -503,33 +900,45 @@ export const OutfitLayerStack: React.FC<OutfitLayerStackProps> = ({
         )}
       </div>
 
-      {/* Bottom Color Swatch Bar (Vertical proportion strip of outfit colors + shoe accents) */}
+      {/* Bottom Color Swatch Bar (Reflects currently visible items so you see the exact color effect) */}
       <div className="relative z-10 w-full pt-2 border-t border-zinc-900 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1 flex-1">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => onEditGarment?.(item)}
-              className={`relative h-2 flex-1 first:rounded-l-full last:rounded-r-full border border-white/15 overflow-hidden flex ${
-                onEditGarment ? 'cursor-pointer hover:opacity-80' : ''
-              }`}
-              style={{ backgroundColor: item.colorHex }}
-              title={`${item.name}: ${item.colorName}${
-                item.accentColorName ? ` (Akzent: ${item.accentColorName})` : ''
-              }`}
-            >
-              {item.accentColorHex &&
-                item.accentColorHex.toUpperCase() !== item.colorHex.toUpperCase() && (
-                  <span
-                    className="h-full w-1/3 ml-auto border-l border-black/20"
-                    style={{ backgroundColor: item.accentColorHex }}
-                  />
-                )}
-            </div>
-          ))}
+          {items
+            .filter((item) => !effectiveHiddenIds.includes(item.id))
+            .map((item) => (
+              <div
+                key={item.id}
+                onClick={() => onEditGarment?.(item)}
+                className={`relative h-2 flex-1 first:rounded-l-full last:rounded-r-full border border-white/15 overflow-hidden flex ${
+                  onEditGarment ? 'cursor-pointer hover:opacity-80' : ''
+                }`}
+                style={{ backgroundColor: item.colorHex }}
+                title={`${item.name}: ${item.colorName}${
+                  item.accentColorName ? ` (Akzent: ${item.accentColorName})` : ''
+                }`}
+              >
+                {item.accentColorHex &&
+                  item.accentColorHex.toUpperCase() !== item.colorHex.toUpperCase() && (
+                    <span
+                      className="h-full w-1/3 ml-auto border-l border-black/20"
+                      style={{ backgroundColor: item.accentColorHex }}
+                    />
+                  )}
+              </div>
+            ))}
         </div>
         <span className="text-[10px] font-mono text-zinc-500 tabular-nums shrink-0">
-          Übereinander
+          {activePreset === 'base_only'
+            ? isEn
+              ? 'Underneath'
+              : 'Drunter'
+            : activePreset === 'no_outerwear'
+            ? isEn
+              ? 'No Jacket'
+              : 'Ohne Jacke'
+            : isEn
+            ? 'Stacked'
+            : 'Übereinander'}
         </span>
       </div>
     </div>

@@ -125,6 +125,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [hasPrint, setHasPrint] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
   const [isClean, setIsClean] = useState(true);
+  const [buyUrl, setBuyUrl] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
@@ -150,6 +151,15 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeScopes = normalizeWardrobeScopes(profile);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -223,6 +233,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setIsClean(
         canGarmentUseLaundry(initialGarment) ? initialGarment.isClean : true
       );
+      setBuyUrl(initialGarment.buyUrl || '');
       setImageDataUrl(initialGarment.imageDataUrl);
     } else {
       const defaultSub: GarmentSubcategory = 't_shirt';
@@ -250,6 +261,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setHasPrint(false);
       setHasLogo(false);
       setIsClean(true);
+      setBuyUrl('');
       setImageDataUrl(undefined);
       setName(`T-Shirt ${initColor}`);
       setHasCustomNameEdit(false);
@@ -630,6 +642,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       imageDataUrl,
       brand: brand.trim() || undefined,
       size: size.trim() || undefined,
+      buyUrl: buyUrl.trim() || undefined,
       wearCount: initialGarment && !keepOpenForDuplicate ? initialGarment.wearCount : undefined,
       lastWornDate:
         initialGarment && !keepOpenForDuplicate ? initialGarment.lastWornDate : undefined,
@@ -1610,6 +1623,18 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                     </div>
                   </div>
                 )}
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    {isEn ? 'Product / Shop Link (optional)' : 'Produkt- / Kauf-Link (optional)'}
+                  </label>
+                  <input
+                    type="url"
+                    value={buyUrl}
+                    onChange={(e) => setBuyUrl(e.target.value)}
+                    placeholder="https://www.amazon.de/dp/..."
+                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
             )}
           </div>

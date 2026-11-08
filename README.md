@@ -64,20 +64,48 @@ npm install --legacy-peer-deps
 # 2. Start full-stack dev server (Web UI on :3000 + MCP HTTP server on :3000/mcp)
 npm run dev
 
-# 3. Run the deterministic engine & MCP unit test suite (17 test suites)
+# 3. Run the deterministic engine & MCP unit test suite (18 test suites)
 npm test
 
-# 4. Build static production bundle (for GitHub Pages / Cloudflare Pages)
+# 4. Build static production bundle (for Vercel / GitHub Pages / Cloudflare Pages)
 npm run build
 ```
 
 ---
 
-## Live Demo & GitHub Pages Deployment (Zero-Backend Mode)
+## Live Demo, Vercel & GitHub Pages Deployment (Zero-Backend Mode)
 
-Because **`thread-graph`** uses `Dexie.js` (`IndexedDB`) with built-in starter seed data (`src/data/seedData.ts`) and JSON Backup Import/Export, the application also runs **100% client-side as a static site** (e.g. GitHub Pages, Cloudflare Pages, Netlify, Vercel) without requiring a backend server:
-- Visitors can immediately adjust temperature sliders, lock anchor garments, inspect Orphan Pieces, and test hypothetical purchases in the **Wishlist Sandbox** (`[Im Schrank testen]`).
-- A ready-to-use GitHub Actions workflow is included at [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml) — simply enable **Settings → Pages → Source: GitHub Actions** in your repository.
+Because **`thread-graph`** uses `Dexie.js` (`IndexedDB`) with built-in starter seed data (`src/data/seedData.ts`), shareable URL-encoded outfits (`?outfit=...`), and JSON Backup Import/Export, the application runs **100% client-side as a static site** (e.g. Vercel, GitHub Pages, Cloudflare Pages, Netlify) without requiring a backend server:
+- Visitors can immediately adjust temperature sliders, lock anchor garments, save **Favorite Outfits (`♥`)**, inspect **Statistics & Wear History**, share complete looks via URL (`?outfit=...`), and test hypothetical purchases in the **Wishlist Sandbox** (`[Probeweise in den Schrank legen]`).
+- **Vercel Configuration (`vercel.json` included):**
+  Set the following optional environment variables in your Vercel project settings (or `.env`):
+  ```env
+  # Run purely in browser IndexedDB without /api/wardrobe requests
+  VITE_PUBLIC_CLIENT_ONLY=true
+
+  # Optional: Custom shop search URL (defaults to https://www.amazon.de/s?k={query} if empty)
+  # Supports {query}, {brand}, {color}, and {type} placeholders
+  VITE_SHOP_BASE_URL=
+
+  # Optional: Affiliate / Amazon PartnerNet tag automatically appended to shop links
+  # Accepts either shorthand "dein-tag-21" or full "tag=dein-tag-21"
+  VITE_SHOP_AFFILIATE_PARAM=
+  ```
+- A ready-to-use GitHub Actions workflow is also included at [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml) — simply enable **Settings → Pages → Source: GitHub Actions** in your repository.
+
+---
+
+## Transparenz: Finanzierung der öffentlichen Web-App & Kostenloses Self-Hosting (DE / EN)
+
+### Deutsch: Warum Affiliate-Links statt Abo oder Werbung?
+Die öffentlich gehostete Web-Version von **`thread-graph`** ist komplett kostenlos, verzichtet auf Benutzerkonten-Zwang, Werbebanner oder Abo-Paywalls und speichert deine Garderobe lokal in deinem Browser.
+- **Wie sich das Projekt trägt:** Wenn du in der *Kauf-Empfehlung* (Gap-Analyzer), im *Kleiderschrank* oder in *geteilten Outfits* auf **„Bei Amazon suchen“** bzw. einen hinterlegten Produkt-Link klickst, wird automatisch ein Such-Deeplink (inkl. Damen/Herren, Marke, Farbe, Typ & Schnitt) generiert. Auf der offiziellen Live-Instanz kann daran ein Affiliate-Parameter (z. B. *Amazon PartnerNet* über `VITE_SHOP_AFFILIATE_PARAM`) angehängt sein. Kommt darüber ein Kauf zustande, erhält das Projekt eine kleine Provision – für dich ändert sich am Preis nichts, und die Outfit-Berechnung bleibt zu **100 % deterministisch und unbeeinflusst** (keine gesponserten Teile, kein Tracking deiner Garderobe).
+- **Jederzeit 100 % frei & ohne Affiliate selbst hosten:** Wer keine Affiliate-Links möchte oder einen eigenen Server bevorzugt, kann `thread-graph` jederzeit kostenlos per Docker, auf dem eigenen Home-Server/VPS oder als eigenen Fork auf Vercel/GitHub Pages selbst hosten. Lässt du `VITE_SHOP_AFFILIATE_PARAM` leer (Standardwert im Repository), sind sämtliche Links komplett frei von Affiliate-Tags, oder du hinterlegst über `VITE_SHOP_BASE_URL` deine eigene Lieblingssuchmaschine.
+
+### English: Transparent Monetization & 100% Free Self-Hosting
+The public web instance of **`thread-graph`** is free to use without accounts, display ads, tracking, or subscription paywalls:
+- **How the hosted demo is funded:** When clicking shop search buttons (e.g., in the *Gap Analyzer*, *Smart Closet*, or *Shared Outfit* previews), the app generates a tailored product search deep-link combining audience (`Damen`/`Herren`), brand, garment type, color, and fit (or opens your custom per-garment `buyUrl`). On the official hosted instance, an optional affiliate parameter (`VITE_SHOP_AFFILIATE_PARAM`, e.g., Amazon PartnerNet) may be appended to support hosting and development at zero extra cost to you. The styling and gap-analysis engine itself is **100% deterministic math** and never promotes sponsored items.
+- **Self-host without any affiliate links:** Anyone is welcome and encouraged to self-host `thread-graph` via Docker, VPS, or a personal static deployment. By default in the repository, `VITE_SHOP_AFFILIATE_PARAM` is empty (zero affiliate tags), and you can freely customize `VITE_SHOP_BASE_URL` or keep all data strictly on your own hardware.
 
 ---
 

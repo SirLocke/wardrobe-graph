@@ -8,6 +8,7 @@ import {
   BarChart3,
   Compass,
   Grid,
+  Luggage,
   Plus,
   Settings2,
   Shirt,
@@ -25,6 +26,7 @@ import {
 import { SettingsModal } from './components/SettingsModal';
 import { SetupWizardModal } from './components/SetupWizardModal';
 import { SmartClosetView } from './components/SmartClosetView';
+import { TravelPackerView } from './components/TravelPackerView';
 import { WardrobeImportExportModal } from './components/WardrobeImportExportModal';
 import { buildOutfitSignature, WardrobeStatsView } from './components/WardrobeStatsView';
 import {
@@ -50,8 +52,10 @@ import {
   updateGarmentsCleanStatus,
   WardrobeBackupPayload,
 } from './db/wardrobeDb';
-import { analyzeWardrobeGaps } from './engine/gapAnalyzer';
+import { hasAffiliateParamConfigured, isAmazonShopActive } from './engine/outfitShare';
 import { parseAndNormalizeWardrobeImport } from './engine/wardrobeFormatter';
+import { useGapAnalysis } from './hooks/useGapAnalysis';
+import { createTranslator } from './i18n/messages';
 import {
   AppLocale,
   BiometricProfile,
@@ -65,7 +69,7 @@ import {
   WornOutfitRecord,
 } from './types/wardrobe';
 
-export type ActiveTab = 'stylist' | 'closet' | 'stats' | 'gaps' | 'profile';
+export type ActiveTab = 'stylist' | 'travel' | 'closet' | 'stats' | 'gaps' | 'profile';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('stylist');
@@ -91,6 +95,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const isEn = locale === 'en';
+  const t = useMemo(() => createTranslator(locale), [locale]);
 
   const isDemoActive = useMemo(() => {
     if (profile.isDemoMode === false) return false;
@@ -116,7 +121,7 @@ export default function App() {
     if (latest) {
       setProfile(latest.profile);
       setGarments(latest.garments);
-      if (latest.wornHistory && latest.wornHistory.length > 0) {
+      if (Array.isArray(latest.wornHistory)) {
         setWornHistory(latest.wornHistory);
       }
     }
@@ -149,10 +154,8 @@ export default function App() {
     };
   }, []);
 
-  // Run combinatorial graph & gap analyzer deterministically
-  const gapReport = useMemo(() => {
-    return analyzeWardrobeGaps(garments, profile);
-  }, [garments, profile]);
+  // Run combinatorial graph & gap analyzer via Web Worker with structural fingerprint LRU cache
+  const { gapReport } = useGapAnalysis(garments, profile);
 
   const handleSaveGarment = async (garment: Garment, keepOpenForDuplicate: boolean) => {
     const saved = await saveGarmentToDb(garment);
@@ -248,20 +251,28 @@ export default function App() {
   const handleDeleteWornRecord = async (recordId: string) => {
     const target = wornHistory.find((r) => r.id === recordId);
     if (!target) return;
+    const remainingHistory = wornHistory.filter((r) => r.id !== recordId);
     const itemIds = new Set(target.garmentIds);
-    const dirtyIdsToRestore = new Set(target.dirtyMarkedGarmentIds || target.garmentIds);
+    const dirtyIdsToRestore = new Set(
+      Array.isArray(target.dirtyMarkedGarmentIds)
+        ? target.dirtyMarkedGarmentIds
+        : target.garmentIds
+    );
 
     const updatedGarments = garments.map((g) => {
       if (!itemIds.has(g.id)) return g;
+      const nextWearCount = Math.max(0, (g.wearCount || 1) - 1);
+      const previousRecord = remainingHistory.find((r) => r.garmentIds.includes(g.id));
       return {
         ...g,
-        wearCount: Math.max(0, (g.wearCount || 1) - 1),
+        wearCount: nextWearCount,
+        lastWornDate: nextWearCount === 0 ? undefined : previousRecord?.wornDate,
         isClean: dirtyIdsToRestore.has(g.id) ? true : g.isClean,
       };
     });
 
     setGarments(updatedGarments);
-    setWornHistory((prev) => prev.filter((r) => r.id !== recordId));
+    setWornHistory(remainingHistory);
     void deleteWornOutfitRecordFromDb(recordId, updatedGarments);
   };
 
@@ -561,7 +572,7 @@ export default function App() {
     <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col pb-28 sm:pb-32 md:pb-12 overflow-x-hidden">
       {/* Top Bar Contract: Strictly 3 zones separated by responsive gap + iOS Safe Area Top */}
       <header className="sticky top-0 z-30 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/90 pt-[env(safe-area-inset-top,0px)]">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-6 md:gap-8 px-3.5 sm:px-6 h-14">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4 md:gap-5 px-3.5 sm:px-6 h-14">
           {/* Zone 1: Brand App Icon + Wordmark */}
           <a
             href="#stylist"
@@ -569,7 +580,7 @@ export default function App() {
               e.preventDefault();
               setActiveTab('stylist');
             }}
-            className="inline-flex items-center gap-2.5 text-sm sm:text-base md:text-lg font-bold tracking-tight text-zinc-100 whitespace-nowrap shrink-0 hover:text-amber-400 transition-colors"
+            className="inline-flex items-center gap-2 text-sm sm:text-base font-bold tracking-tight text-zinc-100 whitespace-nowrap shrink-0 hover:text-amber-400 transition-colors"
           >
             <img
               src="/icon.svg"
@@ -577,49 +588,41 @@ export default function App() {
               referrerPolicy="no-referrer"
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-sm border border-zinc-800/80 shrink-0"
             />
-            <span>{isEn ? 'OUTFIT PLANNER' : 'OUTFIT-PLANER'}</span>
+            <span>{t('app.title')}</span>
           </a>
 
           {/* Zone 2: Concise single-line text navigation links */}
           <nav
-            aria-label="Hauptnavigation"
-            className="hidden md:flex items-center gap-5 lg:gap-7 text-sm font-medium"
+            aria-label={t('nav.ariaMain')}
+            className="hidden md:flex items-center gap-3 lg:gap-5 text-xs lg:text-sm font-medium"
           >
             {(
               [
                 {
                   id: 'stylist',
-                  label: isEn ? "Today's Outfits" : 'Outfits für heute',
+                  label: t('nav.stylist'),
+                },
+                {
+                  id: 'travel',
+                  label: t('nav.travel'),
                 },
                 {
                   id: 'closet',
-                  label: isEn
-                    ? `My Closet (${garments.length})`
-                    : `Kleiderschrank (${garments.length})`,
+                  label: t('nav.closet', { count: garments.length }),
                 },
                 {
                   id: 'stats',
-                  label: isEn
-                    ? `Stats & Favorites${
-                        profile.favoriteOutfits?.length
-                          ? ` (${profile.favoriteOutfits.length})`
-                          : ''
-                      }`
-                    : `Statistik & Favoriten${
-                        profile.favoriteOutfits?.length
-                          ? ` (${profile.favoriteOutfits.length})`
-                          : ''
-                      }`,
+                  label: profile.favoriteOutfits?.length
+                    ? t('nav.statsWithCount', { count: profile.favoriteOutfits.length })
+                    : t('nav.stats'),
                 },
                 {
                   id: 'gaps',
-                  label: isEn
-                    ? `What's Missing? (${gapReport.orphanPieces.length})`
-                    : `Was fehlt? (${gapReport.orphanPieces.length})`,
+                  label: t('nav.gaps', { count: gapReport.orphanPieces.length }),
                 },
                 {
                   id: 'profile',
-                  label: isEn ? 'My Colors & Style' : 'Mein Typ & Farben',
+                  label: t('nav.profile'),
                 },
               ] as const
             ).map((nav) => {
@@ -646,17 +649,17 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              title={isEn ? 'Settings, Clothing Choice & Colors' : 'Einstellungen, Kleidungs-Auswahl & Farben'}
+              title={t('header.settingsTitle')}
               className="inline-flex items-center justify-center min-w-[38px] min-h-[38px] p-2 sm:px-2.5 sm:py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 cursor-pointer touch-manipulation active:scale-95"
             >
               <Settings2 className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">{isEn ? 'Settings' : 'Einstellungen'}</span>
+              <span className="hidden sm:inline">{t('header.settings')}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setLocale((prev) => (prev === 'de' ? 'en' : 'de'))}
-              title={isEn ? 'Switch to German (DE)' : 'Auf Englisch umschalten (EN)'}
+              title={t('header.switchLang')}
               className="inline-flex items-center justify-center min-h-[38px] px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs font-mono text-zinc-300 cursor-pointer touch-manipulation active:scale-95"
             >
               {isEn ? 'EN' : 'DE'}
@@ -665,12 +668,12 @@ export default function App() {
             <button
               type="button"
               onClick={openAddNewGarment}
-              title={isEn ? 'Add Garment' : 'Neues Kleidungsstück anlegen'}
-              aria-label={isEn ? 'Add Garment' : 'Neues Kleidungsstück anlegen'}
+              title={t('header.addGarmentAria')}
+              aria-label={t('header.addGarmentAria')}
               className="inline-flex items-center justify-center min-w-[38px] w-9 h-9 sm:w-auto sm:px-3.5 sm:py-2 text-xs font-semibold text-zinc-950 bg-zinc-100 rounded-lg hover:bg-white transition-colors whitespace-nowrap shrink-0 cursor-pointer touch-manipulation active:scale-95"
             >
               <Plus className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline sm:ml-1.5">{isEn ? 'Add Garment' : 'Kleidungsstück'}</span>
+              <span className="hidden sm:inline sm:ml-1.5">{t('header.addGarmentShort')}</span>
             </button>
           </div>
         </div>
@@ -680,38 +683,30 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-5 space-y-5">
         {/* Demo Mode Exit Banner */}
         {isLoaded && isDemoActive && (
-          <div className="rounded-2xl bg-amber-500/10 border border-amber-500/35 px-4 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <p className="text-xs sm:text-sm font-semibold text-amber-200">
-                {isEn
-                  ? 'Demo Mode Active (Example Wardrobe)'
-                  : 'Demo-Modus aktiv (Du siehst aktuell Beispiel-Kleidung zum Ausprobieren)'}
-              </p>
-              <p className="text-xs text-zinc-300">
-                {isEn
-                  ? 'Ready to build your own wardrobe? Exit demo mode to launch the wizard and add your own clothes.'
-                  : 'Möchtest du deinen eigenen Kleiderschrank starten? Beende den Demo-Modus – der Assistent startet direkt mit deiner eigenen Kleidungs-Auswahl.'}
-              </p>
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/35 px-3.5 py-2 flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="text-xs font-semibold text-amber-200">
+                {t('demo.title')}
+              </span>
+              <span className="text-xs text-zinc-300 hidden sm:inline">
+                · {t('demo.subtitle')}
+              </span>
             </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full md:w-auto">
+            <div className="flex items-center gap-1.5 shrink-0 w-full md:w-auto">
               <button
                 type="button"
                 onClick={handleExitDemoAndClearDirectly}
-                className="w-full sm:w-auto px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer text-center touch-manipulation active:scale-95"
+                className="flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer text-center touch-manipulation active:scale-95"
               >
-                {isEn ? 'Empty Closet & Add 1st Item' : 'Schrank direkt leeren & 1. Teil anlegen'}
+                {t('demo.emptyAndAdd')}
               </button>
               <button
                 type="button"
                 onClick={handleExitDemoAndOpenWizard}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 cursor-pointer text-center touch-manipulation active:scale-95"
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 cursor-pointer text-center touch-manipulation active:scale-95"
               >
                 <Wand2 className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  {isEn
-                    ? 'Exit Demo & Start Setup'
-                    : 'Demo beenden & Eigenen Schrank starten'}
-                </span>
+                <span>{t('demo.exitAndSetup')}</span>
               </button>
             </div>
           </div>
@@ -743,6 +738,17 @@ export default function App() {
                 onOpenSettings={() => setIsSettingsOpen(true)}
                 onOpenProfileTab={() => setActiveTab('profile')}
                 onUpdateProfile={handleUpdateProfile}
+              />
+            )}
+
+            {activeTab === 'travel' && (
+              <TravelPackerView
+                garments={garments}
+                profile={profile}
+                locale={locale}
+                onUpdateProfile={handleUpdateProfile}
+                onToggleFavoriteOutfit={handleToggleFavoriteOutfit}
+                onEditGarment={openEditGarment}
               />
             )}
 
@@ -781,6 +787,8 @@ export default function App() {
               <GapAnalyzerView
                 report={gapReport}
                 garments={garments}
+                profile={profile}
+                locale={locale}
                 onToggleSandboxGarment={handleToggleSandboxGarment}
                 onJumpToContext={handleJumpToContext}
                 onLockOrphanInStylist={handleLockItemInStylist}
@@ -791,6 +799,7 @@ export default function App() {
               <BiometricProfileView
                 profile={profile}
                 garments={garments}
+                locale={locale}
                 onUpdateProfile={handleUpdateProfile}
                 onOpenImportExportModal={() => setIsImportExportOpen(true)}
                 onExportBackup={handleExportBackup}
@@ -803,44 +812,29 @@ export default function App() {
         )}
       </main>
 
-      {/* Quiet Footer with Quick Actions */}
+      {/* Quiet Footer */}
       <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 mt-12 pt-6 border-t border-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 text-xs text-zinc-500">
-        <div className="flex items-center gap-2.5">
-          <img
-            src="/icon.svg"
-            alt=""
-            referrerPolicy="no-referrer"
-            className="w-6 h-6 rounded-md border border-zinc-800 shrink-0"
-          />
-          <p className="text-zinc-400 font-medium">
-            {isEn
-              ? 'Outfit Planner & Wardrobe · Free & works offline'
-              : 'Outfit-Planer & Kleiderschrank · Kostenlos & offline nutzbar'}
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/icon.svg"
+              alt=""
+              referrerPolicy="no-referrer"
+              className="w-6 h-6 rounded-md border border-zinc-800 shrink-0"
+            />
+            <p className="text-zinc-400 font-medium">{t('footer.tagline')}</p>
+          </div>
+          {isAmazonShopActive() && hasAffiliateParamConfigured() && (
+            <span className="text-[11px] text-zinc-500">{t('footer.affiliateNotice')}</span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-200 cursor-pointer whitespace-nowrap"
-          >
-            <Settings2 className="w-3.5 h-3.5 text-amber-400" />
-            <span>{isEn ? 'Settings & Colors' : 'Einstellungen & Farben'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleExitDemoAndOpenWizard}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-xs text-amber-200 cursor-pointer whitespace-nowrap"
-          >
-            <Wand2 className="w-3.5 h-3.5 text-amber-400" />
-            <span>{isEn ? 'Setup Wizard' : 'Start-Assistent'}</span>
-          </button>
           <button
             type="button"
             onClick={() => setIsImportExportOpen(true)}
             className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 cursor-pointer whitespace-nowrap"
           >
-            {isEn ? 'Backup & Export' : 'Backup & Daten'}
+            {t('footer.backupBtn')}
           </button>
           <PWAInstallButton />
         </div>
@@ -848,16 +842,17 @@ export default function App() {
 
       {/* Mobile Bottom Navigation Bar (Thumb Zone with iOS Safe Area) */}
       <nav
-        aria-label="Mobile Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/90 grid grid-cols-5 items-center min-h-16 h-auto py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] touch-manipulation shadow-2xl"
+        aria-label={t('nav.ariaMobile')}
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/90 grid grid-cols-6 items-center min-h-16 h-auto py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] touch-manipulation shadow-2xl"
       >
         {(
           [
-            { id: 'stylist', label: 'Outfits', icon: Compass },
-            { id: 'closet', label: isEn ? 'Closet' : 'Schrank', icon: Shirt },
-            { id: 'stats', label: isEn ? 'Stats' : 'Statistik', icon: BarChart3 },
-            { id: 'gaps', label: isEn ? 'Missing' : 'Was fehlt?', icon: Grid },
-            { id: 'profile', label: isEn ? 'My Colors' : 'Mein Typ', icon: UserCheck },
+            { id: 'stylist', label: t('nav.mobile.stylist'), icon: Compass },
+            { id: 'travel', label: t('nav.mobile.travel'), icon: Luggage },
+            { id: 'closet', label: t('nav.mobile.closet'), icon: Shirt },
+            { id: 'stats', label: t('nav.mobile.stats'), icon: BarChart3 },
+            { id: 'gaps', label: t('nav.mobile.gaps'), icon: Grid },
+            { id: 'profile', label: t('nav.mobile.profile'), icon: UserCheck },
           ] as const
         ).map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id;

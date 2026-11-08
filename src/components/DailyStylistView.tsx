@@ -9,6 +9,8 @@ import {
   Cloud,
   CloudRain,
   Edit3,
+  Eye,
+  EyeOff,
   Heart,
   History,
   Info,
@@ -41,14 +43,19 @@ import {
 } from '../data/seedData';
 import { getShortOutfitTitle } from '../engine/brandSizeMatcher';
 import {
+  ActiveWornOutfitEntry,
   generateOutfitsForContext,
+  getActiveWornOutfits,
   getEffectiveModifiers,
   resolveActiveCustomOccasion,
+  WORN_RETENTION_OPTIONS,
 } from '../engine/outfitGenerator';
 import {
   buildBrandOrShopUrl,
   decodeSharedOutfit,
   encodeSharedOutfit,
+  isAmazonShopActive,
+  isExampleGarment,
 } from '../engine/outfitShare';
 import {
   AppLocale,
@@ -66,7 +73,13 @@ import {
   WornOutfitRecord,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
-import { OutfitLayerStack } from './OutfitLayerStack';
+import {
+  computeHiddenIdsForPreset,
+  getOutfitUpperLayers,
+  isGarmentOpenable,
+  OutfitLayerStack,
+  resolveUpperLayerState,
+} from './OutfitLayerStack';
 import { buildOutfitSignature } from './WardrobeStatsView';
 
 interface DailyStylistViewProps {
@@ -96,72 +109,6 @@ interface SessionWornEntry {
   laundryCount: number;
   slotIndex: number;
 }
-
-const AUTO_LAUNDRY_GROUPS: Array<{
-  id: string;
-  labelDe: string;
-  labelEn: string;
-  subcategories: GarmentSubcategory[];
-}> = [
-  {
-    id: 'tops',
-    labelDe: 'T-Shirts & Tops',
-    labelEn: 'T-Shirts & Tops',
-    subcategories: [
-      't_shirt',
-      'heavyweight_tee',
-      'longsleeve',
-      'polo',
-      'tank_camisole',
-      'crop_top',
-      'bodysuit',
-    ],
-  },
-  {
-    id: 'socks',
-    labelDe: 'Socken',
-    labelEn: 'Socks',
-    subcategories: ['socks', 'socks_short'],
-  },
-  {
-    id: 'shirts',
-    labelDe: 'Hemden & Blusen',
-    labelEn: 'Shirts & Blouses',
-    subcategories: ['button_down_shirt', 'short_sleeve_shirt', 'blouse'],
-  },
-  {
-    id: 'midlayers',
-    labelDe: 'Pullover & Hoodies',
-    labelEn: 'Sweaters & Hoodies',
-    subcategories: [
-      'hoodie',
-      'crewneck_sweater',
-      'knit_sweater',
-      'turtleneck',
-      'cardigan',
-      'overshirt',
-      'fleece_jacket',
-      'fleece_vest',
-      'vest_gilet',
-    ],
-  },
-  {
-    id: 'bottoms',
-    labelDe: 'Hosen & Röcke',
-    labelEn: 'Pants & Skirts',
-    subcategories: [
-      'denim',
-      'chino',
-      'trousers',
-      'suit_trousers',
-      'wide_leg_trousers',
-      'cargo',
-      'shorts',
-      'midi_skirt',
-      'mini_skirt',
-    ],
-  },
-];
 
 const TEMP_PRESETS = [
   { labelDe: 'Kalt (<8°C)', labelEn: 'Cold (<8°C)', temp: 5 },
@@ -254,9 +201,12 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   onUpdateProfile,
 }) => {
   const isEn = locale === 'en';
+  const isAmazon = isAmazonShopActive();
   const [showAnchorPicker, setShowAnchorPicker] = useState(false);
+  const [showFineFilters, setShowFineFilters] = useState(false);
   const [wornFeedbackId, setWornFeedbackId] = useState<string | null>(null);
   const [sessionWornById, setSessionWornById] = useState<Record<string, SessionWornEntry>>({});
+  const [localDismissedRecordIds, setLocalDismissedRecordIds] = useState<string[]>([]);
   const [latestWornBanner, setLatestWornBanner] = useState<SessionWornEntry | null>(null);
   const [sharedFeedbackId, setSharedFeedbackId] = useState<string | null>(null);
   const [incomingSharedOutfit, setIncomingSharedOutfit] = useState<ReturnType<
@@ -265,21 +215,63 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   const [displayMode, setDisplayMode] = useState<'stacked' | 'grid'>('stacked');
   const [popupOutfit, setPopupOutfit] = useState<GeneratedOutfit | null>(null);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
-  const [customOutfitNames, setCustomOutfitNames] = useState<Record<string, string>>(() =>
-    loadCustomOutfitNames()
-  );
+  const [customOutfitNames, setCustomOutfitNames] = useState<Record<string, string>>(() => ({
+    ...loadCustomOutfitNames(),
+    ...(profile.customOutfitNames || {}),
+  }));
   const [editingOutfitId, setEditingOutfitId] = useState<string | null>(null);
   const [editingOutfitNameDraft, setEditingOutfitNameDraft] = useState('');
+  const [hiddenLayersByOutfitId, setHiddenLayersByOutfitId] = useState<
+    Record<string, string[]>
+  >({});
+  const [openOverridesByOutfitId, setOpenOverridesByOutfitId] = useState<
+    Record<string, Record<string, boolean>>
+  >({});
+
+  const handleSetOutfitHiddenLayers = (outfitId: string, nextHiddenIds: string[]) => {
+    setHiddenLayersByOutfitId((prev) => ({
+      ...prev,
+      [outfitId]: nextHiddenIds,
+    }));
+  };
+
+  const handleToggleOutfitOpenOverride = (
+    outfitId: string,
+    garmentId: string,
+    currentEffectiveOpen: boolean
+  ) => {
+    setOpenOverridesByOutfitId((prev) => ({
+      ...prev,
+      [outfitId]: {
+        ...(prev[outfitId] || {}),
+        [garmentId]: !currentEffectiveOpen,
+      },
+    }));
+  };
 
   useEffect(() => {
-    setSessionWornById({});
-  }, [
-    context.temperatureC,
-    context.weather,
-    context.occasion,
-    context.customOccasionId,
-    context.variationSeed,
-  ]);
+    if (profile.customOutfitNames) {
+      setCustomOutfitNames((prev) => ({
+        ...prev,
+        ...profile.customOutfitNames,
+      }));
+    }
+  }, [profile.customOutfitNames]);
+
+  useEffect(() => {
+    if (!popupOutfit && !incomingSharedOutfit) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (popupOutfit) setPopupOutfit(null);
+        if (incomingSharedOutfit) {
+          setIncomingSharedOutfit(null);
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [popupOutfit, incomingSharedOutfit]);
 
   useEffect(() => {
     try {
@@ -453,34 +445,63 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     return generateOutfitsForContext(garments, profile, context, 5);
   }, [garments, profile, context]);
 
-  const outfits = useMemo(() => {
-    const wornEntries = Object.values(sessionWornById) as SessionWornEntry[];
-    if (wornEntries.length === 0) return generatedOutfits;
+  const effectiveProfileForRetention = useMemo<BiometricProfile>(() => {
+    const mergedDismissed = Array.from(
+      new Set([...(profile.dismissedWornRecordIds || []), ...localDismissedRecordIds])
+    );
+    return {
+      ...profile,
+      dismissedWornRecordIds: mergedDismissed,
+    };
+  }, [profile, localDismissedRecordIds]);
 
-    const garmentById = new Map(garments.map((g) => [g.id, g]));
-    const refreshedWornEntries = wornEntries
-      .map((entry) => ({
-        ...entry,
-        outfit: {
-          ...entry.outfit,
-          items: entry.outfit.items.map((item) => {
-            const latest = garmentById.get(item.id);
-            return latest ? { ...latest, wornOpen: item.wornOpen } : item;
-          }),
-        },
-      }))
-      .sort((a, b) => a.slotIndex - b.slotIndex);
-
-    const wornIdSet = new Set(refreshedWornEntries.map((e) => e.outfit.id));
-    const remainingGenerated = generatedOutfits.filter((o) => !wornIdSet.has(o.id));
-
-    const combined: GeneratedOutfit[] = [...remainingGenerated];
-    for (const entry of refreshedWornEntries) {
-      const idx = Math.min(Math.max(0, entry.slotIndex), combined.length);
-      combined.splice(idx, 0, entry.outfit);
+  const activeWornByOutfitId = useMemo(() => {
+    const map = new Map<string, ActiveWornOutfitEntry>();
+    const persisted = getActiveWornOutfits(
+      wornHistory,
+      garments,
+      effectiveProfileForRetention,
+      context
+    );
+    for (const entry of persisted) {
+      map.set(entry.outfit.id, entry);
     }
-    return combined.slice(0, Math.max(5, refreshedWornEntries.length));
-  }, [generatedOutfits, sessionWornById, garments]);
+
+    const dismissedSet = new Set(effectiveProfileForRetention.dismissedWornRecordIds || []);
+    const garmentById = new Map(garments.map((g) => [g.id, g]));
+    for (const sessionEntry of Object.values(sessionWornById) as SessionWornEntry[]) {
+      if (sessionEntry.recordId && dismissedSet.has(sessionEntry.recordId)) continue;
+      if (!map.has(sessionEntry.outfit.id)) {
+        map.set(sessionEntry.outfit.id, {
+          recordId: sessionEntry.recordId,
+          outfit: {
+            ...sessionEntry.outfit,
+            items: sessionEntry.outfit.items.map((item) => {
+              const latest = garmentById.get(item.id);
+              return latest ? { ...latest, wornOpen: item.wornOpen } : item;
+            }),
+          },
+          outfitTitle: sessionEntry.outfitTitle,
+          wornDate: new Date().toISOString(),
+          laundryCount: sessionEntry.laundryCount,
+        });
+      }
+    }
+    return map;
+  }, [wornHistory, garments, effectiveProfileForRetention, context, sessionWornById]);
+
+  const outfits = useMemo(() => {
+    const pinnedEntries = Array.from(activeWornByOutfitId.values());
+    if (pinnedEntries.length === 0) return generatedOutfits;
+
+    const pinnedIdSet = new Set(pinnedEntries.map((e) => e.outfit.id));
+    const remainingGenerated = generatedOutfits.filter((o) => !pinnedIdSet.has(o.id));
+
+    return [
+      ...pinnedEntries.map((e) => e.outfit),
+      ...remainingGenerated,
+    ].slice(0, Math.max(5, pinnedEntries.length));
+  }, [generatedOutfits, activeWornByOutfitId]);
 
   const dirtyCount = useMemo(
     () => garments.filter((g) => canGarmentUseLaundry(g) && !g.isClean).length,
@@ -492,18 +513,6 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
       ? profile.autoLaundrySubcategories
       : DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES;
   }, [profile.autoLaundrySubcategories]);
-
-  const toggleAutoLaundryGroup = async (groupSubs: GarmentSubcategory[]) => {
-    if (!onUpdateProfile) return;
-    const isAllActive = groupSubs.every((s) => activeAutoLaundrySubs.includes(s));
-    const nextSubs = isAllActive
-      ? activeAutoLaundrySubs.filter((s) => !groupSubs.includes(s))
-      : Array.from(new Set([...activeAutoLaundrySubs, ...groupSubs]));
-    await onUpdateProfile({
-      ...profile,
-      autoLaundrySubcategories: nextSubs,
-    });
-  };
 
   const handleGenerateNewOutfits = () => {
     onChangeContext({
@@ -608,6 +617,12 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     } catch {
       // Ignore storage quota errors
     }
+    if (onUpdateProfile) {
+      void onUpdateProfile({
+        ...profile,
+        customOutfitNames: next,
+      });
+    }
     setEditingOutfitId(null);
   };
 
@@ -616,9 +631,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     title: string,
     slotIndex: number
   ) => {
-    const existingEntry = sessionWornById[outfit.id];
-    if (existingEntry) {
-      await handleUndoWornOutfit(outfit.id);
+    const existingActive = activeWornByOutfitId.get(outfit.id);
+    if (existingActive) {
+      await handleUndoWornOutfit(outfit.id, existingActive.recordId);
       return;
     }
 
@@ -648,8 +663,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     }, 5000);
   };
 
-  const handleUndoWornOutfit = async (outfitId: string) => {
-    const entry = sessionWornById[outfitId];
+  const handleUndoWornOutfit = async (outfitId: string, explicitRecordId?: string) => {
+    const recordId =
+      explicitRecordId ||
+      sessionWornById[outfitId]?.recordId ||
+      activeWornByOutfitId.get(outfitId)?.recordId;
     setSessionWornById((prev) => {
       const next = { ...prev };
       delete next[outfitId];
@@ -657,9 +675,44 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     });
     setLatestWornBanner((prev) => (prev?.outfit.id === outfitId ? null : prev));
     setWornFeedbackId((prev) => (prev === outfitId ? null : prev));
-    if (entry?.recordId && onDeleteWornRecord) {
-      await onDeleteWornRecord(entry.recordId);
+    if (recordId && onDeleteWornRecord) {
+      await onDeleteWornRecord(recordId);
     }
+  };
+
+  const handleDismissWornOutfit = async (outfitId: string, explicitRecordId?: string) => {
+    const recordId =
+      explicitRecordId ||
+      sessionWornById[outfitId]?.recordId ||
+      activeWornByOutfitId.get(outfitId)?.recordId;
+    setSessionWornById((prev) => {
+      const next = { ...prev };
+      delete next[outfitId];
+      return next;
+    });
+    setLatestWornBanner((prev) => (prev?.outfit.id === outfitId ? null : prev));
+    if (recordId) {
+      setLocalDismissedRecordIds((prev) =>
+        prev.includes(recordId) ? prev : [...prev, recordId]
+      );
+      if (onUpdateProfile) {
+        const nextDismissed = Array.from(
+          new Set([...(profile.dismissedWornRecordIds || []), recordId])
+        ).slice(-50);
+        await onUpdateProfile({
+          ...profile,
+          dismissedWornRecordIds: nextDismissed,
+        });
+      }
+    }
+  };
+
+  const handleChangeRetentionHours = async (hours: number) => {
+    if (!onUpdateProfile) return;
+    await onUpdateProfile({
+      ...profile,
+      wornOutfitRetentionHours: hours,
+    });
   };
 
   const handleDeleteHistoryRecord = async (recordId: string) => {
@@ -719,51 +772,113 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     }, 2500);
   };
 
+  const activeRetentionHours =
+    typeof profile.wornOutfitRetentionHours === 'number' &&
+    profile.wornOutfitRetentionHours >= 0
+      ? profile.wornOutfitRetentionHours
+      : 24;
+
+  const activeFineFilterCount =
+    effectiveModifiers.length +
+    (context.includeAccessories === false
+      ? 1
+      : (context.excludedAccessorySubcategories || []).length);
+
   return (
-    <div className="space-y-8">
-      {/* Context Control Panel */}
+    <div className="space-y-4">
+      {/* Compact 2-Row Context Toolbar */}
       <section
         aria-label="Wetter- und Anlass-Auswahl für deine Outfits"
-        className="rounded-2xl bg-zinc-900/50 border border-zinc-800/90 p-5 sm:p-6 space-y-5"
+        className="rounded-2xl bg-zinc-900/55 border border-zinc-800/90 px-3.5 py-2.5 space-y-2"
       >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-            {isEn ? 'What should I wear today?' : 'Was ziehe ich heute an?'}
-          </h1>
+        {/* Row 1: Temperature Presets + Weather + Primary Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Compact Temperature Segmented Bar */}
+            <div className="inline-flex items-center gap-0.5 p-0.5 bg-zinc-950 rounded-xl border border-zinc-800/80">
+              <span className="px-2 py-1 text-xs font-mono font-semibold text-amber-400 tabular-nums">
+                {context.temperatureC}°C
+              </span>
+              {TEMP_PRESETS.map((preset) => {
+                const isActive =
+                  (preset.temp === 5 && context.temperatureC < 9) ||
+                  (preset.temp === 12 && context.temperatureC >= 9 && context.temperatureC <= 15) ||
+                  (preset.temp === 18 && context.temperatureC >= 16 && context.temperatureC <= 21) ||
+                  (preset.temp === 24 && context.temperatureC >= 22);
+                const compactLabel =
+                  preset.temp === 5
+                    ? isEn
+                      ? 'Cold <8°'
+                      : 'Kalt <8°'
+                    : preset.temp === 12
+                    ? isEn
+                      ? 'Cool 9–15°'
+                      : 'Kühl 9–15°'
+                    : preset.temp === 18
+                    ? isEn
+                      ? 'Mild 16–21°'
+                      : 'Mild 16–21°'
+                    : isEn
+                    ? 'Warm >22°'
+                    : 'Warm >22°';
+                return (
+                  <button
+                    key={preset.temp}
+                    type="button"
+                    title={isEn ? preset.labelEn : preset.labelDe}
+                    onClick={() => onChangeContext({ ...context, temperatureC: preset.temp })}
+                    className={`px-2 py-1 min-h-[30px] text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                      isActive
+                        ? 'bg-zinc-100 text-zinc-950 font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-100'
+                    }`}
+                  >
+                    {compactLabel}
+                  </button>
+                );
+              })}
+            </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Compact Weather Segmented Bar */}
+            <div className="inline-flex items-center gap-0.5 p-0.5 bg-zinc-950 rounded-xl border border-zinc-800/80">
+              {(
+                [
+                  { id: 'sunny_dry', labelDe: 'Trocken', labelEn: 'Dry', icon: Sun },
+                  { id: 'cloudy_windy', labelDe: 'Windig', labelEn: 'Windy', icon: Cloud },
+                  { id: 'rain_wet', labelDe: 'Regen', labelEn: 'Rain', icon: CloudRain },
+                ] as const
+              ).map(({ id, labelDe, labelEn, icon: Icon }) => {
+                const active = context.weather === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => onChangeContext({ ...context, weather: id as WeatherCondition })}
+                    className={`inline-flex items-center gap-1 py-1 px-2 min-h-[30px] rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                      active
+                        ? 'bg-zinc-100 text-zinc-950 font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-100'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{isEn ? labelEn : labelDe}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Primary Actions: Generate New Outfits + Display Mode + Anchor + Fine Filters */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={handleGenerateNewOutfits}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-1 min-h-[32px] rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
             >
               <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-              <span>{isEn ? 'Generate New Outfits' : 'Neue Outfits generieren'}</span>
+              <span>{isEn ? 'New Outfits' : 'Neue Outfits'}</span>
             </button>
 
-            {onOpenSetupWizard && (
-              <button
-                type="button"
-                onClick={onOpenSetupWizard}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-xs font-medium text-amber-200 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Wand2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isEn ? 'Start Wizard' : 'Start-Assistent'}</span>
-              </button>
-            )}
-
-            {onOpenSettings && (
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-600 text-xs font-medium text-zinc-200 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isEn ? 'Settings & Sizes' : 'Einstellungen & Größen'}</span>
-              </button>
-            )}
-
-            {/* Outfit Presentation Toggle: Übereinander (Stacked) vs. Einzelteile */}
             <div
               className="inline-flex items-center p-0.5 rounded-lg bg-zinc-950 border border-zinc-800"
               role="group"
@@ -772,68 +887,162 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               <button
                 type="button"
                 onClick={() => setDisplayMode('stacked')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                   displayMode === 'stacked'
                     ? 'bg-zinc-100 text-zinc-950 font-semibold'
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>{isEn ? 'Stacked Look' : 'Übereinander'}</span>
+                <span className="hidden xl:inline">{isEn ? 'Stacked' : 'Übereinander'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setDisplayMode('grid')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                   displayMode === 'grid'
                     ? 'bg-zinc-100 text-zinc-950 font-semibold'
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                <span>{isEn ? 'Single Items' : 'Einzelteile'}</span>
+                <span className="hidden xl:inline">{isEn ? 'Single' : 'Einzelteile'}</span>
               </button>
             </div>
-
-            {dirtyCount > 0 && (
-              <button
-                type="button"
-                onClick={onWashAllGarments}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
-                <span>
-                  {isEn
-                    ? `Wash Laundry (${dirtyCount} worn)`
-                    : `Wäsche waschen (${dirtyCount} getragen)`}
-                </span>
-              </button>
-            )}
 
             <button
               type="button"
               onClick={() => setShowAnchorPicker((prev) => !prev)}
               aria-expanded={showAnchorPicker}
-              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2.5 min-h-[42px] w-full sm:w-auto rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+              className={`inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                 lockedGarments.length > 0
                   ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
-                  : 'bg-zinc-900 border-zinc-800 text-zinc-200 hover:border-zinc-700'
+                  : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
               }`}
             >
-              <Lock className="w-4 h-4 text-amber-400" />
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
               <span>
-                {isEn ? 'Pick a piece to wear today' : 'Ein bestimmtes Teil heute tragen'}{' '}
-                {lockedGarments.length > 0
-                  ? `(${lockedGarments.length} ${isEn ? 'selected' : 'ausgewählt'})`
-                  : ''}
+                {isEn ? 'Pin piece' : 'Teil wählen'}
+                {lockedGarments.length > 0 ? ` (${lockedGarments.length})` : ''}
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowFineFilters((prev) => !prev)}
+              aria-expanded={showFineFilters}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                showFineFilters || activeFineFilterCount > 0
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                  : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+              <span>
+                {isEn ? 'Details' : 'Feinfilter'}
+                {activeFineFilterCount > 0 ? ` (${activeFineFilterCount})` : ''}
+              </span>
+              {showFineFilters ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            {dirtyCount > 0 && (
+              <button
+                type="button"
+                onClick={onWashAllGarments}
+                className="inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg bg-zinc-950 border border-zinc-700 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                <span>
+                  {isEn ? `Wash (${dirtyCount})` : `Wäsche (${dirtyCount})`}
+                </span>
+              </button>
+            )}
           </div>
+        </div>
+
+        {/* Row 2: Compact Single-Line/Wrap Occasion Bar */}
+        <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-zinc-800/70">
+          {(Object.keys(OCCASION_LABELS) as OccasionType[]).map((occ) => {
+            const active = !activeCustomOccasion && context.occasion === occ;
+            const occText = isEn ? OCCASION_LABELS_EN[occ] : OCCASION_LABELS[occ];
+            return (
+              <button
+                key={occ}
+                type="button"
+                onClick={() =>
+                  onChangeContext({
+                    ...context,
+                    occasion: occ,
+                    customOccasionId: undefined,
+                    activeModifiers: undefined,
+                  })
+                }
+                className={`py-1 px-2 min-h-[28px] rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
+                  active
+                    ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
+                    : 'bg-zinc-950 border-zinc-800/90 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700'
+                }`}
+              >
+                {occText}
+              </button>
+            );
+          })}
+
+          {customOccasions.map((co) => {
+            const active = activeCustomOccasion?.id === co.id;
+            return (
+              <button
+                key={co.id}
+                type="button"
+                onClick={() =>
+                  onChangeContext({
+                    ...context,
+                    customOccasionId: co.id,
+                    activeModifiers: undefined,
+                  })
+                }
+                className={`inline-flex items-center gap-1 py-1 px-2.5 min-h-[30px] rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
+                  active
+                    ? 'bg-amber-400 border-amber-400 text-zinc-950 font-semibold'
+                    : 'bg-amber-500/10 border-amber-500/35 text-amber-200 hover:bg-amber-500/20'
+                }`}
+              >
+                <span>{co.name}</span>
+              </button>
+            );
+          })}
+
+          {onUpdateProfile && (
+            <>
+              {activeCustomOccasion && (
+                <button
+                  type="button"
+                  onClick={() => openEditCustomOccasionForm(activeCustomOccasion)}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-700 hover:border-zinc-600 text-[11px] font-medium text-zinc-300 hover:text-zinc-100 cursor-pointer"
+                >
+                  <Edit3 className="w-3 h-3 text-amber-400" />
+                  <span>{isEn ? 'Edit' : 'Bearbeiten'}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={openNewCustomOccasionForm}
+                className="inline-flex items-center gap-1 px-2 py-1 min-h-[30px] rounded-lg bg-amber-500/10 border border-amber-500/35 hover:bg-amber-500/20 text-[11px] font-medium text-amber-200 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3 h-3 text-amber-400" />
+                <span>{isEn ? 'Custom' : 'Eigener Anlass'}</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Anchor Item Picker Drawer */}
         {showAnchorPicker && (
-          <div className="rounded-xl bg-zinc-950 border border-zinc-800 p-4 space-y-3">
+          <div className="rounded-xl bg-zinc-950 border border-zinc-800 p-3.5 space-y-2.5">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-zinc-300">
                 {isEn
@@ -850,7 +1059,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-h-56 overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-h-52 overflow-y-auto pr-1">
               {garments.map((g) => {
                 const isLocked = context.lockedGarmentIds.includes(g.id);
                 return (
@@ -858,7 +1067,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     key={g.id}
                     type="button"
                     onClick={() => toggleLockGarment(g.id)}
-                    className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-all cursor-pointer touch-manipulation active:scale-95 ${
+                    className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all cursor-pointer touch-manipulation active:scale-95 ${
                       isLocked
                         ? 'bg-amber-500/15 border-amber-500/50 text-zinc-100'
                         : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-300 hover:border-zinc-700'
@@ -874,7 +1083,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       hasPrint={g.hasPrint}
                       hasLogo={g.hasLogo}
                       wornOpen={g.wornOpen}
-                      className="w-8 h-8 shrink-0"
+                      className="w-7 h-7 shrink-0"
                     />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium truncate">{g.name}</p>
@@ -890,482 +1099,291 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           </div>
         )}
 
-        {/* Controls Grid: Temperature & Weather */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
-          {/* Temperature Presets + Slider (7 cols) */}
-          <div className="lg:col-span-7 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <label htmlFor="temp-slider" className="text-xs font-medium text-zinc-300">
-                {isEn ? 'Outside Temperature' : 'Wie warm ist es draußen?'}
-              </label>
-              <span className="text-sm font-mono font-semibold text-amber-400 tabular-nums">
-                {context.temperatureC}°C
-              </span>
+        {/* Inline Custom Occasion Creator / Editor */}
+        {isCustomOccasionOpen && onUpdateProfile && (
+          <div className="rounded-xl bg-zinc-950 border border-amber-500/40 p-4 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold text-zinc-100">
+                {editingCustomOccasionId
+                  ? isEn
+                    ? 'Edit Custom Occasion'
+                    : 'Eigenen Anlass bearbeiten'
+                  : isEn
+                  ? 'Create Custom Occasion'
+                  : 'Eigenen Anlass anlegen'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomOccasionOpen(false);
+                  setEditingCustomOccasionId(null);
+                }}
+                className="p-1 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800/80">
-              {TEMP_PRESETS.map((preset) => {
-                const isActive =
-                  (preset.temp === 5 && context.temperatureC < 9) ||
-                  (preset.temp === 12 && context.temperatureC >= 9 && context.temperatureC <= 15) ||
-                  (preset.temp === 18 && context.temperatureC >= 16 && context.temperatureC <= 21) ||
-                  (preset.temp === 24 && context.temperatureC >= 22);
-                return (
-                  <button
-                    key={preset.temp}
-                    type="button"
-                    onClick={() => onChangeContext({ ...context, temperatureC: preset.temp })}
-                    className={`px-2.5 py-2 min-h-[40px] text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
-                      isActive
-                        ? 'bg-zinc-100 text-zinc-950 font-semibold'
-                        : 'text-zinc-400 hover:text-zinc-100'
-                    }`}
-                  >
-                    {isEn ? preset.labelEn : preset.labelDe}
-                  </button>
-                );
-              })}
-            </div>
-
-            <input
-              id="temp-slider"
-              type="range"
-              min={-5}
-              max={32}
-              value={context.temperatureC}
-              onChange={(e) =>
-                onChangeContext({ ...context, temperatureC: Number(e.target.value) })
-              }
-              className="w-full accent-amber-400 cursor-pointer h-7"
-            />
-          </div>
-
-          {/* Weather Toggle (5 cols) */}
-          <div className="lg:col-span-5 space-y-2.5">
-            <span className="block text-xs font-medium text-zinc-300">
-              {isEn ? 'Weather' : 'Wetter'}
-            </span>
-            <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800/80">
-              {(
-                [
-                  { id: 'sunny_dry', labelDe: 'Trocken', labelEn: 'Dry', icon: Sun },
-                  { id: 'cloudy_windy', labelDe: 'Windig', labelEn: 'Windy', icon: Cloud },
-                  { id: 'rain_wet', labelDe: 'Regen', labelEn: 'Rain', icon: CloudRain },
-                ] as const
-              ).map(({ id, labelDe, labelEn, icon: Icon }) => {
-                const active = context.weather === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => onChangeContext({ ...context, weather: id as WeatherCondition })}
-                    className={`flex items-center justify-center gap-1.5 py-2 px-2 min-h-[40px] rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
-                      active
-                        ? 'bg-zinc-100 text-zinc-950 font-semibold'
-                        : 'text-zinc-400 hover:text-zinc-100'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5 shrink-0" />
-                    <span>{isEn ? labelEn : labelDe}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Full-Width Expanded Occasion Selector + Freely Extensible Custom Occasions */}
-        <div className="pt-3 border-t border-zinc-800/80 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-medium text-zinc-300">
-              {isEn ? 'What are your plans today?' : 'Was hast du heute vor?'}
-            </span>
-            {onUpdateProfile && (
-              <div className="flex items-center gap-2">
-                {activeCustomOccasion && (
-                  <button
-                    type="button"
-                    onClick={() => openEditCustomOccasionForm(activeCustomOccasion)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-600 text-[11px] font-medium text-zinc-300 hover:text-zinc-100 cursor-pointer"
-                  >
-                    <Edit3 className="w-3 h-3 text-amber-400" />
-                    <span>{isEn ? 'Edit custom occasion' : 'Anlass bearbeiten'}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={openNewCustomOccasionForm}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-[11px] font-medium text-amber-200 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3 h-3 text-amber-400" />
-                  <span>{isEn ? 'Custom Occasion' : 'Eigener Anlass'}</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(Object.keys(OCCASION_LABELS) as OccasionType[]).map((occ) => {
-              const active = !activeCustomOccasion && context.occasion === occ;
-              const occText = isEn ? OCCASION_LABELS_EN[occ] : OCCASION_LABELS[occ];
-              return (
-                <button
-                  key={occ}
-                  type="button"
-                  onClick={() =>
-                    onChangeContext({
-                      ...context,
-                      occasion: occ,
-                      customOccasionId: undefined,
-                      activeModifiers: undefined,
-                    })
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-medium text-zinc-300">
+                  {isEn ? 'Name of Occasion' : 'Bezeichnung'}
+                </label>
+                <input
+                  type="text"
+                  value={customOccasionNameDraft}
+                  onChange={(e) => setCustomOccasionNameDraft(e.target.value)}
+                  placeholder={
+                    isEn
+                      ? 'e.g. Dog walk, Concert, Brunch, Travel...'
+                      : 'z. B. Hundespaziergang, Konzert, Brunch, Reise...'
                   }
-                  className={`py-2 px-3 min-h-[38px] rounded-xl text-xs font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
-                    active
-                      ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
-                      : 'bg-zinc-950 border-zinc-800/90 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700'
-                  }`}
-                >
-                  {occText}
-                </button>
-              );
-            })}
-
-            {customOccasions.map((co) => {
-              const active = activeCustomOccasion?.id === co.id;
-              return (
-                <button
-                  key={co.id}
-                  type="button"
-                  onClick={() =>
-                    onChangeContext({
-                      ...context,
-                      customOccasionId: co.id,
-                      activeModifiers: undefined,
-                    })
-                  }
-                  className={`inline-flex items-center gap-1.5 py-2 px-3 min-h-[38px] rounded-xl text-xs font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
-                    active
-                      ? 'bg-amber-400 border-amber-400 text-zinc-950 font-semibold'
-                      : 'bg-amber-500/10 border-amber-500/35 text-amber-200 hover:bg-amber-500/20'
-                  }`}
-                >
-                  <span>{co.name}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Inline Custom Occasion Creator / Editor */}
-          {isCustomOccasionOpen && onUpdateProfile && (
-            <div className="rounded-xl bg-zinc-950 border border-amber-500/40 p-4 space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold text-zinc-100">
-                  {editingCustomOccasionId
-                    ? isEn
-                      ? 'Edit Custom Occasion'
-                      : 'Eigenen Anlass bearbeiten'
-                    : isEn
-                    ? 'Create Custom Occasion'
-                    : 'Eigenen Anlass anlegen'}
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCustomOccasionOpen(false);
-                    setEditingCustomOccasionId(null);
-                  }}
-                  className="p-1 text-zinc-400 hover:text-zinc-100 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-300">
-                    {isEn ? 'Name of Occasion' : 'Bezeichnung'}
-                  </label>
-                  <input
-                    type="text"
-                    value={customOccasionNameDraft}
-                    onChange={(e) => setCustomOccasionNameDraft(e.target.value)}
-                    placeholder={
-                      isEn
-                        ? 'e.g. Dog walk, Concert, Brunch, Travel...'
-                        : 'z. B. Hundespaziergang, Konzert, Brunch, Reise...'
-                    }
-                    className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-300">
-                    {isEn ? 'Dress Code / Formality Level' : 'Schickheits-Grad (Mehrfachauswahl)'}
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(
-                      [
-                        { level: 1, labelDe: '1 · Sport & Lounge', labelEn: '1 · Sport & Lounge' },
-                        { level: 2, labelDe: '2 · Lässig', labelEn: '2 · Casual' },
-                        { level: 3, labelDe: '3 · Gepflegt', labelEn: '3 · Smart Casual' },
-                        { level: 4, labelDe: '4 · Schick / Büro', labelEn: '4 · Business / Chic' },
-                        { level: 5, labelDe: '5 · Festlich', labelEn: '5 · Formal' },
-                      ] as const
-                    ).map((item) => {
-                      const active = customOccasionFormalitiesDraft.includes(item.level);
-                      return (
-                        <button
-                          key={item.level}
-                          type="button"
-                          onClick={() => toggleDraftFormality(item.level)}
-                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer ${
-                            active
-                              ? 'bg-amber-400/20 border-amber-400/60 text-amber-200 font-semibold'
-                              : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {isEn ? item.labelEn : item.labelDe}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-400"
+                />
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-medium text-zinc-300">
-                  {isEn ? 'Default Modifiers for this Occasion' : 'Automatische Modifier für diesen Anlass'}
+                  {isEn ? 'Dress Code / Formality Level' : 'Schickheits-Grad (Mehrfachauswahl)'}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {(Object.keys(OUTFIT_MODIFIER_META) as OutfitModifier[]).map((modKey) => {
-                    const meta = OUTFIT_MODIFIER_META[modKey];
-                    const active = customOccasionModifiersDraft.includes(modKey);
+                  {(
+                    [
+                      { level: 1, labelDe: '1 · Sport & Lounge', labelEn: '1 · Sport & Lounge' },
+                      { level: 2, labelDe: '2 · Lässig', labelEn: '2 · Casual' },
+                      { level: 3, labelDe: '3 · Gepflegt', labelEn: '3 · Smart Casual' },
+                      { level: 4, labelDe: '4 · Schick / Büro', labelEn: '4 · Business / Chic' },
+                      { level: 5, labelDe: '5 · Festlich', labelEn: '5 · Formal' },
+                    ] as const
+                  ).map((item) => {
+                    const active = customOccasionFormalitiesDraft.includes(item.level);
                     return (
                       <button
-                        key={modKey}
+                        key={item.level}
                         type="button"
-                        onClick={() => toggleDraftModifier(modKey)}
+                        onClick={() => toggleDraftFormality(item.level)}
                         className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer ${
                           active
                             ? 'bg-amber-400/20 border-amber-400/60 text-amber-200 font-semibold'
                             : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
-                        {isEn ? meta.labelEn : meta.labelDe}
+                        {isEn ? item.labelEn : item.labelDe}
                       </button>
                     );
                   })}
                 </div>
               </div>
+            </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-900">
-                <div>
-                  {editingCustomOccasionId && (
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-zinc-300">
+                {isEn ? 'Default Focus for this Occasion' : 'Automatischer Fokus für diesen Anlass'}
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.keys(OUTFIT_MODIFIER_META) as OutfitModifier[]).map((modKey) => {
+                  const meta = OUTFIT_MODIFIER_META[modKey];
+                  const active = customOccasionModifiersDraft.includes(modKey);
+                  return (
+                    <button
+                      key={modKey}
+                      type="button"
+                      onClick={() => toggleDraftModifier(modKey)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-amber-400/20 border-amber-400/60 text-amber-200 font-semibold'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {isEn ? meta.labelEn : meta.labelDe}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-900">
+              <div>
+                {editingCustomOccasionId && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCustomOccasion(editingCustomOccasionId)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/40 border border-rose-900/50 text-xs font-medium text-rose-300 hover:bg-rose-900/40 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isEn ? 'Delete Occasion' : 'Anlass löschen'}</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCustomOccasionOpen(false);
+                    setEditingCustomOccasionId(null);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-zinc-100 cursor-pointer"
+                >
+                  {isEn ? 'Cancel' : 'Abbrechen'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!customOccasionNameDraft.trim()}
+                  onClick={handleSaveCustomOccasion}
+                  className="px-4 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-xs font-semibold text-zinc-950 cursor-pointer"
+                >
+                  {isEn ? 'Save Occasion' : 'Anlass speichern'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Collapsible Fine-Tuning Drawer (Exact Temp Slider, Daily Focus & Accessories) */}
+        {showFineFilters && (
+          <div className="pt-3 border-t border-zinc-800/80 space-y-3">
+            {/* Exact °C Slider */}
+            <div className="flex items-center gap-3">
+              <label htmlFor="temp-slider" className="text-xs font-medium text-zinc-300 shrink-0">
+                {isEn ? 'Exact temperature:' : 'Genaue Temperatur:'}
+              </label>
+              <input
+                id="temp-slider"
+                type="range"
+                min={-5}
+                max={32}
+                value={context.temperatureC}
+                onChange={(e) =>
+                  onChangeContext({ ...context, temperatureC: Number(e.target.value) })
+                }
+                className="flex-1 accent-amber-400 cursor-pointer h-6"
+              />
+              <span className="text-xs font-mono font-semibold text-amber-400 w-10 text-right">
+                {context.temperatureC}°C
+              </span>
+            </div>
+
+            {/* Combinable Daily Modifiers Bar */}
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-medium text-zinc-300">
+                    {isEn ? 'Daily Focus & Details:' : 'Tages-Fokus & Details:'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {context.activeModifiers !== undefined && (
                     <button
                       type="button"
-                      onClick={() => handleDeleteCustomOccasion(editingCustomOccasionId)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/40 border border-rose-900/50 text-xs font-medium text-rose-300 hover:bg-rose-900/40 cursor-pointer"
+                      onClick={() => onChangeContext({ ...context, activeModifiers: undefined })}
+                      className="text-[11px] text-zinc-400 hover:text-amber-300 cursor-pointer underline"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>{isEn ? 'Delete Occasion' : 'Anlass löschen'}</span>
+                      {isEn ? 'Reset to default' : 'Auf Standard zurücksetzen'}
+                    </button>
+                  )}
+                  {onOpenProfileTab && (
+                    <button
+                      type="button"
+                      onClick={onOpenProfileTab}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 cursor-pointer"
+                    >
+                      {isEn ? 'Edit defaults in Profile →' : 'Standard im Profil anpassen →'}
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomOccasionOpen(false);
-                      setEditingCustomOccasionId(null);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-zinc-100 cursor-pointer"
-                  >
-                    {isEn ? 'Cancel' : 'Abbrechen'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!customOccasionNameDraft.trim()}
-                    onClick={handleSaveCustomOccasion}
-                    className="px-4 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-xs font-semibold text-zinc-950 cursor-pointer"
-                  >
-                    {isEn ? 'Save Occasion' : 'Anlass speichern'}
-                  </button>
-                </div>
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* Combinable Daily Modifiers Bar (Replaces redundant "Stil:" selector) */}
-        <div className="pt-3 border-t border-zinc-800/80 space-y-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-xs font-medium text-zinc-300">
-                {isEn ? 'Daily Focus & Modifiers:' : 'Tages-Fokus & Modifier:'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {context.activeModifiers !== undefined && (
-                <button
-                  type="button"
-                  onClick={() => onChangeContext({ ...context, activeModifiers: undefined })}
-                  className="text-[11px] text-zinc-400 hover:text-amber-300 cursor-pointer underline"
-                >
-                  {isEn ? 'Reset to default' : 'Auf Standard zurücksetzen'}
-                </button>
-              )}
-              {onOpenProfileTab && (
-                <button
-                  type="button"
-                  onClick={onOpenProfileTab}
-                  className="text-[11px] text-amber-400 hover:text-amber-300 cursor-pointer"
-                >
-                  {isEn ? 'Edit defaults in Profile →' : 'Standard im Profil anpassen →'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(Object.keys(OUTFIT_MODIFIER_META) as OutfitModifier[]).map((modKey) => {
-              const meta = OUTFIT_MODIFIER_META[modKey];
-              const isSelected = effectiveModifiers.includes(modKey);
-              return (
-                <button
-                  key={modKey}
-                  type="button"
-                  onClick={() => toggleDailyModifier(modKey)}
-                  title={isEn ? meta.descEn : meta.descDe}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[34px] rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
-                    isSelected
-                      ? 'bg-amber-400/20 border-amber-400/60 text-amber-200 font-semibold'
-                      : 'bg-zinc-950 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                  }`}
-                >
-                  {isSelected && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
-                  <span>{isEn ? meta.labelEn : meta.labelDe}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Configurable Accessory Suggestions Bar ("Mütze, Socke, Armband, Uhr etc. als Vorschlag") */}
-        <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 shrink-0">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-xs font-medium text-zinc-300">
-              {isEn ? 'Accessories in suggestions:' : 'Accessoires als Vorschlag:'}
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 flex-1 sm:justify-end">
-            <button
-              type="button"
-              onClick={toggleAllAccessories}
-              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap border ${
-                context.includeAccessories !== false &&
-                (!context.excludedAccessorySubcategories ||
-                  context.excludedAccessorySubcategories.length === 0)
-                  ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              {context.includeAccessories === false
-                ? isEn
-                  ? 'Enable all'
-                  : 'Alle einblenden'
-                : isEn
-                ? 'Hide all'
-                : 'Alle ausblenden'}
-            </button>
-
-            {ACCESSORY_SUGGESTION_CHIPS.filter(
-              (chip) =>
-                chip.alwaysShow ||
-                (accessorySubcategoriesInCloset.get(chip.subcategory) || 0) > 0
-            ).map((chip) => {
-              const isEnabled = isAccessorySubcategoryEnabled(chip.subcategory);
-              const count = accessorySubcategoriesInCloset.get(chip.subcategory) || 0;
-              return (
-                <button
-                  key={chip.subcategory}
-                  type="button"
-                  onClick={() => toggleAccessorySubcategory(chip.subcategory)}
-                  title={
-                    isEnabled
-                      ? `${chip.labelDe} in Outfit-Vorschlägen aktiv (${count} im Schrank) – Klicken zum Ausblenden`
-                      : `${chip.labelDe} in Outfit-Vorschlägen ausgeblendet (${count} im Schrank) – Klicken zum Einblenden`
-                  }
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border ${
-                    isEnabled
-                      ? 'bg-amber-400/15 border-amber-400/50 text-amber-200'
-                      : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
-                  }`}
-                >
-                  <GarmentVector
-                    type={chip.subcategory}
-                    colorHex={isEnabled ? '#FBBF24' : '#71717A'}
-                    texture="smooth_cotton"
-                    className="w-3.5 h-3.5 shrink-0"
-                  />
-                  <span>{isEn ? chip.labelEn : chip.labelDe}</span>
-                  {count > 0 && (
-                    <span
-                      className={`text-[10px] font-mono ${
-                        isEnabled ? 'text-amber-300/90' : 'text-zinc-600'
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(Object.keys(OUTFIT_MODIFIER_META) as OutfitModifier[]).map((modKey) => {
+                  const meta = OUTFIT_MODIFIER_META[modKey];
+                  const isSelected = effectiveModifiers.includes(modKey);
+                  return (
+                    <button
+                      key={modKey}
+                      type="button"
+                      onClick={() => toggleDailyModifier(modKey)}
+                      title={isEn ? meta.descEn : meta.descDe}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 min-h-[30px] rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
+                        isSelected
+                          ? 'bg-amber-400/20 border-amber-400/60 text-amber-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                       }`}
                     >
-                      ({count})
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Configurable Automatic Laundry Bar ("Automatisch in die Wäsche bei 'Heute anziehen'") */}
-        {onUpdateProfile && (
-          <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 shrink-0">
-              <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-xs font-medium text-zinc-300">
-                {isEn
-                  ? 'Auto-laundry when worn:'
-                  : 'Automatisch in die Wäsche (bei „Heute anziehen“):'}
-              </span>
+                      {isSelected && <Check className="w-3 h-3 text-amber-400 shrink-0" />}
+                      <span>{isEn ? meta.labelEn : meta.labelDe}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5 flex-1 sm:justify-end">
-              {AUTO_LAUNDRY_GROUPS.map((group) => {
-                const isActive = group.subcategories.every((s) =>
-                  activeAutoLaundrySubs.includes(s)
-                );
-                return (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => toggleAutoLaundryGroup(group.subcategories)}
-                    title={
-                      isActive
-                        ? `${group.labelDe} landen beim Tragen automatisch im Wäschekorb (Standard: T-Shirts & Socken)`
-                        : `${group.labelDe} bleiben nach 1× Tragen weiter frisch im Schrank`
-                    }
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border ${
-                      isActive
-                        ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200 font-semibold'
-                        : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
-                    }`}
-                  >
-                    {isActive ? '✓ ' : ''}
-                    {isEn ? group.labelEn : group.labelDe}
-                  </button>
-                );
-              })}
+            {/* Configurable Accessory Suggestions Bar */}
+            <div className="pt-2 border-t border-zinc-800/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-xs font-medium text-zinc-300 shrink-0">
+                {isEn ? 'Accessories:' : 'Accessoires:'}
+              </span>
+
+              <div className="flex flex-wrap items-center gap-1.5 flex-1 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={toggleAllAccessories}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                    context.includeAccessories !== false &&
+                    (!context.excludedAccessorySubcategories ||
+                      context.excludedAccessorySubcategories.length === 0)
+                      ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {context.includeAccessories === false
+                    ? isEn
+                      ? 'Enable all'
+                      : 'Alle einblenden'
+                    : isEn
+                    ? 'Hide all'
+                    : 'Alle ausblenden'}
+                </button>
+
+                {ACCESSORY_SUGGESTION_CHIPS.filter(
+                  (chip) =>
+                    chip.alwaysShow ||
+                    (accessorySubcategoriesInCloset.get(chip.subcategory) || 0) > 0
+                ).map((chip) => {
+                  const isEnabled = isAccessorySubcategoryEnabled(chip.subcategory);
+                  const count = accessorySubcategoriesInCloset.get(chip.subcategory) || 0;
+                  return (
+                    <button
+                      key={chip.subcategory}
+                      type="button"
+                      onClick={() => toggleAccessorySubcategory(chip.subcategory)}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                        isEnabled
+                          ? 'bg-amber-400/15 border-amber-400/50 text-amber-200'
+                          : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+                      }`}
+                    >
+                      <GarmentVector
+                        type={chip.subcategory}
+                        colorHex={isEnabled ? '#FBBF24' : '#71717A'}
+                        texture="smooth_cotton"
+                        className="w-3.5 h-3.5 shrink-0"
+                      />
+                      <span>{isEn ? chip.labelEn : chip.labelDe}</span>
+                      {count > 0 && (
+                        <span
+                          className={`text-[10px] font-mono ${
+                            isEnabled ? 'text-amber-300/90' : 'text-zinc-600'
+                          }`}
+                        >
+                          ({count})
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -1432,24 +1450,6 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         </div>
       ) : (
         <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-            <p className="text-xs text-zinc-400">
-              {isEn
-                ? `${outfits.length} matching outfit suggestions`
-                : `${outfits.length} passende Outfit-Vorschläge`}
-              {context.variationSeed
-                ? ` · ${isEn ? `Variation #${context.variationSeed + 1}` : `Variante #${context.variationSeed + 1}`}`
-                : ''}
-            </p>
-            <button
-              type="button"
-              onClick={handleGenerateNewOutfits}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-amber-500/40 hover:border-amber-400 text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors cursor-pointer touch-manipulation active:scale-95"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
-              <span>{isEn ? 'Generate New Outfits' : 'Neue Outfits generieren'}</span>
-            </button>
-          </div>
 
           {latestWornBanner && (
             <div
@@ -1529,8 +1529,8 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           )}
 
           {outfits.map((outfit, outfitSlotIndex) => {
-            const sessionWorn = sessionWornById[outfit.id];
-            const isWornToday = Boolean(sessionWorn) || wornFeedbackId === outfit.id;
+            const activeWornEntry = activeWornByOutfitId.get(outfit.id);
+            const isWornToday = Boolean(activeWornEntry) || wornFeedbackId === outfit.id;
             const hasSandboxItem = outfit.items.some((i) => i.isWishlistSandbox);
             const sortedAnatomicalItems = [...outfit.items].sort(
               (a, b) =>
@@ -1541,7 +1541,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               (i) => i.category !== 'accessory'
             );
             const outfitTitle =
-              customOutfitNames[outfit.id] || getShortOutfitTitle(outfit.items);
+              customOutfitNames[outfit.id] ||
+              activeWornEntry?.outfitTitle ||
+              getShortOutfitTitle(outfit.items);
             const isEditingTitle = editingOutfitId === outfit.id;
             const coreSigIds = coreAnatomicalItems.map((i) => i.id);
             const outfitSig = buildOutfitSignature(
@@ -1550,17 +1552,55 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             const isFavoriteOutfit =
               favoriteSignatures.has(outfit.id) || favoriteSignatures.has(outfitSig);
 
+            const outfitHiddenIds = hiddenLayersByOutfitId[outfit.id] || [];
+            const outfitOpenOverrides = openOverridesByOutfitId[outfit.id] || {};
+            const { hasMultipleUpperLayers, upperLayers } = getOutfitUpperLayers(
+              outfit.items
+            );
+            const resolvedLayers = resolveUpperLayerState(
+              outfit.items,
+              outfitHiddenIds,
+              outfitOpenOverrides
+            );
+
+            const toggleSingleUpperLayer = (layerId: string) => {
+              const isHidden = outfitHiddenIds.includes(layerId);
+              if (isHidden) {
+                handleSetOutfitHiddenLayers(
+                  outfit.id,
+                  outfitHiddenIds.filter((id) => id !== layerId)
+                );
+              } else {
+                const remainingVisible = upperLayers.filter(
+                  (g) => g.id !== layerId && !outfitHiddenIds.includes(g.id)
+                );
+                if (remainingVisible.length > 0) {
+                  handleSetOutfitHiddenLayers(outfit.id, [...outfitHiddenIds, layerId]);
+                } else if (
+                  resolvedLayers.baseTop &&
+                  layerId !== resolvedLayers.baseTop.id
+                ) {
+                  handleSetOutfitHiddenLayers(
+                    outfit.id,
+                    upperLayers
+                      .filter((g) => g.id !== resolvedLayers.baseTop?.id)
+                      .map((g) => g.id)
+                  );
+                }
+              }
+            };
+
             return (
               <article
                 key={outfit.id}
-                className={`rounded-2xl border p-5 sm:p-6 transition-colors space-y-4 ${
+                className={`rounded-2xl border p-4 sm:p-5 transition-colors space-y-4 ${
                   isWornToday
                     ? 'bg-emerald-950/15 border-emerald-500/60 shadow-lg'
                     : 'bg-zinc-900/45 border-zinc-800/90 hover:border-zinc-700/80'
                 }`}
               >
                 {/* Minimal, Non-Verbose Card Header */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-800/70">
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-zinc-800/70">
                   <div className="flex items-center gap-2 min-w-0">
                     {isEditingTitle ? (
                       <div className="flex items-center gap-1.5">
@@ -1602,10 +1642,43 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         {isWornToday && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/45 text-[11px] text-emerald-300 font-semibold">
-                            <Check className="w-3 h-3" />
-                            <span>{isEn ? 'Selected for today' : 'Heute ausgewählt'}</span>
-                          </span>
+                          <div className="inline-flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/45 text-[11px] text-emerald-300 font-semibold">
+                              <Check className="w-3 h-3" />
+                              <span>
+                                {isEn ? 'Selected for today' : 'Heute ausgewählt'}
+                                {activeWornEntry?.remainingHours
+                                  ? ` · ${
+                                      isEn
+                                        ? `${activeWornEntry.remainingHours}h left`
+                                        : `noch ${activeWornEntry.remainingHours} Std.`
+                                    }`
+                                  : ''}
+                              </span>
+                            </span>
+                            {onUpdateProfile && (
+                              <select
+                                aria-label={
+                                  isEn
+                                    ? 'How long to keep selected outfit pinned'
+                                    : 'Anzeigedauer für gewähltes Outfit'
+                                }
+                                value={activeRetentionHours}
+                                onChange={(e) =>
+                                  void handleChangeRetentionHours(Number(e.target.value))
+                                }
+                                className="px-2 py-0.5 rounded-md bg-zinc-950 border border-emerald-500/40 text-[11px] text-emerald-200 focus:outline-none cursor-pointer"
+                              >
+                                {WORN_RETENTION_OPTIONS.map((opt) => (
+                                  <option key={opt.hours} value={opt.hours}>
+                                    {isEn
+                                      ? `Pin: ${opt.labelEn}`
+                                      : `Stehen lassen: ${opt.labelDe}`}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         )}
                         {hasSandboxItem && (
                           <span className="text-xs text-sky-300 font-medium">
@@ -1616,7 +1689,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto shrink-0">
+                  <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto shrink-0">
                     {onToggleFavoriteOutfit && (
                       <button
                         type="button"
@@ -1641,7 +1714,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             ? 'Save as Favorite Outfit'
                             : 'Als Lieblings-Outfit speichern'
                         }
-                        className={`inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                        className={`inline-flex items-center justify-center gap-1.5 min-h-[38px] px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                           isFavoriteOutfit
                             ? 'bg-rose-500/15 border-rose-500/50 text-rose-200 font-semibold'
                             : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-rose-200'
@@ -1654,14 +1727,22 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                               : 'text-rose-400'
                           }`}
                         />
-                        <span>{isFavoriteOutfit ? (isEn ? 'Saved' : 'Favorit') : (isEn ? 'Favorite' : 'Merken')}</span>
+                        <span>
+                          {isFavoriteOutfit
+                            ? isEn
+                              ? 'Saved'
+                              : 'Favorit'
+                            : isEn
+                            ? 'Favorite'
+                            : 'Merken'}
+                        </span>
                       </button>
                     )}
 
                     <button
                       type="button"
                       onClick={() => handleShareOutfit(outfit, outfitTitle)}
-                      className={`inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                      className={`inline-flex items-center justify-center gap-1.5 min-h-[38px] px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                         sharedFeedbackId === outfit.id
                           ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
                           : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100'
@@ -1683,16 +1764,16 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setPopupOutfit(outfit)}
-                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3.5 py-2 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
                     >
-                      <Info className="w-4 h-4 text-amber-400" />
+                      <Info className="w-3.5 h-3.5 text-amber-400" />
                       <span>{isEn ? 'Why it works' : 'Warum passt’s?'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleMarkWorn(outfit, outfitTitle, outfitSlotIndex)}
-                      className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                      className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                         isWornToday
                           ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold'
                           : 'bg-zinc-100 text-zinc-950 hover:bg-white font-semibold'
@@ -1710,16 +1791,39 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       </span>
                     </button>
 
-                    {isWornToday && sessionWorn?.recordId && onDeleteWornRecord && (
-                      <button
-                        type="button"
-                        onClick={() => handleUndoWornOutfit(outfit.id)}
-                        title={isEn ? 'Undo wear selection' : 'Auswahl rückgängig machen'}
-                        className="inline-flex items-center justify-center gap-1 min-h-[42px] px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-rose-500/60 text-xs font-medium text-zinc-300 hover:text-rose-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>{isEn ? 'Undo' : 'Rückgängig'}</span>
-                      </button>
+                    {isWornToday && activeWornEntry?.recordId && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDismissWornOutfit(outfit.id, activeWornEntry.recordId)
+                          }
+                          title={
+                            isEn
+                              ? 'Dismiss from top (keeps history)'
+                              : 'Oben ausblenden (bleibt in der Historie)'
+                          }
+                          className="inline-flex items-center justify-center gap-1 min-h-[38px] px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-600 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>{isEn ? 'Hide' : 'Ausblenden'}</span>
+                        </button>
+                        {onDeleteWornRecord && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleUndoWornOutfit(outfit.id, activeWornEntry.recordId)
+                            }
+                            title={
+                              isEn ? 'Undo wear selection' : 'Auswahl rückgängig machen'
+                            }
+                            className="inline-flex items-center justify-center gap-1 min-h-[38px] px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-rose-500/60 text-xs font-medium text-zinc-300 hover:text-rose-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>{isEn ? 'Undo' : 'Rückgängig'}</span>
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1732,9 +1836,18 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       <OutfitLayerStack
                         items={outfit.items}
                         profile={profile}
+                        locale={locale}
                         lockedGarmentIds={context.lockedGarmentIds}
                         onToggleLock={toggleLockGarment}
                         onEditGarment={onEditGarment}
+                        hiddenLayerIds={outfitHiddenIds}
+                        onChangeHiddenLayerIds={(ids) =>
+                          handleSetOutfitHiddenLayers(outfit.id, ids)
+                        }
+                        openOverrides={outfitOpenOverrides}
+                        onToggleOpenOverride={(gId, curr) =>
+                          handleToggleOutfitOpenOverride(outfit.id, gId, curr)
+                        }
                       />
                     </div>
 
@@ -1743,10 +1856,41 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       <div className="space-y-2.5">
                         {coreAnatomicalItems.map((item, layerIdx) => {
                           const isLocked = context.lockedGarmentIds.includes(item.id);
+                          const isUpperItem =
+                            item.category === 'base_top' ||
+                            item.category === 'mid_layer' ||
+                            item.category === 'outerwear';
+                          const isInnermostBaseTop =
+                            hasMultipleUpperLayers &&
+                            resolvedLayers.baseTop?.id === item.id;
+                          const isCoveringUpperLayer =
+                            hasMultipleUpperLayers &&
+                            isUpperItem &&
+                            !isInnermostBaseTop;
+                          const isLayerHidden =
+                            isUpperItem && outfitHiddenIds.includes(item.id);
+                          const isBaseSoloActive =
+                            resolvedLayers.activePreset === 'base_only';
+
+                          const effectiveWornOpen =
+                            item.id === resolvedLayers.midLayer?.id
+                              ? resolvedLayers.isMidLayerOpen
+                              : item.id === resolvedLayers.outerwear?.id
+                              ? resolvedLayers.isOuterwearOpen
+                              : item.wornOpen;
+                          const canToggleItemOpen =
+                            isCoveringUpperLayer && isGarmentOpenable(item);
+
                           return (
                             <div
                               key={item.id}
-                              className="group relative rounded-xl bg-zinc-950/90 border border-zinc-800/80 hover:border-zinc-700/90 p-3 flex items-center gap-3.5 transition-colors"
+                              className={`group relative rounded-xl border p-3 flex items-center gap-3.5 transition-all ${
+                                isLayerHidden
+                                  ? 'bg-zinc-950/45 border-zinc-800/45 opacity-60'
+                                  : isInnermostBaseTop && isBaseSoloActive
+                                  ? 'bg-amber-950/15 border-amber-500/45'
+                                  : 'bg-zinc-950/90 border-zinc-800/80 hover:border-zinc-700/90'
+                              }`}
                             >
                               {/* Layer index + Miniature Garment Vector */}
                               <div className="relative flex items-center justify-center w-12 h-12 rounded-lg bg-zinc-900/70 border border-zinc-800/60 shrink-0">
@@ -1767,7 +1911,8 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     neckline={item.neckline}
                                     hasPrint={item.hasPrint}
                                     hasLogo={item.hasLogo}
-                                    wornOpen={item.wornOpen}
+                                    wornOpen={effectiveWornOpen}
+                                    openFront={effectiveWornOpen}
                                     className="w-10 h-10"
                                   />
                                 )}
@@ -1780,6 +1925,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400">
                                   <span>{SUBCATEGORY_LABELS[item.subcategory]}</span>
+                                  {isInnermostBaseTop && (
+                                    <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-[10px] text-amber-300 font-medium">
+                                      {isEn ? 'Underneath' : 'Drunter'}
+                                    </span>
+                                  )}
                                   {item.brand && (
                                     <>
                                       <span aria-hidden="true">·</span>
@@ -1789,7 +1939,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                   {item.size && (
                                     <>
                                       <span aria-hidden="true">·</span>
-                                      <span>Gr. {item.size}</span>
+                                      <span>{isEn ? `Size ${item.size}` : `Gr. ${item.size}`}</span>
                                     </>
                                   )}
                                   {item.pattern && item.pattern !== 'solid' && (
@@ -1812,24 +1962,60 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                       <span className="text-indigo-300">Logo</span>
                                     </>
                                   )}
-                                  {item.wornOpen !== undefined && (
-                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-[10px] text-amber-200 font-medium">
-                                      {item.wornOpen
-                                        ? 'Empfehlung: Offen über T-Shirt'
-                                        : 'Empfehlung: Geschlossen getragen'}
-                                    </span>
+                                  {canToggleItemOpen ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleToggleOutfitOpenOverride(
+                                          outfit.id,
+                                          item.id,
+                                          Boolean(effectiveWornOpen)
+                                        )
+                                      }
+                                      title={
+                                        isEn
+                                          ? 'Toggle open or closed over base layer'
+                                          : 'Zwischen offen und geschlossen umschalten'
+                                      }
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-[10px] text-amber-200 font-medium transition-colors cursor-pointer"
+                                    >
+                                      <Layers className="w-2.5 h-2.5 text-amber-400" />
+                                      <span>
+                                        {effectiveWornOpen
+                                          ? isEn
+                                            ? 'Open over top'
+                                            : 'Offen über T-Shirt'
+                                          : isEn
+                                          ? 'Worn closed'
+                                          : 'Geschlossen getragen'}
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    item.wornOpen !== undefined && (
+                                      <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-[10px] text-amber-200 font-medium">
+                                        {item.wornOpen
+                                          ? isEn
+                                            ? 'Open over top'
+                                            : 'Offen über T-Shirt'
+                                          : isEn
+                                          ? 'Worn closed'
+                                          : 'Geschlossen getragen'}
+                                      </span>
+                                    )
                                   )}
                                   {item.isWishlistSandbox && (
                                     <>
                                       <span aria-hidden="true">·</span>
-                                      <span className="text-sky-300">Test-Stück</span>
+                                      <span className="text-sky-300">
+                                        {isEn ? 'Test Item' : 'Test-Stück'}
+                                      </span>
                                     </>
                                   )}
                                   {item.wearCount !== undefined && item.wearCount > 0 && (
                                     <>
                                       <span aria-hidden="true">·</span>
                                       <span className="text-amber-400 font-mono font-medium">
-                                        {item.wearCount}× getragen
+                                        {isEn ? `${item.wearCount}× worn` : `${item.wearCount}× getragen`}
                                       </span>
                                     </>
                                   )}
@@ -1839,7 +2025,11 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-sm font-semibold text-zinc-100 truncate mt-0.5">
+                                <p
+                                  className={`text-sm font-semibold truncate mt-0.5 ${
+                                    isLayerHidden ? 'line-through text-zinc-400' : 'text-zinc-100'
+                                  }`}
+                                >
                                   {item.name}
                                 </p>
                                 <div className="flex items-center gap-1.5 text-xs text-zinc-400 mt-0.5">
@@ -1885,8 +2075,99 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                                 </div>
                               </div>
 
-                              {/* Edit & Lock Actions */}
+                              {/* Layer Peel Toggle + Shop, Edit & Lock Actions */}
                               <div className="flex items-center gap-1 shrink-0">
+                                {isCoveringUpperLayer && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSingleUpperLayer(item.id)}
+                                    title={
+                                      isLayerHidden
+                                        ? isEn
+                                          ? 'Show layer again'
+                                          : 'Schicht wieder einblenden'
+                                        : isEn
+                                        ? 'Hide layer to see underneath'
+                                          : 'Ausblenden, um Schicht drunter zu sehen'
+                                    }
+                                    className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                                      isLayerHidden
+                                        ? 'bg-amber-500/20 border-amber-400/60 text-amber-200'
+                                        : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100'
+                                    }`}
+                                  >
+                                    {isLayerHidden ? (
+                                      <>
+                                        <Eye className="w-3.5 h-3.5 text-amber-400" />
+                                        <span className="hidden sm:inline">
+                                          {isEn ? 'Show' : 'Einblenden'}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <EyeOff className="w-3.5 h-3.5 text-zinc-400" />
+                                        <span className="hidden sm:inline">
+                                          {isEn ? 'Underneath' : 'Drunter'}
+                                        </span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+
+                                {isInnermostBaseTop && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleSetOutfitHiddenLayers(
+                                        outfit.id,
+                                        isBaseSoloActive
+                                          ? computeHiddenIdsForPreset(outfit.items, 'all')
+                                          : computeHiddenIdsForPreset(
+                                              outfit.items,
+                                              'base_only'
+                                            )
+                                      )
+                                    }
+                                    title={
+                                      isBaseSoloActive
+                                        ? isEn
+                                          ? 'Show all layers again'
+                                          : 'Alle Schichten wieder zeigen'
+                                        : isEn
+                                        ? 'Show only this underneath top'
+                                        : 'Nur dieses Oberteil drunter in der Vorschau zeigen'
+                                    }
+                                    className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                                      isBaseSoloActive
+                                        ? 'bg-amber-400 border-amber-400 text-zinc-950 font-semibold'
+                                        : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100'
+                                    }`}
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">
+                                      {isBaseSoloActive
+                                        ? isEn
+                                          ? 'All Layers'
+                                          : 'Alle Schichten'
+                                        : isEn
+                                        ? 'Solo'
+                                        : 'Solo zeigen'}
+                                    </span>
+                                  </button>
+                                )}
+
+                                {isExampleGarment(item) && (
+                                  <a
+                                    href={buildBrandOrShopUrl(item, { profile })}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={isAmazon ? 'Bei Amazon suchen' : isEn ? 'Find in Shop' : 'Im Shop suchen'}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-zinc-900/90 border border-zinc-800 hover:border-amber-400/60 text-[11px] font-medium text-amber-300 hover:text-amber-200 transition-colors whitespace-nowrap"
+                                  >
+                                    <span>{isAmazon ? 'Amazon' : 'Shop'}</span>
+                                    <ArrowUpRight className="w-3 h-3" />
+                                  </a>
+                                )}
                                 {onEditGarment && (
                                   <button
                                     type="button"
@@ -2378,12 +2659,12 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     </div>
 
                     <a
-                      href={buildBrandOrShopUrl(item)}
+                      href={buildBrandOrShopUrl(item, { profile })}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-700 hover:border-amber-400 text-[11px] font-medium text-amber-300 hover:text-amber-200 shrink-0"
                     >
-                      <span>{isEn ? 'Shop' : 'Im Shop'}</span>
+                      <span>{isAmazon ? 'Bei Amazon' : isEn ? 'Shop' : 'Im Shop'}</span>
                       <ArrowUpRight className="w-3 h-3" />
                     </a>
                   </div>

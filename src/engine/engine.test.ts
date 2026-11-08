@@ -6,7 +6,7 @@ import {
   hexToHsl,
   scoreGarmentBiometrics,
 } from './colorMath';
-import { generateOutfitsForContext } from './outfitGenerator';
+import { generateOutfitsForContext, getActiveWornOutfits } from './outfitGenerator';
 import {
   appendAffiliateParam,
   buildBrandOrShopUrl,
@@ -15,6 +15,7 @@ import {
   isExampleGarment,
 } from './outfitShare';
 import { analyzeWardrobeGaps } from './gapAnalyzer';
+import { instantiateCandidateArchetypes } from './archetypes';
 import {
   buildLlmWardrobeAnalysisPrompt,
   parseAndNormalizeWardrobeImport,
@@ -27,6 +28,7 @@ import {
   normalizeWardrobeScopes,
   SEED_WARDROBE_GARMENTS,
   SEED_WOMENSWEAR_GARMENTS,
+  TEXTILE_COLOR_PRESETS,
 } from '../data/seedData';
 import {
   createDefaultWardrobeState,
@@ -40,6 +42,15 @@ import {
   normalizeBrandKey,
   suggestSizeForGarment,
 } from './brandSizeMatcher';
+import { computeGapStructuralKey } from './gapCacheKey';
+import {
+  createTranslator,
+  DE_MESSAGES,
+  EN_MESSAGES,
+  tCategory,
+  tOccasion,
+  tWeather,
+} from '../i18n/messages';
 import { BiometricProfile } from '../types/wardrobe';
 
 test('colorMath: hexToHsl and classifyColorTemp classify warm, cool, and neutral accurately', () => {
@@ -58,7 +69,10 @@ test('colorMath: hexToHsl and classifyColorTemp classify warm, cool, and neutral
 
 test('colorMath: deriveSeasonPalette maps Soft Autumn for Olive + Medium Contrast + Muted Chroma', () => {
   const palette = deriveSeasonPalette(DEFAULT_BIOMETRIC_PROFILE);
-  assert.ok(palette.seasonName.includes('Soft Autumn'));
+  assert.ok(
+    palette.seasonName.includes('Gedämpfter Herbst') ||
+      palette.seasonName.includes('Soft Autumn')
+  );
   assert.equal(palette.powerColors.length, 12);
   assert.equal(palette.coreNeutrals.length, 6);
   assert.equal(palette.avoidColors.length, 6);
@@ -418,7 +432,12 @@ test('userExactProfile & accessories: handles copper hair, warm undertone, blue-
 
   // Derive palette
   const palette = deriveSeasonPalette(userProfile);
-  assert.ok(palette.seasonName.includes('Spring') || palette.seasonName.includes('Autumn'));
+  assert.ok(
+    palette.seasonName.includes('Frühling') ||
+      palette.seasonName.includes('Herbst') ||
+      palette.seasonName.includes('Spring') ||
+      palette.seasonName.includes('Autumn')
+  );
   assert.ok(palette.powerColors.length >= 6);
 
   // Test wardrobe import with accessories (watch, sunglasses, bracelet, belt)
@@ -1131,8 +1150,8 @@ test('outfitGenerator: supports expanded occasions (homeoffice_lounge, beach_vac
   );
   assert.ok(homeOfficeOutfits.length > 0, 'Should generate outfits for homeoffice_lounge');
   assert.ok(
-    homeOfficeOutfits[0].traces.some((t) => t.includes('Modifier')),
-    'Should include active modifier trace in explanation'
+    homeOfficeOutfits[0].traces.some((t) => t.includes('Fokus [') || t.includes('Modifier')),
+    'Should include active focus/modifier trace in explanation'
   );
 
   // 2) Custom Occasion with custom formality and defaultModifiers
@@ -1194,6 +1213,7 @@ test('outfitShare & shopAffiliate: buildBrandOrShopUrl, appendAffiliateParam, an
   assert.equal(isExampleGarment({ id: 'seed_top_1' }), true, 'seed_ is example');
   assert.equal(isExampleGarment({ id: 'fem_top_1' }), true, 'fem_ is example');
   assert.equal(isExampleGarment({ id: 'uni_top_1' }), true, 'uni_ is example');
+  assert.equal(isExampleGarment({ id: 'arch_navy_blazer' }), true, 'arch_ is example');
   assert.equal(isExampleGarment({ id: 'custom_user_piece_123' }), false, 'custom user piece is NOT example');
   assert.equal(
     isExampleGarment({ id: 'custom_user_piece_123', buyUrl: 'https://shop.com/shirt' }),
@@ -1201,10 +1221,15 @@ test('outfitShare & shopAffiliate: buildBrandOrShopUrl, appendAffiliateParam, an
     'custom piece with buyUrl is considered linkable'
   );
 
-  // 2) appendAffiliateParam
+  // 2) appendAffiliateParam (including shorthand Amazon PartnerNet tag without "tag=")
   assert.equal(
-    appendAffiliateParam('https://google.com/search?q=test', 'tag=partner-21'),
-    'https://google.com/search?q=test&tag=partner-21'
+    appendAffiliateParam('https://www.amazon.de/s?k=test', 'tag=partner-21'),
+    'https://www.amazon.de/s?k=test&tag=partner-21'
+  );
+  assert.equal(
+    appendAffiliateParam('https://www.amazon.de/s?k=test', 'partner-21'),
+    'https://www.amazon.de/s?k=test&tag=partner-21',
+    'Shorthand partner tag without "tag=" should automatically normalize to tag=partner-21'
   );
   assert.equal(
     appendAffiliateParam('https://amazon.de/dp/B123', 'tag=partner-21'),
@@ -1221,38 +1246,393 @@ test('outfitShare & shopAffiliate: buildBrandOrShopUrl, appendAffiliateParam, an
     'Should trim leading ?'
   );
 
-  // 3) buildBrandOrShopUrl with custom base URL and affiliate parameter
-  const sampleGarment = {
-    name: 'Merinowoll-Pullover',
-    brand: 'Arket',
-    colorName: 'Dunkelblau',
-    subcategory: 'knit_sweater' as const,
-    texture: 'fine_knit' as const,
+  // 3) buildBrandOrShopUrl defaults to Amazon.de and combines Brand + Type + Color + Fit + Texture + Herren/Damen
+  const mensGarment = {
+    id: 'seed_bot_2',
+    name: 'Jeans Raw Indigo',
+    brand: "Levi's",
+    colorName: 'Raw Indigo',
+    category: 'bottom' as const,
+    subcategory: 'denim' as const,
+    fit: 'slim' as const,
+    texture: 'denim' as const,
   };
 
-  const amazonUrl = buildBrandOrShopUrl(sampleGarment, {
-    baseUrl: 'https://www.amazon.de/s?k={query}',
+  const amazonMensUrl = buildBrandOrShopUrl(mensGarment, {
+    affiliateParam: 'mypartner-21',
+  });
+  assert.ok(
+    amazonMensUrl.startsWith('https://www.amazon.de/s?k='),
+    'Should default to Amazon.de search URL'
+  );
+  assert.ok(amazonMensUrl.includes('tag=mypartner-21'), 'Should contain normalized affiliate tag');
+  assert.ok(amazonMensUrl.includes(encodeURIComponent("Levi's")), 'Should include brand');
+  assert.ok(amazonMensUrl.includes('Jeans'), 'Should include subcategory');
+  assert.ok(amazonMensUrl.includes('Slim'), 'Should include fit');
+  assert.ok(amazonMensUrl.includes('Herren'), 'Should include Herren for menswear seed item');
+
+  // 4) Womenswear detection (via fem_ prefix or womenswear subcategory)
+  const womensGarment = {
+    id: 'fem_out_1',
+    name: 'Trenchcoat Beige',
+    brand: 'Mango',
+    colorName: 'Sand / Beige',
+    category: 'outerwear' as const,
+    subcategory: 'trenchcoat' as const,
+    texture: 'tech_waterproof' as const,
+  };
+  const amazonWomensUrl = buildBrandOrShopUrl(womensGarment, {
     affiliateParam: 'tag=mypartner-21',
   });
-  assert.ok(amazonUrl.startsWith('https://www.amazon.de/s?k='), 'Should use custom Amazon base');
-  assert.ok(amazonUrl.includes('tag=mypartner-21'), 'Should contain affiliate tag');
-  assert.ok(amazonUrl.includes('Arket'), 'Should include brand');
+  assert.ok(amazonWomensUrl.includes('Mango'), 'Should include brand Mango');
+  assert.ok(amazonWomensUrl.includes('Trenchcoat'), 'Should include Trenchcoat');
+  assert.ok(amazonWomensUrl.includes('Damen'), 'Should include Damen for womenswear item');
 
-  // 4) buildBrandOrShopUrl with direct buyUrl
+  // 5) buildBrandOrShopUrl with direct buyUrl override
   const directGarment = {
     name: 'Chino Hose',
     colorName: 'Beige',
     subcategory: 'chino' as const,
     texture: 'twill_chino' as const,
-    buyUrl: 'https://www.zalando.de/artikel-123.html',
+    buyUrl: 'https://www.amazon.de/dp/B08XYZ1234',
   };
-  const zalandoUrl = buildBrandOrShopUrl(directGarment, {
-    affiliateParam: 'ref=myzalando',
+  const directAmazonUrl = buildBrandOrShopUrl(directGarment, {
+    affiliateParam: 'mypartner-21',
   });
-  assert.equal(zalandoUrl, 'https://www.zalando.de/artikel-123.html?ref=myzalando');
+  assert.equal(directAmazonUrl, 'https://www.amazon.de/dp/B08XYZ1234?tag=mypartner-21');
+  // 6) Archetype color consistency: Dunkelblaue Jeans is never Sand/Beige, Weiße Sneaker is always white/off-white, Dunkle Chino is always dark
+  for (const undertone of ['neutral', 'warm', 'olive', 'cool'] as const) {
+    for (const chromaLevel of ['muted', 'moderate', 'bright'] as const) {
+      const candidates = instantiateCandidateArchetypes({
+        ...DEFAULT_BIOMETRIC_PROFILE,
+        undertone,
+        chromaLevel,
+      });
+      const darkJeans = candidates.find((c) => c.archetypeId === 'arch_denim_dark_neutral_3');
+      assert.ok(darkJeans, 'arch_denim_dark_neutral_3 should exist');
+      assert.ok(
+        darkJeans.garment.hsl.l <= 25 && !/sand|beige/i.test(darkJeans.garment.colorName),
+        `Dunkelblaue Jeans should always be dark navy (${darkJeans.garment.colorName}, l=${darkJeans.garment.hsl.l})`
+      );
+
+      const whiteSneaker = candidates.find((c) => c.archetypeId === 'arch_sneaker_clean_neutral_0');
+      assert.ok(whiteSneaker, 'arch_sneaker_clean_neutral_0 should exist');
+      assert.ok(
+        whiteSneaker.garment.hsl.l >= 85,
+        `Schlichte Weiße Leder-Sneaker should always be light white/off-white (${whiteSneaker.garment.colorName}, l=${whiteSneaker.garment.hsl.l})`
+      );
+
+      const darkChino = candidates.find((c) => c.archetypeId === 'arch_chino_dark_neutral_2');
+      assert.ok(darkChino, 'arch_chino_dark_neutral_2 should exist');
+      assert.ok(
+        darkChino.garment.hsl.l <= 30,
+        `Dunkle Chino-Hose should always be a dark neutral (${darkChino.garment.colorName}, l=${darkChino.garment.hsl.l})`
+      );
+    }
+  }
+
+  // 7) Sandbox / virtual garments are recognized as example garments for shop links
+  assert.equal(isExampleGarment({ id: 'sandbox_arch_denim_dark_neutral_3' }), true);
+  assert.equal(isExampleGarment({ id: 'custom_123', isWishlistSandbox: true }), true);
+  assert.equal(isExampleGarment({ id: 'custom_123', isWishlistSandbox: false }), false);
+
+  // 8) No color preset has meta "(Test)" suffix in its display name
+  for (const preset of TEXTILE_COLOR_PRESETS) {
+    assert.ok(
+      !preset.name.includes('(Test)'),
+      `Color preset "${preset.name}" should not contain "(Test)"`
+    );
+  }
 });
 
+test('i18n & gapCacheKey: central dictionary parity, parameter interpolation, and structural fingerprint stability', () => {
+  // 1) Every DE message key exists in EN and is non-empty
+  const deKeys = Object.keys(DE_MESSAGES);
+  const enKeys = Object.keys(EN_MESSAGES);
+  assert.deepEqual(deKeys, enKeys, 'DE and EN message dictionaries must have identical keys');
 
+  for (const key of deKeys as Array<keyof typeof DE_MESSAGES>) {
+    assert.ok(DE_MESSAGES[key].trim().length > 0, `DE message "${key}" must not be empty`);
+    assert.ok(EN_MESSAGES[key].trim().length > 0, `EN message "${key}" must not be empty`);
+  }
+
+  // 2) Translator interpolates {count} properly in both locales
+  const tDe = createTranslator('de');
+  const tEn = createTranslator('en');
+  assert.equal(tDe('nav.closet', { count: 14 }), 'Kleiderschrank (14)');
+  assert.equal(tEn('nav.closet', { count: 14 }), 'My Closet (14)');
+  assert.equal(tCategory('de', 'base_top'), 'T-Shirts, Hemden & Tops');
+  assert.equal(tCategory('en', 'base_top'), 'T-Shirts, Shirts & Tops');
+  assert.equal(tOccasion('en', 'smart_casual_office'), 'Office & Smart Casual');
+  assert.equal(tWeather('de', 'rain_wet'), 'Regen / Nass');
+
+  // 3) Structural gap key ignores wearCount, lastWornDate, isClean, favoriteOutfits, customOutfitNames
+  const baseKey = computeGapStructuralKey(SEED_WARDROBE_GARMENTS, DEFAULT_BIOMETRIC_PROFILE);
+  const wornAndDirtyGarments = SEED_WARDROBE_GARMENTS.map((g, idx) =>
+    idx === 0
+      ? {
+          ...g,
+          wearCount: (g.wearCount || 0) + 5,
+          lastWornDate: '2026-11-04T10:00:00.000Z',
+          isClean: false,
+        }
+      : g
+  );
+  const profileWithFavorites: BiometricProfile = {
+    ...DEFAULT_BIOMETRIC_PROFILE,
+    customOutfitNames: { sig_1: 'Lieblings-Büro-Look' },
+    favoriteOutfits: [
+      {
+        id: 'fav_1',
+        title: 'Lieblings-Büro-Look',
+        garmentIds: [SEED_WARDROBE_GARMENTS[0].id],
+        garments: [SEED_WARDROBE_GARMENTS[0]],
+        savedAt: '2026-11-04T10:00:00.000Z',
+      },
+    ],
+  };
+  const afterWearKey = computeGapStructuralKey(wornAndDirtyGarments, profileWithFavorites);
+  assert.equal(
+    baseKey,
+    afterWearKey,
+    'Wear count, laundry status, and favorite outfit changes must not invalidate the gap analysis structural cache key'
+  );
+
+  // 4) Structural gap key changes when a garment color or biometric undertone changes
+  const recoloredGarments = SEED_WARDROBE_GARMENTS.map((g, idx) =>
+    idx === 0 ? { ...g, colorHex: '#112233' } : g
+  );
+  assert.notEqual(
+    baseKey,
+    computeGapStructuralKey(recoloredGarments, DEFAULT_BIOMETRIC_PROFILE),
+    'Changing garment colorHex must invalidate the structural cache key'
+  );
+  assert.notEqual(
+    baseKey,
+    computeGapStructuralKey(SEED_WARDROBE_GARMENTS, {
+      ...DEFAULT_BIOMETRIC_PROFILE,
+      undertone: 'cool',
+    }),
+    'Changing biometric undertone must invalidate the structural cache key'
+  );
+});
+
+test('getActiveWornOutfits: pins chosen outfits across weather/context changes for 24h default, configurable hours, or until dismissed', () => {
+  const nowMs = new Date('2026-11-04T12:00:00.000Z').getTime();
+  const sampleItems = SEED_WARDROBE_GARMENTS.slice(0, 3);
+  const recentRecord = {
+    id: 'worn_recent_2h',
+    wornDate: new Date(nowMs - 2 * 3600 * 1000).toISOString(),
+    outfitTitle: 'Mein Tages-Look',
+    garmentIds: sampleItems.map((g) => g.id),
+    dirtyMarkedGarmentIds: [sampleItems[0].id],
+    garments: sampleItems,
+  };
+  const olderRecord30h = {
+    id: 'worn_older_30h',
+    wornDate: new Date(nowMs - 30 * 3600 * 1000).toISOString(),
+    outfitTitle: 'Gestriger Look',
+    garmentIds: SEED_WARDROBE_GARMENTS.slice(1, 4).map((g) => g.id),
+    garments: SEED_WARDROBE_GARMENTS.slice(1, 4),
+  };
+
+  const context = {
+    temperatureC: 18,
+    weather: 'sunny_dry' as const,
+    occasion: 'casual' as const,
+    lockedGarmentIds: [],
+  };
+
+  // 1) Default 24h retention keeps 2h-old record and filters out 30h-old record
+  const defaultActive = getActiveWornOutfits(
+    [recentRecord, olderRecord30h],
+    SEED_WARDROBE_GARMENTS,
+    DEFAULT_BIOMETRIC_PROFILE,
+    context,
+    nowMs
+  );
+  assert.equal(defaultActive.length, 1);
+  assert.equal(defaultActive[0].recordId, 'worn_recent_2h');
+  assert.equal(defaultActive[0].remainingHours, 22);
+
+  // 2) Configurable 48h retention includes both 2h and 30h records
+  const active48h = getActiveWornOutfits(
+    [recentRecord, olderRecord30h],
+    SEED_WARDROBE_GARMENTS,
+    { ...DEFAULT_BIOMETRIC_PROFILE, wornOutfitRetentionHours: 48 },
+    context,
+    nowMs
+  );
+  assert.equal(active48h.length, 2);
+
+  // 3) Configurable 0h ("Until dismissed") keeps records regardless of age
+  const activeUntilDismissed = getActiveWornOutfits(
+    [olderRecord30h],
+    SEED_WARDROBE_GARMENTS,
+    { ...DEFAULT_BIOMETRIC_PROFILE, wornOutfitRetentionHours: 0 },
+    context,
+    nowMs
+  );
+  assert.equal(activeUntilDismissed.length, 1);
+  assert.equal(activeUntilDismissed[0].remainingHours, undefined);
+
+  // 4) Dismissing a record removes it from pinned active outfits
+  const afterDismiss = getActiveWornOutfits(
+    [recentRecord, olderRecord30h],
+    SEED_WARDROBE_GARMENTS,
+    {
+      ...DEFAULT_BIOMETRIC_PROFILE,
+      wornOutfitRetentionHours: 48,
+      dismissedWornRecordIds: ['worn_recent_2h'],
+    },
+    context,
+    nowMs
+  );
+  assert.equal(afterDismiss.length, 1);
+  assert.equal(afterDismiss[0].recordId, 'worn_older_30h');
+});
+
+test('travelPacker: generates 7-day travel capsule with 2 bottoms and 7 cross-compatible daily outfits across luggage space & trip types', async () => {
+  const { computeTravelCategoryTargets, generateTravelCapsule } = await import(
+    './travelPacker'
+  );
+
+  // 1) Verify 7-day targets in minimal (Handgepäck) and balanced (Normaler Koffer) use 2 bottoms & 2 shoes
+  const minimal7 = computeTravelCategoryTargets(7, 'minimal', 20, 'sunny_dry');
+  assert.equal(minimal7.bottoms, 2, '7-day Handgepäck should target 2 bottoms');
+  assert.equal(minimal7.footwear, 2, '7-day Handgepäck should target 2 shoes');
+
+  const balanced7 = computeTravelCategoryTargets(7, 'balanced', 20, 'sunny_dry');
+  assert.equal(balanced7.bottoms, 2, '7-day Normaler Koffer should target 2 bottoms');
+  assert.equal(balanced7.footwear, 2, '7-day Normaler Koffer should target 2 shoes');
+
+  const spacious7 = computeTravelCategoryTargets(7, 'spacious', 20, 'sunny_dry');
+  assert.ok(spacious7.bottoms >= 3, '7-day Viel Platz should allow >= 3 bottoms');
+  assert.ok(spacious7.baseTops > minimal7.baseTops, 'Spacious should pack more tops than minimal');
+
+  // 2) Generate 7-day city trip capsule with balanced luggage + evening look
+  const plan7 = generateTravelCapsule(SEED_WARDROBE_GARMENTS, DEFAULT_BIOMETRIC_PROFILE, {
+    days: 7,
+    luggageSpace: 'balanced',
+    tripType: 'city_trip',
+    temperatureC: 18,
+    weather: 'sunny_dry',
+    includeEveningLook: true,
+    lockedGarmentIds: [],
+  });
+
+  assert.equal(plan7.dailyOutfits.length, 7, 'Should generate 7 daily outfits for a 7-day trip');
+  assert.equal(plan7.packedByCategory.bottom.length, 2, '7-day balanced capsule should pack 2 bottoms');
+
+  // Verify every daily outfit only uses items from packedGarments
+  const packedIdSet = new Set(plan7.packedGarments.map((g) => g.id));
+  for (const dayPlan of plan7.dailyOutfits) {
+    assert.ok(dayPlan.outfit.items.length >= 3, `Day ${dayPlan.dayNumber} must have a complete outfit`);
+    for (const item of dayPlan.outfit.items) {
+      assert.ok(
+        packedIdSet.has(item.id),
+        `Day ${dayPlan.dayNumber} item ${item.name} must be included in the suitcase packing list`
+      );
+    }
+  }
+
+  // Verify bottom rotation: consecutive days should rotate between the 2 packed bottoms
+  const day1BottomId = plan7.dailyOutfits[0].outfit.items.find((i) => i.category === 'bottom')?.id;
+  const day2BottomId = plan7.dailyOutfits[1].outfit.items.find((i) => i.category === 'bottom')?.id;
+  assert.notEqual(day1BottomId, day2BottomId, 'Day 1 and Day 2 should rotate between the 2 packed bottoms');
+
+  // Verify evening highlight look is scheduled on Day 3
+  assert.equal(plan7.dailyOutfits[2].occasion, 'date_night');
+
+  // 3) Business trip vs Beach vacation produce distinct capsules
+  const businessPlan = generateTravelCapsule(SEED_WARDROBE_GARMENTS, DEFAULT_BIOMETRIC_PROFILE, {
+    days: 5,
+    luggageSpace: 'minimal',
+    tripType: 'business_trip',
+    temperatureC: 18,
+    weather: 'sunny_dry',
+    includeEveningLook: false,
+    lockedGarmentIds: [],
+  });
+  const beachPlan = generateTravelCapsule(SEED_WARDROBE_GARMENTS, DEFAULT_BIOMETRIC_PROFILE, {
+    days: 5,
+    luggageSpace: 'minimal',
+    tripType: 'beach_sun',
+    temperatureC: 26,
+    weather: 'sunny_dry',
+    includeEveningLook: false,
+    lockedGarmentIds: [],
+  });
+  assert.equal(businessPlan.dailyOutfits.length, 5);
+  assert.equal(beachPlan.dailyOutfits.length, 5);
+  assert.notDeepEqual(
+    businessPlan.packedGarments.map((g) => g.id),
+    beachPlan.packedGarments.map((g) => g.id),
+    'Business trip and beach vacation should pack different capsules'
+  );
+});
+
+test('upperLayerToggle: resolves Komplett, Ohne Jacke, Drunter (underneath) and Offen/Geschlossen states accurately', async () => {
+  const {
+    computeHiddenIdsForPreset,
+    getOutfitUpperLayers,
+    isGarmentOpenable,
+    resolveUpperLayerState,
+  } = await import('../components/OutfitLayerStack');
+
+  const baseTop = SEED_WARDROBE_GARMENTS.find((g) => g.id === 'seed_top_1')!; // T-Shirt Salbeigrün
+  const midLayer = SEED_WARDROBE_GARMENTS.find((g) => g.id === 'seed_mid_1')!; // Hemdjacke Olivgrün (overshirt)
+  const outerwear = SEED_WARDROBE_GARMENTS.find((g) => g.category === 'outerwear')!;
+  const bottom = SEED_WARDROBE_GARMENTS.find((g) => g.category === 'bottom')!;
+  const shoe = SEED_WARDROBE_GARMENTS.find((g) => g.category === 'footwear')!;
+
+  const sampleItems = [baseTop, midLayer, outerwear, bottom, shoe];
+
+  // 1) Breakdown detects all 3 upper layers
+  const breakdown = getOutfitUpperLayers(sampleItems);
+  assert.equal(breakdown.hasMultipleUpperLayers, true);
+  assert.equal(breakdown.upperLayers.length, 3);
+  assert.equal(isGarmentOpenable(midLayer), true, 'Overshirt must be openable');
+  assert.equal(isGarmentOpenable(outerwear), true, 'Outerwear must be openable');
+  assert.equal(isGarmentOpenable(baseTop), false, 'Heavyweight tee is not openable');
+
+  // 2) Default state ('all' / Komplett): all 3 upper layers visible
+  const stateAll = resolveUpperLayerState(sampleItems, [], {});
+  assert.equal(stateAll.activePreset, 'all');
+  assert.equal(stateAll.showBaseTop, true);
+  assert.equal(stateAll.showMidLayer, true);
+  assert.equal(stateAll.showOuterwear, true);
+  assert.equal(stateAll.topmostVisibleLayer?.id, outerwear.id);
+
+  // 3) 'no_outerwear' (Ohne Jacke): hides jacket, reveals midLayer over baseTop
+  const noJacketIds = computeHiddenIdsForPreset(sampleItems, 'no_outerwear');
+  const stateNoJacket = resolveUpperLayerState(sampleItems, noJacketIds, {});
+  assert.equal(stateNoJacket.activePreset, 'no_outerwear');
+  assert.equal(stateNoJacket.showOuterwear, false);
+  assert.equal(stateNoJacket.showMidLayer, true);
+  assert.equal(stateNoJacket.showBaseTop, true);
+  assert.equal(stateNoJacket.topmostVisibleLayer?.id, midLayer.id);
+  assert.equal(stateNoJacket.underneathLayer?.id, baseTop.id);
+
+  // 4) 'base_only' (Drunter): hides outerwear & midLayer so only baseTop is shown with bottom & shoes
+  const baseOnlyIds = computeHiddenIdsForPreset(sampleItems, 'base_only');
+  const stateBaseOnly = resolveUpperLayerState(sampleItems, baseOnlyIds, {});
+  assert.equal(stateBaseOnly.activePreset, 'base_only');
+  assert.equal(stateBaseOnly.showOuterwear, false);
+  assert.equal(stateBaseOnly.showMidLayer, false);
+  assert.equal(stateBaseOnly.showBaseTop, true);
+  assert.equal(stateBaseOnly.topmostVisibleLayer?.id, baseTop.id);
+
+  // 5) Open/Closed override toggles midLayer between open and closed
+  const stateMidClosed = resolveUpperLayerState(sampleItems, noJacketIds, {
+    [midLayer.id]: false,
+  });
+  assert.equal(stateMidClosed.isMidLayerOpen, false);
+  const stateMidOpen = resolveUpperLayerState(sampleItems, noJacketIds, {
+    [midLayer.id]: true,
+  });
+  assert.equal(stateMidOpen.isMidLayerOpen, true);
+});
 
 
 

@@ -20,6 +20,7 @@ import {
 } from '../data/seedData';
 import { deriveSeasonPalette, hexToHsl } from '../engine/colorMath';
 import {
+  AppLocale,
   BiometricProfile,
   ChromaLevel,
   ContrastLevel,
@@ -29,13 +30,12 @@ import {
   OutfitModifier,
   Undertone,
   ValueLevel,
-  WardrobeScope,
-  WardrobeScopeTarget,
 } from '../types/wardrobe';
 
 interface BiometricProfileViewProps {
   profile: BiometricProfile;
   garments: Garment[];
+  locale?: AppLocale;
   onUpdateProfile: (next: BiometricProfile) => Promise<void>;
   onOpenImportExportModal: () => void;
   onExportBackup: () => void;
@@ -73,13 +73,12 @@ type SelfieTarget = 'skin' | 'eye' | 'hair';
 export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
   profile,
   garments,
+  locale = 'de',
   onUpdateProfile,
   onOpenImportExportModal,
-  onExportBackup,
-  onImportBackupFile,
   onResetToSeed,
-  onStartOwnClosetWizard,
 }) => {
+  const isEn = locale === 'en';
   const [copiedHex, setCopiedHex] = useState<string | null>(null);
   const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
   const [activeSelfieTarget, setActiveSelfieTarget] = useState<SelfieTarget>('skin');
@@ -182,32 +181,23 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-              Mein Typ, Frisur &amp; persönliche Farben (Einfach erklärt)
+              {isEn ? 'My Colors, Haircut & Style' : 'Mein Typ, Frisur & persönliche Farben'}
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Keine Fachbegriffe nötig: Finde mit einfachen Alltags-Checks heraus, welche Farben und Kragenformen dir am besten stehen.
+              {isEn
+                ? 'Find out which colors, contrasts, and necklines suit you best.'
+                : 'Finde heraus, welche Farben, Kontraste und Kragenformen dir am besten stehen.'}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {onStartOwnClosetWizard && (
-              <button
-                type="button"
-                onClick={onStartOwnClosetWizard}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/25 cursor-pointer whitespace-nowrap"
-              >
-                <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Eigenen Schrank einrichten (Wizard)</span>
-              </button>
-            )}
-
             <button
               type="button"
               onClick={() => setShowSelfieTool((prev) => !prev)}
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-medium text-zinc-200 hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
             >
               <Camera className="w-3.5 h-3.5 text-amber-400" />
-              <span>Farben per Foto bestimmen</span>
+              <span>{isEn ? 'Pick Colors from Photo' : 'Farben per Foto bestimmen'}</span>
             </button>
 
             <button
@@ -216,49 +206,21 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-amber-500/40 text-xs font-medium text-amber-200 hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
             >
               <Database className="w-3.5 h-3.5 text-amber-400" />
-              <span>Datenbank &amp; Backup ({garments.length})</span>
+              <span>
+                {isEn
+                  ? `Database & Backup (${garments.length})`
+                  : `Datenbank & Backup (${garments.length})`}
+              </span>
             </button>
-
-            <button
-              type="button"
-              onClick={onExportBackup}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-200 hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Backup speichern</span>
-            </button>
-
-            <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-200 hover:bg-zinc-800 cursor-pointer whitespace-nowrap touch-manipulation active:scale-95">
-              <Upload className="w-3.5 h-3.5 text-sky-400" />
-              <span>Backup laden</span>
-              <input
-                type="file"
-                accept=".json,application/json,text/plain"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  e.target.value = '';
-                  if (!f) return;
-                  const result = await onImportBackupFile(f);
-                  if (result && result.ok) {
-                    setStatusBanner(
-                      `✓ Backup erfolgreich geladen: ${result.count} Kleidungsstücke wiederhergestellt!`
-                    );
-                  } else if (result && result.error) {
-                    setStatusBanner(`Fehler beim Laden: ${result.error}`);
-                  }
-                }}
-                className="sr-only"
-              />
-            </label>
 
             <button
               type="button"
               onClick={onResetToSeed}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer whitespace-nowrap"
-              title="Beispiel-Kleiderschrank wiederherstellen"
+              title={isEn ? 'Restore example wardrobe' : 'Beispiel-Kleiderschrank wiederherstellen'}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Auf Beispiele zurücksetzen</span>
+              <span>{isEn ? 'Reset to Examples' : 'Auf Beispiele zurücksetzen'}</span>
             </button>
           </div>
         </div>
@@ -354,7 +316,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
         <section className="lg:col-span-6 rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 pb-3">
             <h2 className="text-base font-semibold text-zinc-100">
-              Deine 5 einfachen Angaben
+              {isEn ? 'Personal Features & Preferences' : 'Persönliche Merkmale & Vorlieben'}
             </h2>
             <button
               type="button"
@@ -369,73 +331,15 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-amber-400/50 text-[11px] text-amber-300 cursor-pointer"
             >
               <HelpCircle className="w-3.5 h-3.5" />
-              <span>Unsicher? „Neutral“ setzen (passt immer)</span>
+              <span>{isEn ? 'Not sure? Set "Neutral"' : 'Unsicher? „Neutral“ wählen'}</span>
             </button>
-          </div>
-
-          {/* Wardrobe Scope (Mehrfachauswahl: Frauen / Männer / Unisex) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold text-zinc-200">
-                Welche Kleidungsstücke möchtest du nutzen? (Mehrfachauswahl)
-              </label>
-              <span className="text-[11px] text-amber-400 font-medium">
-                {normalizeWardrobeScopes(profile)
-                  .map((s) => WARDROBE_MULTI_SCOPE_META[s].shortDe)
-                  .join(' + ')}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(['womenswear', 'menswear', 'unisex'] as WardrobeScopeTarget[]).map((sc) => {
-                const currentScopes = normalizeWardrobeScopes(profile);
-                const isChecked = currentScopes.includes(sc);
-                const meta = WARDROBE_MULTI_SCOPE_META[sc];
-                return (
-                  <button
-                    key={sc}
-                    type="button"
-                    onClick={() => {
-                      let next: WardrobeScopeTarget[];
-                      if (currentScopes.includes(sc)) {
-                        if (currentScopes.length === 1) return; // Mindestens eine Kategorie aktiv halten
-                        next = currentScopes.filter((s) => s !== sc);
-                      } else {
-                        next = [...currentScopes, sc];
-                      }
-                      const derived = deriveScopeFromTargets(next);
-                      onUpdateProfile({
-                        ...profile,
-                        wardrobeScopes: next,
-                        wardrobeScope: derived,
-                      });
-                    }}
-                    className={`px-3 py-2.5 min-h-[42px] rounded-xl border text-xs font-medium transition-all cursor-pointer touch-manipulation active:scale-95 flex items-center justify-between gap-2 ${
-                      isChecked
-                        ? 'border-amber-400 bg-amber-500/10 text-zinc-100 font-semibold ring-1 ring-amber-400/30'
-                        : 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    <span>{meta.labelDe}</span>
-                    <div
-                      className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
-                        isChecked
-                          ? 'bg-amber-400 text-zinc-950 font-bold'
-                          : 'border border-zinc-600 bg-zinc-900'
-                      }`}
-                    >
-                      {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* 1. Skin Undertone with Veins, Sun & T-Shirt Checks (Unisex) */}
           <div className="space-y-2.5">
             <div>
               <label className="block text-xs font-semibold text-zinc-200">
-                1. Dein Hautton &amp; Unterton (3 einfache Alltags-Checks – kein Schmuck nötig)
+                {isEn ? '1. Skin Tone & Undertone' : '1. Hautton & Unterton'}
               </label>
               <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
                 <strong>Adern am Handgelenk:</strong> Grünlich = Warm/Oliv · Bläulich/Violett = Kühl · Blaugrün = Neutral.<br />
@@ -570,7 +474,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
           <div className="space-y-2">
             <div>
               <label className="block text-xs font-semibold text-zinc-200">
-                4. Deine Augenfarbe (Warum fragen wir das?)
+                {isEn ? '4. Eye Color' : '4. Augenfarbe'}
               </label>
               <p className="text-[11px] text-zinc-400 mt-0.5">
                 Wenn ein Oberteil deine Augenfarbe leicht aufgreift (z. B. Olivgrün bei grün-braunen Augen oder Blaugrau bei blauen Augen), leuchten deine Augen automatisch mehr.
@@ -637,7 +541,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="profile-haircut" className="block text-xs font-semibold text-zinc-200 mb-1">
-                5. Deine Haarlänge (für passende Kragen)
+                {isEn ? '5. Hair Length & Cut' : '5. Haarlänge & Frisur'}
               </label>
               <select
                 id="profile-haircut"
@@ -804,10 +708,10 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
               </div>
             </div>
 
-            {/* Dauerhafte Standard-Modifier (Mehrfachauswahl) */}
+            {/* Standard-Fokus für Outfits */}
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-zinc-300">
-                Dauerhafte Standard-Modifier (Mehrfachauswahl)
+                {isEn ? 'Default Outfit Focus' : 'Standard-Fokus für Outfits'}
               </label>
               <div className="flex flex-wrap gap-2">
                 {(['extra_comfort', 'clean_no_print', 'layered_open'] as OutfitModifier[]).map(
@@ -863,7 +767,7 @@ export const BiometricProfileView: React.FC<BiometricProfileViewProps> = ({
         <section className="lg:col-span-6 rounded-2xl bg-zinc-900/45 border border-zinc-800/90 p-5 sm:p-6 space-y-6">
           <div className="border-b border-zinc-800 pb-4">
             <p className="text-xs font-semibold text-amber-400">
-              Dein Ergebnis (automatisch für alle Outfit-Vorschläge aktiv)
+              {isEn ? 'Personal Color Palette' : 'Persönliche Farbpalette'}
             </p>
             <h2 className="text-lg sm:text-xl font-bold text-zinc-100 mt-1">
               {seasonPalette.seasonName}

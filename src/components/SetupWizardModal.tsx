@@ -339,6 +339,15 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
   const [wizardAddedGarments, setWizardAddedGarments] = useState<Garment[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   // AI Agent Prompt & JSON Importer (Biometrie & Kleidung)
   const [showAgentModal, setShowAgentModal] = useState<boolean>(false);
   const [agentModalTab, setAgentModalTab] = useState<'biometrics' | 'clothes'>('biometrics');
@@ -755,12 +764,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                   <h3 className="text-sm font-semibold text-zinc-100">
                     {isEn
                       ? '1. How would you like to start?'
-                      : '1. Wie möchtest du starten? (Demo-Modus beenden oder Beispiele nutzen)'}
+                      : '1. Wie möchtest du starten?'}
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     {isEn
-                      ? 'Your data is saved locally in your browser (IndexedDB) and in your local database file (data/wardrobe-store.json).'
-                      : 'Deine eigene Datenbank wird lokal im Browser (IndexedDB) und in deiner lokalen Datei (data/wardrobe-store.json) gespeichert.'}
+                      ? 'Start with your own empty wardrobe or explore with curated example clothes.'
+                      : 'Starte direkt mit deinem eigenen Kleiderschrank oder teste die App mit einer Beispiel-Garderobe.'}
                   </p>
                 </div>
 
@@ -913,8 +922,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <div>
                   <label className="block text-xs font-semibold text-zinc-100">
                     {isEn
-                      ? '2. Which clothing types do you wear? (Multi-Select)'
-                      : '2. Welche Kleidungsstücke möchtest du nutzen? (Mehrfachauswahl möglich)'}
+                      ? '2. Clothing Categories'
+                      : '2. Kleidungs-Bereiche'}
                   </label>
                   <p className="text-[11px] text-zinc-400 mt-0.5">
                     {isEn
@@ -979,8 +988,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
                 <label className="block text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
                   <Ruler className="w-3.5 h-3.5 text-amber-400" />
                   {isEn
-                    ? '3. Your Standard Sizes (Optional – auto-fills when adding clothes)'
-                    : '3. Deine normalen Größen (Optional – wird beim Kleidung-Anlegen vorgeschlagen)'}
+                    ? '3. Standard Sizes'
+                    : '3. Standard-Größen'}
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   <div>

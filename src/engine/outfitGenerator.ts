@@ -9,6 +9,7 @@ import {
   OutfitContext,
   OutfitModifier,
   TextureType,
+  WornOutfitRecord,
 } from '../types/wardrobe';
 import { getHueDistance, hexToHsl, isWardrobeNeutral, scoreGarmentBiometrics } from './colorMath';
 
@@ -778,7 +779,7 @@ export function scoreOutfitCombination(
     ).length;
     if (softAndRelaxed >= 2) {
       styleVibeBonus += 6;
-      traces.push('Modifier [Extra bequem]: Weiche Stoffe & entspannte Passform bevorzugt');
+      traces.push('Fokus [Extra bequem]: Weiche Stoffe & entspannte Passform bevorzugt');
     } else if (coreItems.some((i) => i.fit === 'slim')) {
       styleVibeBonus -= 6;
     }
@@ -788,7 +789,7 @@ export function scoreOutfitCombination(
     const hasAnyPrintOrLogo = coreItems.some((i) => i.hasPrint || i.hasLogo);
     if (!hasAnyPrintOrLogo) {
       styleVibeBonus += 5;
-      traces.push('Modifier [Ohne Print & Logo]: Ruhige, cleane Oberflächen ohne Aufdruck');
+      traces.push('Fokus [Ohne Print & Logo]: Ruhige, cleane Oberflächen ohne Aufdruck');
     } else {
       styleVibeBonus -= 14;
     }
@@ -797,7 +798,7 @@ export function scoreOutfitCombination(
   if (effectiveModifiers.includes('layered_open')) {
     if (midLayer && baseTop && midLayer.wornOpen === true) {
       styleVibeBonus += 6;
-      traces.push('Modifier [Zwiebellook]: Offenes Layering zum flexiblen An- und Ausziehen');
+      traces.push('Fokus [Zwiebellook]: Offenes Layering zum flexiblen An- und Ausziehen');
     }
   }
 
@@ -1626,3 +1627,100 @@ export function generateOutfitsForContext(
     );
   });
 }
+
+export interface ActiveWornOutfitEntry {
+  recordId: string;
+  outfit: GeneratedOutfit;
+  outfitTitle: string;
+  wornDate: string;
+  laundryCount: number;
+  remainingHours?: number;
+}
+
+export const WORN_RETENTION_OPTIONS: Array<{
+  hours: number;
+  labelDe: string;
+  labelEn: string;
+}> = [
+  { hours: 12, labelDe: '12 Std.', labelEn: '12h' },
+  { hours: 24, labelDe: '24 Std.', labelEn: '24h' },
+  { hours: 48, labelDe: '48 Std.', labelEn: '48h' },
+  { hours: 0, labelDe: 'Bis zum Ausblenden', labelEn: 'Until dismissed' },
+];
+
+/**
+ * Resolves all currently pinned/selected ("Heute angezogen") outfits from `wornHistory`
+ * that have not expired according to `profile.wornOutfitRetentionHours` (default: 24h)
+ * and have not been manually dismissed (`profile.dismissedWornRecordIds`).
+ */
+export function getActiveWornOutfits(
+  wornHistory: WornOutfitRecord[],
+  garments: Garment[],
+  profile: BiometricProfile,
+  context: OutfitContext,
+  nowMs: number = Date.now()
+): ActiveWornOutfitEntry[] {
+  if (!Array.isArray(wornHistory) || wornHistory.length === 0) return [];
+
+  const retentionHours =
+    typeof profile.wornOutfitRetentionHours === 'number' &&
+    profile.wornOutfitRetentionHours >= 0
+      ? profile.wornOutfitRetentionHours
+      : 24;
+
+  const dismissedSet = new Set(profile.dismissedWornRecordIds || []);
+  const garmentById = new Map(garments.map((g) => [g.id, g]));
+  const seenOutfitIds = new Set<string>();
+  const sortedRecords = [...wornHistory].sort(
+    (a, b) => new Date(b.wornDate).getTime() - new Date(a.wornDate).getTime()
+  );
+
+  const activeEntries: ActiveWornOutfitEntry[] = [];
+
+  for (const record of sortedRecords) {
+    if (!record || !record.id || dismissedSet.has(record.id)) continue;
+
+    const wornMs = new Date(record.wornDate).getTime();
+    if (!Number.isFinite(wornMs)) continue;
+
+    const elapsedHours = Math.max(0, (nowMs - wornMs) / (1000 * 60 * 60));
+    if (retentionHours > 0 && elapsedHours > retentionHours) {
+      continue;
+    }
+
+    const baseItems: Garment[] =
+      Array.isArray(record.garments) && record.garments.length > 0
+        ? record.garments.map((item) => {
+            const latest = garmentById.get(item.id);
+            return latest ? { ...latest, wornOpen: item.wornOpen } : item;
+          })
+        : (record.garmentIds || [])
+            .map((id) => garmentById.get(id))
+            .filter((g): g is Garment => Boolean(g));
+
+    if (baseItems.length === 0) continue;
+
+    const scoredOutfit = scoreOutfitCombination(baseItems, profile, context);
+    if (seenOutfitIds.has(scoredOutfit.id)) continue;
+    seenOutfitIds.add(scoredOutfit.id);
+
+    const remainingHours =
+      retentionHours > 0
+        ? Math.max(1, Math.ceil(retentionHours - elapsedHours))
+        : undefined;
+
+    activeEntries.push({
+      recordId: record.id,
+      outfit: scoredOutfit,
+      outfitTitle: record.outfitTitle || 'Gewähltes Outfit',
+      wornDate: record.wornDate,
+      laundryCount: Array.isArray(record.dirtyMarkedGarmentIds)
+        ? record.dirtyMarkedGarmentIds.length
+        : 0,
+      remainingHours,
+    });
+  }
+
+  return activeEntries;
+}
+

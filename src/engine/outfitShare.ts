@@ -1,5 +1,6 @@
 import { hexToHsl, classifyColorTemp } from './colorMath';
 import {
+  BiometricProfile,
   FitType,
   Garment,
   GarmentCategory,
@@ -12,7 +13,7 @@ import {
   TextureType,
   WeatherCondition,
 } from '../types/wardrobe';
-import { SUBCATEGORY_LABELS, TEXTURE_LABELS } from '../data/seedData';
+import { SUBCATEGORY_LABELS } from '../data/seedData';
 
 export interface SharedOutfitItemCompact {
   n: string; // name
@@ -155,12 +156,18 @@ export function decodeSharedOutfit(encoded: string): {
   }
 }
 
-export function isExampleGarment(garment: Pick<Garment, 'id' | 'buyUrl'>): boolean {
+export function isExampleGarment(
+  garment: Pick<Garment, 'id' | 'buyUrl' | 'isWishlistSandbox'>
+): boolean {
   if (garment.buyUrl && /^https?:\/\//i.test(garment.buyUrl.trim())) return true;
+  if (garment.isWishlistSandbox) return true;
   return (
     garment.id.startsWith('seed_') ||
     garment.id.startsWith('fem_') ||
-    garment.id.startsWith('uni_')
+    garment.id.startsWith('uni_') ||
+    garment.id.startsWith('arch_') ||
+    garment.id.startsWith('sandbox_') ||
+    garment.id.startsWith('shared_')
   );
 }
 
@@ -184,8 +191,12 @@ function getRuntimeEnvVar(key: string): string | undefined {
 
 export function appendAffiliateParam(url: string, param?: string): string {
   if (!param || !param.trim()) return url;
-  const clean = param.trim().replace(/^[?&]+/, '');
+  let clean = param.trim().replace(/^[?&]+/, '');
   if (!clean) return url;
+  // Support shorthand Amazon PartnerNet tag (e.g. "dein-tag-21" -> "tag=dein-tag-21")
+  if (!clean.includes('=')) {
+    clean = `tag=${clean}`;
+  }
   const paramKey = clean.split('=')[0];
   if (url.includes(`?${paramKey}=`) || url.includes(`&${paramKey}=`)) {
     return url;
@@ -194,9 +205,78 @@ export function appendAffiliateParam(url: string, param?: string): string {
   return `${url}${separator}${clean}`;
 }
 
+const WOMENSWEAR_SUBCATEGORIES = new Set<GarmentSubcategory>([
+  'blouse',
+  'tank_camisole',
+  'crop_top',
+  'bodysuit',
+  'wrap_top',
+  'wide_leg_trousers',
+  'midi_skirt',
+  'mini_skirt',
+  'heeled_ankle_boot',
+  'ballet_flat',
+  'sandal_strappy',
+]);
+
+const TEXTURE_SEARCH_KEYWORDS: Partial<Record<TextureType, string>> = {
+  chunky_knit: 'Grobstrick',
+  fine_knit: 'Feinstrick',
+  flannel_wool: 'Wolle',
+  fleece: 'Fleece',
+  down_quilted: 'Daune',
+  linen: 'Leinen',
+  leather_suede: 'Leder',
+};
+
+export function resolveGarmentAudienceKeyword(
+  garment: { id?: string; subcategory: GarmentSubcategory },
+  profile?: Pick<BiometricProfile, 'wardrobeScope' | 'wardrobeScopes'>
+): 'Damen' | 'Herren' | '' {
+  const id = garment.id || '';
+  if (
+    id.startsWith('fem_') ||
+    id.startsWith('arch_fem_') ||
+    WOMENSWEAR_SUBCATEGORIES.has(garment.subcategory)
+  ) {
+    return 'Damen';
+  }
+  if (id.startsWith('seed_') || (id.startsWith('arch_') && !id.startsWith('arch_uni_'))) {
+    return 'Herren';
+  }
+  if (profile?.wardrobeScopes && profile.wardrobeScopes.length > 0) {
+    const hasWomen = profile.wardrobeScopes.includes('womenswear');
+    const hasMen = profile.wardrobeScopes.includes('menswear');
+    if (hasWomen && !hasMen) return 'Damen';
+    if (hasMen && !hasWomen) return 'Herren';
+  }
+  if (profile?.wardrobeScope === 'womenswear') return 'Damen';
+  if (profile?.wardrobeScope === 'menswear') return 'Herren';
+  return '';
+}
+
+export function isAmazonShopActive(configOverride?: { baseUrl?: string }): boolean {
+  const rawBase = configOverride?.baseUrl ?? getRuntimeEnvVar('VITE_SHOP_BASE_URL');
+  if (!rawBase || !rawBase.trim()) return true; // Amazon.de is the default
+  return /amazon\./i.test(rawBase);
+}
+
+export function hasAffiliateParamConfigured(): boolean {
+  const rawParam = getRuntimeEnvVar('VITE_SHOP_AFFILIATE_PARAM');
+  return Boolean(rawParam && rawParam.trim().length > 0);
+}
+
 export function buildBrandOrShopUrl(
-  garment: Pick<Garment, 'name' | 'brand' | 'colorName' | 'subcategory' | 'texture' | 'buyUrl'>,
-  configOverride?: { baseUrl?: string; affiliateParam?: string }
+  garment: Pick<Garment, 'name' | 'brand' | 'colorName' | 'subcategory' | 'texture' | 'buyUrl'> & {
+    id?: string;
+    fit?: FitType;
+    category?: GarmentCategory;
+  },
+  configOverride?: {
+    baseUrl?: string;
+    affiliateParam?: string;
+    profile?: Pick<BiometricProfile, 'wardrobeScope' | 'wardrobeScopes'>;
+  }
 ): string {
   const affiliateParam =
     configOverride?.affiliateParam ?? getRuntimeEnvVar('VITE_SHOP_AFFILIATE_PARAM');
@@ -205,17 +285,50 @@ export function buildBrandOrShopUrl(
     return appendAffiliateParam(garment.buyUrl.trim(), affiliateParam);
   }
 
-  const subLabel = SUBCATEGORY_LABELS[garment.subcategory]?.split(' (')[0] || '';
-  const texLabel = TEXTURE_LABELS[garment.texture]?.split(' (')[0] || '';
-  const parts = [
+  const rawSubLabel = SUBCATEGORY_LABELS[garment.subcategory]?.split(' (')[0] || '';
+  const cleanSubLabel = rawSubLabel.split(' / ')[0].trim();
+  const cleanColor = (garment.colorName || '')
+    .replace(/\s*\(Test\)/gi, '')
+    .split(' / ')[0]
+    .trim();
+
+  const fitKeyword =
+    garment.category === 'accessory' || garment.category === 'footwear'
+      ? ''
+      : garment.fit === 'slim'
+      ? 'Slim Fit'
+      : garment.fit === 'boxy_oversized'
+      ? 'Oversized'
+      : '';
+
+  const texKeyword = TEXTURE_SEARCH_KEYWORDS[garment.texture] || '';
+  const audienceKeyword = resolveGarmentAudienceKeyword(garment, configOverride?.profile);
+
+  const rawParts = [
     garment.brand || '',
-    subLabel || garment.name,
-    garment.colorName,
-    texLabel,
-  ]
-    .map((p) => p.trim())
-    .filter(Boolean);
-  const query = encodeURIComponent(parts.join(' '));
+    cleanSubLabel || garment.name,
+    cleanColor,
+    fitKeyword,
+    texKeyword,
+    audienceKeyword,
+  ];
+
+  // Deduplicate tokens case-insensitively while preserving order
+  const seenTokens = new Set<string>();
+  const finalTokens: string[] = [];
+  for (const part of rawParts) {
+    for (const token of part.split(/\s+/)) {
+      const cleaned = token.replace(/^[(),.-]+|[(),.-]+$/g, '').trim();
+      if (!cleaned) continue;
+      const lower = cleaned.toLowerCase();
+      if (!seenTokens.has(lower)) {
+        seenTokens.add(lower);
+        finalTokens.push(cleaned);
+      }
+    }
+  }
+
+  const query = encodeURIComponent(finalTokens.join(' '));
 
   const rawBase = configOverride?.baseUrl ?? getRuntimeEnvVar('VITE_SHOP_BASE_URL');
   let targetUrl: string;
@@ -226,10 +339,10 @@ export function buildBrandOrShopUrl(
       targetUrl = base.replace('{query}', query);
     } else {
       const sep = base.includes('?') ? '&' : '?';
-      targetUrl = `${base}${sep}q=${query}`;
+      targetUrl = `${base}${sep}k=${query}`;
     }
   } else {
-    targetUrl = `https://www.google.com/search?tbm=shop&q=${query}`;
+    targetUrl = `https://www.amazon.de/s?k=${query}`;
   }
 
   return appendAffiliateParam(targetUrl, affiliateParam);

@@ -1,6 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Edit3, Palette, Plus, Ruler, Settings2, Sparkles, Tag, Trash2, X } from 'lucide-react';
 import {
+  Check,
+  Edit3,
+  Palette,
+  Plus,
+  RotateCcw,
+  Ruler,
+  Settings2,
+  Sparkles,
+  Tag,
+  Trash2,
+  X,
+} from 'lucide-react';
+import {
+  AUTO_LAUNDRY_GROUPS,
+  DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES,
   deriveScopeFromTargets,
   getAllColorPresets,
   getQuickItemsForScopes,
@@ -27,6 +41,7 @@ import {
   hexToGermanColorName,
   translateColorName,
 } from '../engine/colorNaming';
+import { WORN_RETENTION_OPTIONS } from '../engine/outfitGenerator';
 import {
   AppLocale,
   BiometricProfile,
@@ -109,6 +124,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setNewColorName(hexToGermanColorName(newColorHex, locale).name);
     setFeedbackToast(null);
   }, [isOpen, profile]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!hasManualColorName) {
@@ -201,6 +225,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...profile,
       brandSizeRules: nextRules,
     });
+  };
+
+  const activeAutoLaundrySubs: GarmentSubcategory[] = Array.isArray(
+    profile.autoLaundrySubcategories
+  )
+    ? profile.autoLaundrySubcategories
+    : DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES;
+
+  const handleToggleAutoLaundryGroup = async (groupSubs: GarmentSubcategory[]) => {
+    const isAllActive = groupSubs.every((s) => activeAutoLaundrySubs.includes(s));
+    const nextSubs = isAllActive
+      ? activeAutoLaundrySubs.filter((s) => !groupSubs.includes(s))
+      : Array.from(new Set([...activeAutoLaundrySubs, ...groupSubs]));
+    await onSaveProfile({
+      ...profile,
+      autoLaundrySubcategories: nextSubs,
+    });
+    showToast(
+      isEn
+        ? 'Automatic laundry setting updated!'
+        : 'Wäsche-Automatik gespeichert!'
+    );
   };
 
   const handleCreateOrUpdateCustomColor = async () => {
@@ -375,13 +421,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div>
               <h3 className="text-sm font-semibold text-zinc-100">
                 {isEn
-                  ? '1. Which clothing categories do you wear? (Multi-Select)'
-                  : '1. Welche Kleidungsstücke möchtest du nutzen? (Mehrfachauswahl möglich)'}
+                  ? '1. Clothing Categories'
+                  : '1. Kleidungs-Bereiche'}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isEn
-                  ? 'Choose freely which categories you wear. Select all 3 to have the complete wardrobe range available.'
-                  : 'Wähle alle Bereiche aus, die du trägst. Wenn du alle 3 anklickst, steht dir die vollständige Auswahl an Kleidung zur Verfügung.'}
+                  ? 'Choose which categories you wear. Select all three for the complete wardrobe range.'
+                  : 'Wähle alle Bereiche aus, die du trägst. Mit allen dreien steht dir die vollständige Auswahl zur Verfügung.'}
               </p>
             </div>
 
@@ -465,20 +511,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 <Ruler className="w-4 h-4 text-amber-400" />
                 {isEn
-                  ? '2. My Sizes & Brand Size Memory ("For Nike I always wear L")'
-                  : '2. Meine Größen & Marken-Größen („Bei Nike habe ich immer Größe …“)'}
+                  ? '2. My Sizes & Brand Sizes'
+                  : '2. Meine Größen & Marken-Größen'}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isEn
-                  ? 'Optional: Save your usual sizes and brand-specific sizes so the app automatically suggests the right size when adding clothes.'
-                  : 'Optional: Hinterlege deine normalen Größen oder Marken-Größen – beim Anlegen neuer Kleidung wird die passende Größe automatisch vorgeschlagen.'}
+                  ? 'Save your usual sizes and brand-specific sizes.'
+                  : 'Hinterlege deine Standard-Größen sowie abweichende Größen einzelner Marken.'}
               </p>
             </div>
 
             {/* Standard Sizes Row */}
             <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3">
               <p className="text-xs font-medium text-zinc-300">
-                {isEn ? 'Your usual standard sizes (optional):' : 'Deine normalen Standard-Größen (optional):'}
+                {isEn ? 'Standard sizes:' : 'Standard-Größen:'}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -532,8 +578,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
                   <Tag className="w-3.5 h-3.5 text-amber-400" />
                   {isEn
-                    ? 'Brand-Specific Size Rules ("For Nike I always wear size X"):'
-                    : 'Marken-Größen merken (z.B. „Bei Nike habe ich immer Größe L“):'}
+                    ? 'Brand-specific sizes:'
+                    : 'Marken-Größen:'}
                 </p>
               </div>
 
@@ -600,7 +646,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {savedBrandRules.length > 0 && (
                 <div className="pt-2 border-t border-zinc-800/70 space-y-1.5">
                   <p className="text-[11px] text-zinc-400">
-                    {isEn ? 'Saved brand sizes (auto-suggested when adding clothes):' : 'Gespeicherte Marken-Größen (werden beim Anlegen automatisch vorgeschlagen):'}
+                    {isEn ? 'Saved brand sizes:' : 'Gespeicherte Marken-Größen:'}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {savedBrandRules.map((rule) => (
@@ -627,15 +673,115 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 3: 1-Klick Schnell-Baukasten (Kleidung sofort anlegen) */}
+          {/* SECTION 3: Automatisch in die Wäsche (bei „Heute anziehen“) */}
+          <section className="space-y-3 pt-4 border-t border-zinc-800/80">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-emerald-400" />
+                {isEn
+                  ? '3. Automatic Laundry'
+                  : '3. Automatische Wäsche'}
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {isEn
+                  ? 'Choose which garment types automatically move to the laundry basket after wearing them once.'
+                  : 'Wähle aus, welche Kategorien beim Klick auf „Heute anziehen“ automatisch in den Wäschekorb gelegt werden.'}
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {AUTO_LAUNDRY_GROUPS.map((group) => {
+                  const isActive = group.subcategories.every((s) =>
+                    activeAutoLaundrySubs.includes(s)
+                  );
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={() => handleToggleAutoLaundryGroup(group.subcategories)}
+                      className={`px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer whitespace-nowrap border flex items-center gap-2 ${
+                        isActive
+                          ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200 font-semibold'
+                          : 'bg-zinc-950 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                          isActive
+                            ? 'bg-emerald-400 text-zinc-950 font-bold'
+                            : 'border border-zinc-600 bg-zinc-900'
+                        }`}
+                      >
+                        {isActive && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                      <span>{isEn ? group.labelEn : group.labelDe}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="pt-3 border-t border-zinc-800/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div>
+                  <p className="text-xs font-medium text-zinc-200">
+                    {isEn
+                      ? 'Keep selected outfit ("Wear Today") pinned at the top:'
+                      : 'Gewähltes Outfit („Heute anziehen“) oben stehen lassen:'}
+                  </p>
+                  <p className="text-[11px] text-zinc-400">
+                    {isEn
+                      ? 'Stays visible even when generating new outfits or changing weather.'
+                      : 'Bleibt auch beim Generieren neuer Outfits oder Wetterwechsel sichtbar.'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {WORN_RETENTION_OPTIONS.map((opt) => {
+                    const currentHours =
+                      typeof profile.wornOutfitRetentionHours === 'number' &&
+                      profile.wornOutfitRetentionHours >= 0
+                        ? profile.wornOutfitRetentionHours
+                        : 24;
+                    const active = currentHours === opt.hours;
+                    return (
+                      <button
+                        key={opt.hours}
+                        type="button"
+                        onClick={async () => {
+                          await onSaveProfile({
+                            ...profile,
+                            wornOutfitRetentionHours: opt.hours,
+                          });
+                          showToast(
+                            isEn
+                              ? `Pinned duration updated: ${opt.labelEn}`
+                              : `Anzeigedauer gespeichert: ${opt.labelDe}`
+                          );
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap ${
+                          active
+                            ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-200 font-semibold'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {isEn ? opt.labelEn : opt.labelDe}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 4: 1-Klick Schnell-Baukasten (Kleidung sofort anlegen) */}
           <section className="space-y-3 pt-4 border-t border-zinc-800/80">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-amber-400" />
                   {isEn
-                    ? '3. Add Clothes with 1 Click'
-                    : '3. Eigene Kleidungsstücke mit 1 Klick hinzufügen'}
+                    ? '4. Add Clothes with 1 Click'
+                    : '4. Eigene Kleidungsstücke mit 1 Klick hinzufügen'}
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
                   {isEn
@@ -758,14 +904,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 4: Eigene Farben anlegen, bearbeiten & löschen */}
+          {/* SECTION 5: Eigene Farben anlegen, bearbeiten & löschen */}
           <section className="space-y-3 pt-4 border-t border-zinc-800/80">
             <div>
               <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 <Palette className="w-4 h-4 text-amber-400" />
                 {isEn
-                  ? '4. Your Custom Colors (Create, Edit & Delete)'
-                  : '4. Eigene Lieblingsfarben anlegen & verwalten'}
+                  ? '5. Your Custom Colors (Create, Edit & Delete)'
+                  : '5. Eigene Lieblingsfarben anlegen & verwalten'}
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {isEn
@@ -853,8 +999,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
                   <p className="text-[11px] font-medium text-zinc-400">
                     {isEn
-                      ? 'Your saved custom colors (stored in your profile):'
-                      : 'Deine eigenen gespeicherten Farben (im Profil & Backup gesichert):'}
+                      ? 'Saved custom colors:'
+                      : 'Eigene Farben:'}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {customColors.map((cc) => (
@@ -891,11 +1037,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 5: Sprache */}
+          {/* SECTION 6: Sprache */}
           <section className="flex items-center justify-between pt-4 border-t border-zinc-800/80">
             <div>
               <h3 className="text-sm font-semibold text-zinc-100">
-                {isEn ? '5. App Language' : '5. Sprache der App'}
+                {isEn ? '6. App Language' : '6. Sprache der App'}
               </h3>
               <p className="text-xs text-zinc-400">
                 {isEn ? 'Switch between German and English' : 'Zwischen Deutsch und Englisch wechseln'}

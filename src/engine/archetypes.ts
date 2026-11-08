@@ -759,14 +759,40 @@ export function instantiateCandidateArchetypes(profile: BiometricProfile): {
 }[] {
   const palette = deriveSeasonPalette(profile);
   const topPower = palette.powerColors.slice(0, 6);
-  const topNeutrals = palette.coreNeutrals.slice(0, 4);
+
+  // Sort core neutrals from lightest to darkest and assign the 4 canonical roles:
+  // [0] Lightest (Off-White/White), [1] Medium (Sand/Beige/Stone), [2] Dark (Espresso/Anthrazit), [3] Darkest (Navy/Black)
+  const sortedNeutrals = [...palette.coreNeutrals].sort(
+    (a, b) => hexToHsl(b.hex).l - hexToHsl(a.hex).l
+  );
+  const topNeutrals =
+    sortedNeutrals.length >= 4
+      ? [
+          sortedNeutrals[0],
+          sortedNeutrals[1],
+          sortedNeutrals[sortedNeutrals.length - 2],
+          sortedNeutrals[sortedNeutrals.length - 1],
+        ]
+      : sortedNeutrals.slice(0, 4);
+  const navyNeutral =
+    palette.coreNeutrals.find((c) => /navy|marine|blau/i.test(c.name)) || {
+      name: 'Dunkelblau',
+      hex: '#1B263B',
+    };
+
   const scopes = normalizeWardrobeScopes(profile);
 
   return GARMENT_ARCHETYPE_BLUEPRINTS.filter((bp) =>
     isSubcategoryAllowedForScope(bp.subcategory, scopes)
   ).map((bp) => {
     const colorPool = bp.paletteSource === 'power' ? topPower : topNeutrals;
-    const chosenColor = colorPool[bp.paletteIndex % colorPool.length] || topPower[0];
+    let chosenColor = colorPool[bp.paletteIndex % colorPool.length] || topPower[0];
+
+    // Ensure dark blue denim archetype always receives a true dark navy/indigo color
+    if (bp.id === 'arch_denim_dark_neutral_3') {
+      chosenColor = navyNeutral;
+    }
+
     const hsl = hexToHsl(chosenColor.hex);
     const colorTemp = classifyColorTemp(hsl);
 

@@ -49,8 +49,8 @@ export const TEXTILE_COLOR_PRESETS: TextileColorPreset[] = [
   { name: 'Raw Indigo', hex: '#24344D', group: 'Blue & Cool' },
   { name: 'Pflaume Gedämpft', hex: '#583A4E', group: 'Accent' },
   { name: 'Eukalyptus', hex: '#6F8578', group: 'Earth & Olive' },
-  { name: 'Eisrosa (Test)', hex: '#F7C6DB', group: 'Accent' },
-  { name: 'Neon-Magenta (Test)', hex: '#FF1493', group: 'Accent' },
+  { name: 'Eisrosa', hex: '#F7C6DB', group: 'Accent' },
+  { name: 'Neon-Magenta', hex: '#FF1493', group: 'Accent' },
 ];
 
 export const CATEGORY_LABELS: Record<GarmentCategory, string> = {
@@ -451,6 +451,72 @@ export const DEFAULT_AUTO_LAUNDRY_SUBCATEGORIES: GarmentSubcategory[] = [
   'bodysuit',
   'socks',
   'socks_short',
+];
+
+export const AUTO_LAUNDRY_GROUPS: Array<{
+  id: string;
+  labelDe: string;
+  labelEn: string;
+  subcategories: GarmentSubcategory[];
+}> = [
+  {
+    id: 'tops',
+    labelDe: 'T-Shirts & Tops',
+    labelEn: 'T-Shirts & Tops',
+    subcategories: [
+      't_shirt',
+      'heavyweight_tee',
+      'longsleeve',
+      'polo',
+      'tank_camisole',
+      'crop_top',
+      'bodysuit',
+    ],
+  },
+  {
+    id: 'socks',
+    labelDe: 'Socken',
+    labelEn: 'Socks',
+    subcategories: ['socks', 'socks_short'],
+  },
+  {
+    id: 'shirts',
+    labelDe: 'Hemden & Blusen',
+    labelEn: 'Shirts & Blouses',
+    subcategories: ['button_down_shirt', 'short_sleeve_shirt', 'blouse'],
+  },
+  {
+    id: 'midlayers',
+    labelDe: 'Pullover & Hoodies',
+    labelEn: 'Sweaters & Hoodies',
+    subcategories: [
+      'hoodie',
+      'crewneck_sweater',
+      'knit_sweater',
+      'turtleneck',
+      'cardigan',
+      'overshirt',
+      'fleece_jacket',
+      'fleece_vest',
+      'vest_gilet',
+    ],
+  },
+  {
+    id: 'bottoms',
+    labelDe: 'Hosen & Röcke',
+    labelEn: 'Pants & Skirts',
+    subcategories: [
+      'denim',
+      'chino',
+      'trousers',
+      'suit_trousers',
+      'wide_leg_trousers',
+      'cargo',
+      'shorts',
+      'midi_skirt',
+      'mini_skirt',
+    ],
+  },
 ];
 
 /**

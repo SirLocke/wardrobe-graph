@@ -369,15 +369,6 @@ export const WardrobeStatsView: React.FC<WardrobeStatsViewProps> = ({
                 : 'Deine gespeicherten Lieblings-Outfits, meistgetragenen Einzelteile, Farb-Gewohnheiten & Trage-Historie.'}
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={onJumpToStylist}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 transition-colors cursor-pointer self-start sm:self-auto"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{isEn ? "To Today's Outfits" : 'Zu den Outfits für heute'}</span>
-          </button>
         </div>
 
         {/* Instant Worn Feedback Banner */}

@@ -61,6 +61,32 @@ export interface BiometricProfile {
   customOccasions?: CustomOccasion[];
   defaultStylePreferences?: DefaultStylePreferences;
   favoriteOutfits?: FavoriteOutfitRecord[];
+  customOutfitNames?: Record<string, string>;
+  /**
+   * How long a chosen ("Heute anziehen") outfit remains pinned at the top of DailyStylistView.
+   * 24 = 24 hours (default), 12 = 12 hours, 48 = 48 hours, 0 = until manually dismissed.
+   */
+  wornOutfitRetentionHours?: number;
+  /**
+   * IDs of WornOutfitRecords that the user manually dismissed from the pinned "Heute gewählt" area
+   * while keeping them in the wear history / statistics.
+   */
+  dismissedWornRecordIds?: string[];
+  /**
+   * Persisted travel capsule configuration & checked packing list items
+   */
+  travelPackState?: {
+    days: number;
+    luggageSpace: TravelLuggageSpace;
+    tripType: TravelTripType;
+    temperatureC: number;
+    weather: WeatherCondition;
+    includeEveningLook: boolean;
+    includeLaundryItems: boolean;
+    lockedGarmentIds: string[];
+    checkedGarmentIds: string[];
+    customTripName?: string;
+  };
 }
 
 export type GarmentCategory = 'base_top' | 'mid_layer' | 'outerwear' | 'bottom' | 'footwear' | 'accessory';
@@ -332,3 +358,63 @@ export interface FavoriteOutfitRecord {
   occasion?: OccasionType;
   temperatureC?: number;
 }
+
+export type TravelLuggageSpace = 'minimal' | 'balanced' | 'spacious';
+
+export type TravelTripType =
+  | 'city_trip'
+  | 'beach_sun'
+  | 'business_trip'
+  | 'outdoor_nature'
+  | 'mixed_vacation';
+
+export interface TravelPackConfig {
+  days: number; // 2 - 14
+  luggageSpace: TravelLuggageSpace;
+  tripType: TravelTripType;
+  temperatureC: number;
+  weather: WeatherCondition;
+  includeEveningLook?: boolean;
+  includeLaundryItems?: boolean;
+  lockedGarmentIds?: string[];
+  variationSeed?: number;
+}
+
+export interface TravelDayOutfit {
+  dayNumber: number; // 1 .. days
+  dayLabelDe: string;
+  dayLabelEn: string;
+  occasion: OccasionType;
+  occasionLabelDe: string;
+  occasionLabelEn: string;
+  isEveningOrSpecial: boolean;
+  outfit: GeneratedOutfit;
+  outfitTitle: string;
+}
+
+export interface TravelPackedItemUsage {
+  garment: Garment;
+  wornOnDays: number[];
+  wearCountOnTrip: number;
+}
+
+export interface TravelPackPlan {
+  config: TravelPackConfig;
+  packedGarments: Garment[];
+  packedByCategory: Record<GarmentCategory, TravelPackedItemUsage[]>;
+  dailyOutfits: TravelDayOutfit[];
+  totalGarmentCount: number;
+  coreGarmentCount: number; // without accessories
+  totalPossibleCombinations: number;
+  crossCompatibilityScore: number; // 0 - 100
+  categoryTargets: {
+    bottoms: number;
+    footwear: number;
+    baseTops: number;
+    midLayers: number;
+    outerwear: number;
+  };
+  summaryNotesDe: string[];
+  summaryNotesEn: string[];
+}
+

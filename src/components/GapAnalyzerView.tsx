@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -11,24 +11,29 @@ import {
 } from 'lucide-react';
 import {
   CATEGORY_LABELS,
+  CATEGORY_LABELS_EN,
   FIT_LABELS,
   SUBCATEGORY_LABELS,
   TEXTURE_LABELS,
 } from '../data/seedData';
 import {
+  AppLocale,
   ArchetypeRecommendation,
+  BiometricProfile,
   ContextBottleneck,
   GapAnalysisReport,
   Garment,
   GarmentCategory,
   OrphanPieceAnalysis,
 } from '../types/wardrobe';
-import { buildBrandOrShopUrl } from '../engine/outfitShare';
+import { buildBrandOrShopUrl, isAmazonShopActive } from '../engine/outfitShare';
 import { GarmentVector } from './GarmentVector';
 
 interface GapAnalyzerViewProps {
   report: GapAnalysisReport;
   garments: Garment[];
+  profile?: BiometricProfile;
+  locale?: AppLocale;
   onToggleSandboxGarment: (virtualGarment: Garment) => Promise<void>;
   onJumpToContext: (bucket: ContextBottleneck) => void;
   onLockOrphanInStylist: (garmentId: string) => void;
@@ -37,25 +42,42 @@ interface GapAnalyzerViewProps {
 const RECOMMENDATION_CATEGORY_TABS: Array<{
   id: 'all' | GarmentCategory;
   label: string;
+  labelEn: string;
 }> = [
-  { id: 'all', label: 'Alle Top-Tipps' },
-  { id: 'base_top', label: 'T-Shirts & Tops' },
-  { id: 'mid_layer', label: 'Pullover & Hemden' },
-  { id: 'outerwear', label: 'Jacken & Mäntel' },
-  { id: 'bottom', label: 'Hosen & Röcke' },
-  { id: 'footwear', label: 'Schuhe' },
+  { id: 'all', label: 'Alle Top-Tipps', labelEn: 'All Top Picks' },
+  { id: 'base_top', label: 'T-Shirts & Tops', labelEn: 'Tops & Shirts' },
+  { id: 'mid_layer', label: 'Pullover & Strick', labelEn: 'Sweaters & Mid-Layers' },
+  { id: 'outerwear', label: 'Jacken & Mäntel', labelEn: 'Jackets & Coats' },
+  { id: 'bottom', label: 'Hosen & Röcke', labelEn: 'Bottoms & Skirts' },
+  { id: 'footwear', label: 'Schuhe', labelEn: 'Footwear' },
 ];
 
 export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
   report,
   garments,
+  profile,
+  locale = 'de',
   onToggleSandboxGarment,
   onJumpToContext,
   onLockOrphanInStylist,
 }) => {
+  const isEn = locale === 'en';
+  const isAmazon = isAmazonShopActive();
   const [popupOrphan, setPopupOrphan] = useState<OrphanPieceAnalysis | null>(null);
   const [popupRec, setPopupRec] = useState<ArchetypeRecommendation | null>(null);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<'all' | GarmentCategory>('all');
+
+  useEffect(() => {
+    if (!popupOrphan && !popupRec) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (popupOrphan) setPopupOrphan(null);
+        if (popupRec) setPopupRec(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [popupOrphan, popupRec]);
 
   const sandboxItemsInCloset = garments.filter((g) => g.isWishlistSandbox);
 
@@ -93,15 +115,32 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-              Was fehlt mir im Kleiderschrank?
+              {isEn ? "What's missing in my wardrobe?" : 'Was fehlt mir im Kleiderschrank?'}
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Du kannst aktuell <strong>{report.totalValidOutfitsAcrossContexts} verschiedene Outfits</strong> für Wetter &amp; Alltag kombinieren
-              {report.orphanPieces.length > 0
-                ? ` · Zu ${report.orphanPieces.length} ${
-                    report.orphanPieces.length === 1 ? 'Teil fehlt' : 'Teilen fehlen'
-                  } noch passende Partner.`
-                : '.'}
+              {isEn ? (
+                <>
+                  You can currently build{' '}
+                  <strong>{report.totalValidOutfitsAcrossContexts} distinct outfits</strong> across
+                  seasons &amp; occasions
+                  {report.orphanPieces.length > 0
+                    ? ` · ${report.orphanPieces.length} ${
+                        report.orphanPieces.length === 1 ? 'item lacks' : 'items lack'
+                      } matching partners.`
+                    : '.'}
+                </>
+              ) : (
+                <>
+                  Du kannst aktuell{' '}
+                  <strong>{report.totalValidOutfitsAcrossContexts} verschiedene Outfits</strong> für
+                  Wetter &amp; Alltag kombinieren
+                  {report.orphanPieces.length > 0
+                    ? ` · Zu ${report.orphanPieces.length} ${
+                        report.orphanPieces.length === 1 ? 'Teil fehlt' : 'Teilen fehlen'
+                      } noch passende Partner.`
+                    : '.'}
+                </>
+              )}
             </p>
           </div>
 
@@ -177,7 +216,7 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
-                  {tab.label} ({catCount})
+                  {isEn ? tab.labelEn : tab.label} ({catCount})
                 </button>
               );
             })}
@@ -262,12 +301,20 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
 
                       <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                         <a
-                          href={buildBrandOrShopUrl(virtualGarment)}
+                          href={buildBrandOrShopUrl(virtualGarment, { profile })}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-amber-300 hover:text-amber-200 hover:border-amber-400/60 transition-colors whitespace-nowrap touch-manipulation active:scale-95"
                         >
-                          <span>Im Shop suchen</span>
+                          <span>
+                            {isAmazon
+                              ? isEn
+                                ? 'Find on Amazon'
+                                : 'Bei Amazon suchen'
+                              : isEn
+                              ? 'Find in Shop'
+                              : 'Im Shop suchen'}
+                          </span>
                           <ArrowUpRight className="w-3.5 h-3.5" />
                         </a>
 
@@ -277,7 +324,11 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 cursor-pointer whitespace-nowrap"
                         >
                           <Layers className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Beispiel-Outfits ({unlockedCombinationsPreview.length})</span>
+                          <span>
+                            {isEn
+                              ? `Example Outfits (${unlockedCombinationsPreview.length})`
+                              : `Beispiel-Outfits (${unlockedCombinationsPreview.length})`}
+                          </span>
                         </button>
 
                         <button
@@ -292,12 +343,16 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                           {isAlreadyInSandbox ? (
                             <>
                               <Check className="w-3.5 h-3.5 text-sky-400" />
-                              <span>Wird im Schrank getestet (Entfernen)</span>
+                              <span>
+                                {isEn ? 'Testing in Closet (Remove)' : 'Wird im Schrank getestet (Entfernen)'}
+                              </span>
                             </>
                           ) : (
                             <>
                               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                              <span>Probeweise in den Schrank legen</span>
+                              <span>
+                                {isEn ? 'Test in Closet' : 'Probeweise in den Schrank legen'}
+                              </span>
                             </>
                           )}
                         </button>
@@ -620,12 +675,20 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
 
             <div className="shrink-0 flex items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-900/40 gap-3">
               <a
-                href={buildBrandOrShopUrl(popupRec.virtualGarment)}
+                href={buildBrandOrShopUrl(popupRec.virtualGarment, { profile })}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[42px] rounded-lg bg-zinc-900 border border-zinc-700/80 hover:border-amber-400 text-xs font-medium text-amber-300 hover:text-amber-200 transition-colors whitespace-nowrap touch-manipulation active:scale-95"
               >
-                <span>Im Shop suchen</span>
+                <span>
+                  {isAmazon
+                    ? isEn
+                      ? 'Find on Amazon'
+                      : 'Bei Amazon suchen'
+                    : isEn
+                    ? 'Find in Shop'
+                    : 'Im Shop suchen'}
+                </span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </a>
 
@@ -634,7 +697,7 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                 onClick={() => setPopupRec(null)}
                 className="w-full sm:w-auto px-5 py-2.5 min-h-[42px] rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer touch-manipulation active:scale-95"
               >
-                Schließen
+                {isEn ? 'Close' : 'Schließen'}
               </button>
             </div>
           </div>
