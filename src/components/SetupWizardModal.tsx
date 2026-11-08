@@ -652,7 +652,8 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
 
       const derivedScope = deriveScopeFromTargets(selectedScopes);
 
-      await onCompleteSetup({
+      onClose();
+      void onCompleteSetup({
         profile: {
           ...draftProfile,
           wardrobeScopes: selectedScopes,
@@ -664,7 +665,6 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
         additionalGarmentsToAppend,
         openAddModalAfter,
       });
-      onClose();
     } finally {
       setIsSaving(false);
     }

@@ -227,6 +227,31 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   const [openOverridesByOutfitId, setOpenOverridesByOutfitId] = useState<
     Record<string, Record<string, boolean>>
   >({});
+  const [expandedMobileDetailsByOutfitId, setExpandedMobileDetailsByOutfitId] = useState<
+    Record<string, boolean>
+  >({});
+  const [isGeneratingPulse, setIsGeneratingPulse] = useState(false);
+  const [generationFeedbackText, setGenerationFeedbackText] = useState<string | null>(null);
+
+  const triggerGenerationFeedback = (label?: string) => {
+    setIsGeneratingPulse(true);
+    setGenerationFeedbackText(
+      label || (isEn ? 'New outfits ready ✓' : 'Neue Outfits bereit ✓')
+    );
+    window.setTimeout(() => {
+      setIsGeneratingPulse(false);
+    }, 180);
+    window.setTimeout(() => {
+      setGenerationFeedbackText(null);
+    }, 1300);
+  };
+
+  const toggleMobileOutfitDetails = (outfitId: string) => {
+    setExpandedMobileDetailsByOutfitId((prev) => ({
+      ...prev,
+      [outfitId]: !prev[outfitId],
+    }));
+  };
 
   const handleSetOutfitHiddenLayers = (outfitId: string, nextHiddenIds: string[]) => {
     setHiddenLayersByOutfitId((prev) => ({
@@ -338,6 +363,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           : current;
       next = [...cleaned, mod];
     }
+    triggerGenerationFeedback(isEn ? 'Filter applied ✓' : 'Filter aktiv ✓');
     onChangeContext({
       ...context,
       activeModifiers: next,
@@ -409,27 +435,26 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
       ? customOccasions.map((co) => (co.id === editingCustomOccasionId ? nextEntry : co))
       : [...customOccasions, nextEntry];
 
-    await onUpdateProfile({
-      ...profile,
-      customOccasions: nextList,
-    });
-
+    // Close dialog & update context immediately (0ms)
+    setIsCustomOccasionOpen(false);
+    setEditingCustomOccasionId(null);
+    triggerGenerationFeedback(isEn ? 'Occasion saved ✓' : 'Anlass gespeichert ✓');
     onChangeContext({
       ...context,
       customOccasionId: id,
       activeModifiers: undefined,
     });
-    setIsCustomOccasionOpen(false);
-    setEditingCustomOccasionId(null);
+    void onUpdateProfile({
+      ...profile,
+      customOccasions: nextList,
+    });
   };
 
   const handleDeleteCustomOccasion = async (id: string) => {
     if (!onUpdateProfile) return;
     const nextList = customOccasions.filter((co) => co.id !== id);
-    await onUpdateProfile({
-      ...profile,
-      customOccasions: nextList,
-    });
+    setIsCustomOccasionOpen(false);
+    setEditingCustomOccasionId(null);
     if (context.customOccasionId === id) {
       onChangeContext({
         ...context,
@@ -437,8 +462,10 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
         activeModifiers: undefined,
       });
     }
-    setIsCustomOccasionOpen(false);
-    setEditingCustomOccasionId(null);
+    void onUpdateProfile({
+      ...profile,
+      customOccasions: nextList,
+    });
   };
 
   const generatedOutfits = useMemo(() => {
@@ -515,6 +542,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
   }, [profile.autoLaundrySubcategories]);
 
   const handleGenerateNewOutfits = () => {
+    triggerGenerationFeedback(isEn ? 'New outfits ready ✓' : 'Neue Outfits bereit ✓');
     onChangeContext({
       ...context,
       variationSeed: (context.variationSeed || 0) + 1,
@@ -785,18 +813,18 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
       : (context.excludedAccessorySubcategories || []).length);
 
   return (
-    <div className="space-y-4">
-      {/* Compact 2-Row Context Toolbar */}
+    <div className="space-y-3 sm:space-y-4">
+      {/* Ultra-Compact 2-Row Context Toolbar */}
       <section
         aria-label="Wetter- und Anlass-Auswahl für deine Outfits"
-        className="rounded-2xl bg-zinc-900/55 border border-zinc-800/90 px-3.5 py-2.5 space-y-2"
+        className="rounded-2xl bg-zinc-900/55 border border-zinc-800/90 px-2.5 sm:px-3.5 py-2 space-y-1.5"
       >
-        {/* Row 1: Temperature Presets + Weather + Primary Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
+        {/* Row 1: Horizontally Scrollable Temp + Weather on Mobile, Pinned "Neue Outfits" + Desktop Actions */}
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-nowrap md:flex-wrap min-w-0 flex-1">
             {/* Compact Temperature Segmented Bar */}
-            <div className="inline-flex items-center gap-0.5 p-0.5 bg-zinc-950 rounded-xl border border-zinc-800/80">
-              <span className="px-2 py-1 text-xs font-mono font-semibold text-amber-400 tabular-nums">
+            <div className="inline-flex items-center gap-0.5 p-0.5 bg-zinc-950 rounded-xl border border-zinc-800/80 shrink-0">
+              <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 text-[11px] sm:text-xs font-mono font-semibold text-amber-400 tabular-nums">
                 {context.temperatureC}°C
               </span>
               {TEMP_PRESETS.map((preset) => {
@@ -805,7 +833,19 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                   (preset.temp === 12 && context.temperatureC >= 9 && context.temperatureC <= 15) ||
                   (preset.temp === 18 && context.temperatureC >= 16 && context.temperatureC <= 21) ||
                   (preset.temp === 24 && context.temperatureC >= 22);
-                const compactLabel =
+                const mobileShort =
+                  preset.temp === 5
+                    ? isEn
+                      ? 'Cold'
+                      : 'Kalt'
+                    : preset.temp === 12
+                    ? isEn
+                      ? 'Cool'
+                      : 'Kühl'
+                    : preset.temp === 18
+                    ? 'Mild'
+                    : 'Warm';
+                const desktopLabel =
                   preset.temp === 5
                     ? isEn
                       ? 'Cold <8°'
@@ -815,32 +855,34 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       ? 'Cool 9–15°'
                       : 'Kühl 9–15°'
                     : preset.temp === 18
-                    ? isEn
-                      ? 'Mild 16–21°'
-                      : 'Mild 16–21°'
-                    : isEn
-                    ? 'Warm >22°'
+                    ? 'Mild 16–21°'
                     : 'Warm >22°';
                 return (
                   <button
                     key={preset.temp}
                     type="button"
                     title={isEn ? preset.labelEn : preset.labelDe}
-                    onClick={() => onChangeContext({ ...context, temperatureC: preset.temp })}
-                    className={`px-2 py-1 min-h-[30px] text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                    onClick={() => {
+                      triggerGenerationFeedback(
+                        isEn ? `${preset.temp}°C applied ✓` : `${preset.temp}°C gewählt ✓`
+                      );
+                      onChangeContext({ ...context, temperatureC: preset.temp });
+                    }}
+                    className={`px-2 py-0.5 sm:py-1 min-h-[28px] sm:min-h-[30px] text-[11px] sm:text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                       isActive
                         ? 'bg-zinc-100 text-zinc-950 font-semibold'
                         : 'text-zinc-400 hover:text-zinc-100'
                     }`}
                   >
-                    {compactLabel}
+                    <span className="sm:hidden">{mobileShort}</span>
+                    <span className="hidden sm:inline">{desktopLabel}</span>
                   </button>
                 );
               })}
             </div>
 
             {/* Compact Weather Segmented Bar */}
-            <div className="inline-flex items-center gap-0.5 p-0.5 bg-zinc-950 rounded-xl border border-zinc-800/80">
+            <div className="inline-flex items-center gap-0.5 p-0.5 bg-zinc-950 rounded-xl border border-zinc-800/80 shrink-0">
               {(
                 [
                   { id: 'sunny_dry', labelDe: 'Trocken', labelEn: 'Dry', icon: Sun },
@@ -853,8 +895,13 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                   <button
                     key={id}
                     type="button"
-                    onClick={() => onChangeContext({ ...context, weather: id as WeatherCondition })}
-                    className={`inline-flex items-center gap-1 py-1 px-2 min-h-[30px] rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                    onClick={() => {
+                      triggerGenerationFeedback(
+                        isEn ? `${labelEn} applied ✓` : `${labelDe} gewählt ✓`
+                      );
+                      onChangeContext({ ...context, weather: id as WeatherCondition });
+                    }}
+                    className={`inline-flex items-center gap-1 py-0.5 sm:py-1 px-1.5 sm:px-2 min-h-[28px] sm:min-h-[30px] rounded-lg text-[11px] sm:text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                       active
                         ? 'bg-zinc-100 text-zinc-950 font-semibold'
                         : 'text-zinc-400 hover:text-zinc-100'
@@ -868,19 +915,33 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
             </div>
           </div>
 
-          {/* Primary Actions: Generate New Outfits + Display Mode + Anchor + Fine Filters */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/* Primary Actions: Pinned "Neue Outfits" + Desktop Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {generationFeedbackText && (
+              <span
+                role="status"
+                aria-live="polite"
+                className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/45 text-[11px] font-semibold text-emerald-300 whitespace-nowrap"
+              >
+                {generationFeedbackText}
+              </span>
+            )}
+
             <button
               type="button"
               onClick={handleGenerateNewOutfits}
-              className="inline-flex items-center gap-1.5 px-3 py-1 min-h-[32px] rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 min-h-[30px] sm:min-h-[32px] rounded-lg bg-amber-400 hover:bg-amber-300 text-[11px] sm:text-xs font-semibold text-zinc-950 transition-all cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 shadow-sm"
             >
-              <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+              <RefreshCw
+                className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${
+                  isGeneratingPulse ? 'animate-spin' : ''
+                }`}
+              />
               <span>{isEn ? 'New Outfits' : 'Neue Outfits'}</span>
             </button>
 
             <div
-              className="inline-flex items-center p-0.5 rounded-lg bg-zinc-950 border border-zinc-800"
+              className="hidden md:inline-flex items-center p-0.5 rounded-lg bg-zinc-950 border border-zinc-800"
               role="group"
               aria-label="Outfit-Darstellungsmodus"
             >
@@ -914,7 +975,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               type="button"
               onClick={() => setShowAnchorPicker((prev) => !prev)}
               aria-expanded={showAnchorPicker}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+              className={`hidden md:inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                 lockedGarments.length > 0
                   ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
                   : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
@@ -931,7 +992,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               type="button"
               onClick={() => setShowFineFilters((prev) => !prev)}
               aria-expanded={showFineFilters}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+              className={`hidden md:inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                 showFineFilters || activeFineFilterCount > 0
                   ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
                   : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
@@ -953,9 +1014,14 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               <button
                 type="button"
                 onClick={onWashAllGarments}
-                className="inline-flex items-center gap-1 px-2.5 py-1 min-h-[32px] rounded-lg bg-zinc-950 border border-zinc-700 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer whitespace-nowrap"
+                title={
+                  isEn
+                    ? 'Mark all laundry items as clean again'
+                    : 'Alle Teile aus dem Wäschekorb wieder als frisch markieren'
+                }
+                className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 min-h-[30px] sm:min-h-[32px] rounded-lg bg-zinc-950 border border-emerald-500/40 text-[11px] sm:text-xs font-medium text-emerald-200 hover:bg-emerald-500/15 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
               >
-                <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
                 <span>
                   {isEn ? `Wash (${dirtyCount})` : `Wäsche (${dirtyCount})`}
                 </span>
@@ -964,8 +1030,8 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Compact Single-Line/Wrap Occasion Bar */}
-        <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-zinc-800/70">
+        {/* Row 2: Single-Line Scrollable Occasion & Filter Strip on Mobile / Wrap on Desktop */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-nowrap md:flex-wrap pt-1.5 border-t border-zinc-800/70">
           {(Object.keys(OCCASION_LABELS) as OccasionType[]).map((occ) => {
             const active = !activeCustomOccasion && context.occasion === occ;
             const occText = isEn ? OCCASION_LABELS_EN[occ] : OCCASION_LABELS[occ];
@@ -973,15 +1039,16 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               <button
                 key={occ}
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  triggerGenerationFeedback(`${occText} ✓`);
                   onChangeContext({
                     ...context,
                     occasion: occ,
                     customOccasionId: undefined,
                     activeModifiers: undefined,
-                  })
-                }
-                className={`py-1 px-2 min-h-[28px] rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
+                  });
+                }}
+                className={`py-1 px-2 min-h-[28px] rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap border shrink-0 touch-manipulation active:scale-95 ${
                   active
                     ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
                     : 'bg-zinc-950 border-zinc-800/90 text-zinc-300 hover:text-zinc-100 hover:border-zinc-700'
@@ -998,14 +1065,15 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               <button
                 key={co.id}
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  triggerGenerationFeedback(`${co.name} ✓`);
                   onChangeContext({
                     ...context,
                     customOccasionId: co.id,
                     activeModifiers: undefined,
-                  })
-                }
-                className={`inline-flex items-center gap-1 py-1 px-2.5 min-h-[30px] rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap border touch-manipulation active:scale-95 ${
+                  });
+                }}
+                className={`inline-flex items-center gap-1 py-1 px-2.5 min-h-[28px] rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap border shrink-0 touch-manipulation active:scale-95 ${
                   active
                     ? 'bg-amber-400 border-amber-400 text-zinc-950 font-semibold'
                     : 'bg-amber-500/10 border-amber-500/35 text-amber-200 hover:bg-amber-500/20'
@@ -1022,7 +1090,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                 <button
                   type="button"
                   onClick={() => openEditCustomOccasionForm(activeCustomOccasion)}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-700 hover:border-zinc-600 text-[11px] font-medium text-zinc-300 hover:text-zinc-100 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-1 min-h-[28px] rounded-lg bg-zinc-950 border border-zinc-700 hover:border-zinc-600 text-[11px] font-medium text-zinc-300 hover:text-zinc-100 cursor-pointer shrink-0"
                 >
                   <Edit3 className="w-3 h-3 text-amber-400" />
                   <span>{isEn ? 'Edit' : 'Bearbeiten'}</span>
@@ -1031,14 +1099,73 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               <button
                 type="button"
                 onClick={openNewCustomOccasionForm}
-                className="inline-flex items-center gap-1 px-2 py-1 min-h-[30px] rounded-lg bg-amber-500/10 border border-amber-500/35 hover:bg-amber-500/20 text-[11px] font-medium text-amber-200 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-1 min-h-[28px] rounded-lg bg-amber-500/10 border border-amber-500/35 hover:bg-amber-500/20 text-[11px] font-medium text-amber-200 transition-colors cursor-pointer shrink-0"
               >
                 <Plus className="w-3 h-3 text-amber-400" />
                 <span>{isEn ? 'Custom' : 'Eigener Anlass'}</span>
               </button>
             </>
           )}
+
+          {/* Mobile-only compact filter triggers inside Row 2 scroll strip so no extra rows are needed */}
+          <button
+            type="button"
+            onClick={() => setShowAnchorPicker((prev) => !prev)}
+            aria-expanded={showAnchorPicker}
+            className={`md:hidden inline-flex items-center gap-1 px-2 py-1 min-h-[28px] rounded-lg border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 touch-manipulation active:scale-95 ${
+              lockedGarments.length > 0
+                ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+            }`}
+          >
+            <Lock className="w-3 h-3 text-amber-400" />
+            <span>
+              {isEn ? 'Pin' : 'Teil wählen'}
+              {lockedGarments.length > 0 ? ` (${lockedGarments.length})` : ''}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowFineFilters((prev) => !prev)}
+            aria-expanded={showFineFilters}
+            className={`md:hidden inline-flex items-center gap-1 px-2 py-1 min-h-[28px] rounded-lg border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 touch-manipulation active:scale-95 ${
+              showFineFilters || activeFineFilterCount > 0
+                ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+            }`}
+          >
+            <SlidersHorizontal className="w-3 h-3 text-amber-400" />
+            <span>
+              {isEn ? 'Details' : 'Feinfilter'}
+              {activeFineFilterCount > 0 ? ` (${activeFineFilterCount})` : ''}
+            </span>
+          </button>
+
+          {dirtyCount > 0 && (
+            <button
+              type="button"
+              onClick={onWashAllGarments}
+              className="md:hidden inline-flex items-center gap-1 px-2 py-1 min-h-[28px] rounded-lg bg-zinc-950 border border-zinc-700 text-[11px] font-medium text-zinc-200 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3 text-emerald-400" />
+              <span>
+                {isEn ? `Wash (${dirtyCount})` : `Wäsche (${dirtyCount})`}
+              </span>
+            </button>
+          )}
         </div>
+
+        {/* Mobile Instant Feedback Pill */}
+        {generationFeedbackText && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="sm:hidden flex items-center justify-center py-0.5 text-[11px] font-semibold text-emerald-300"
+          >
+            {generationFeedbackText}
+          </div>
+        )}
 
         {/* Anchor Item Picker Drawer */}
         {showAnchorPicker && (
@@ -1590,17 +1717,21 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
               }
             };
 
+            const isMobileDetailsExpanded = Boolean(expandedMobileDetailsByOutfitId[outfit.id]);
+
             return (
               <article
                 key={outfit.id}
-                className={`rounded-2xl border p-4 sm:p-5 transition-colors space-y-4 ${
+                className={`rounded-2xl border p-3.5 sm:p-5 transition-all duration-150 space-y-3 sm:space-y-4 ${
+                  isGeneratingPulse ? 'opacity-75 scale-[0.995]' : 'opacity-100 scale-100'
+                } ${
                   isWornToday
                     ? 'bg-emerald-950/15 border-emerald-500/60 shadow-lg'
                     : 'bg-zinc-900/45 border-zinc-800/90 hover:border-zinc-700/80'
                 }`}
               >
                 {/* Minimal, Non-Verbose Card Header */}
-                <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-zinc-800/70">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-zinc-800/70">
                   <div className="flex items-center gap-2 min-w-0">
                     {isEditingTitle ? (
                       <div className="flex items-center gap-1.5">
@@ -1625,7 +1756,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                         </button>
                       </div>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <h2 className="text-sm font-semibold text-zinc-100 truncate">
                           {outfitTitle}
                         </h2>
@@ -1689,7 +1820,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto shrink-0">
+                  <div className="flex items-center sm:flex-wrap gap-1.5 w-full sm:w-auto shrink-0">
                     {onToggleFavoriteOutfit && (
                       <button
                         type="button"
@@ -1714,7 +1845,16 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             ? 'Save as Favorite Outfit'
                             : 'Als Lieblings-Outfit speichern'
                         }
-                        className={`inline-flex items-center justify-center gap-1.5 min-h-[38px] px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                        aria-label={
+                          isFavoriteOutfit
+                            ? isEn
+                              ? 'Saved'
+                              : 'Favorit'
+                            : isEn
+                            ? 'Favorite'
+                            : 'Merken'
+                        }
+                        className={`inline-flex items-center justify-center gap-1.5 min-h-[34px] sm:min-h-[36px] px-2 sm:px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                           isFavoriteOutfit
                             ? 'bg-rose-500/15 border-rose-500/50 text-rose-200 font-semibold'
                             : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-rose-200'
@@ -1727,7 +1867,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                               : 'text-rose-400'
                           }`}
                         />
-                        <span>
+                        <span className="hidden sm:inline">
                           {isFavoriteOutfit
                             ? isEn
                               ? 'Saved'
@@ -1742,7 +1882,8 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleShareOutfit(outfit, outfitTitle)}
-                      className={`inline-flex items-center justify-center gap-1.5 min-h-[38px] px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                      aria-label={isEn ? 'Share' : 'Teilen'}
+                      className={`inline-flex items-center justify-center gap-1.5 min-h-[34px] sm:min-h-[36px] px-2 sm:px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                         sharedFeedbackId === outfit.id
                           ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
                           : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-zinc-100'
@@ -1756,7 +1897,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                       ) : (
                         <>
                           <Share2 className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{isEn ? 'Share' : 'Teilen'}</span>
+                          <span className="hidden sm:inline">{isEn ? 'Share' : 'Teilen'}</span>
                         </>
                       )}
                     </button>
@@ -1764,22 +1905,22 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setPopupOutfit(outfit)}
-                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                      className="inline-flex items-center justify-center gap-1 min-h-[34px] sm:min-h-[36px] px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
                     >
-                      <Info className="w-3.5 h-3.5 text-amber-400" />
+                      <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>{isEn ? 'Why it works' : 'Warum passt’s?'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleMarkWorn(outfit, outfitTitle, outfitSlotIndex)}
-                      className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
+                      className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 min-h-[34px] sm:min-h-[36px] px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95 ${
                         isWornToday
                           ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold'
                           : 'bg-zinc-100 text-zinc-950 hover:bg-white font-semibold'
                       }`}
                     >
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
                       <span>
                         {isWornToday
                           ? isEn
@@ -1803,7 +1944,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                               ? 'Dismiss from top (keeps history)'
                               : 'Oben ausblenden (bleibt in der Historie)'
                           }
-                          className="inline-flex items-center justify-center gap-1 min-h-[38px] px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-600 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                          className="inline-flex items-center justify-center gap-1 min-h-[36px] px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-600 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
                         >
                           <X className="w-3.5 h-3.5" />
                           <span>{isEn ? 'Hide' : 'Ausblenden'}</span>
@@ -1817,7 +1958,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                             title={
                               isEn ? 'Undo wear selection' : 'Auswahl rückgängig machen'
                             }
-                            className="inline-flex items-center justify-center gap-1 min-h-[38px] px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-rose-500/60 text-xs font-medium text-zinc-300 hover:text-rose-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                            className="inline-flex items-center justify-center gap-1 min-h-[36px] px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-rose-500/60 text-xs font-medium text-zinc-300 hover:text-rose-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span>{isEn ? 'Undo' : 'Rückgängig'}</span>
@@ -1830,9 +1971,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
                 {/* Main Outfit Display: Stacked ("Übereinander") or Grid */}
                 {displayMode === 'stacked' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 md:gap-5 items-stretch">
                     {/* Visual Vertical Outfit Stack ("Übereinander") */}
-                    <div className="md:col-span-5">
+                    <div className="md:col-span-5 flex flex-col gap-2.5">
                       <OutfitLayerStack
                         items={outfit.items}
                         profile={profile}
@@ -1849,10 +1990,48 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
                           handleToggleOutfitOpenOverride(outfit.id, gId, curr)
                         }
                       />
+
+                      {/* Mobile Accordion Button to expand/collapse detailed garment list */}
+                      <button
+                        type="button"
+                        aria-expanded={isMobileDetailsExpanded}
+                        onClick={() => toggleMobileOutfitDetails(outfit.id)}
+                        className="md:hidden w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-zinc-950/90 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition-colors cursor-pointer touch-manipulation active:scale-[0.99]"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center -space-x-1 shrink-0">
+                            {coreAnatomicalItems.slice(0, 6).map((item) => (
+                              <span
+                                key={item.id}
+                                className="w-3.5 h-3.5 rounded-full border border-zinc-900 shadow-xs"
+                                style={{ backgroundColor: item.colorHex }}
+                              />
+                            ))}
+                          </div>
+                          <span className="truncate">
+                            {isMobileDetailsExpanded
+                              ? isEn
+                                ? 'Hide item details'
+                                : 'Einzelteile ausblenden'
+                              : isEn
+                              ? `Show ${coreAnatomicalItems.length} items & details`
+                              : `Einzelteile & Details (${coreAnatomicalItems.length})`}
+                          </span>
+                        </div>
+                        {isMobileDetailsExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-amber-400 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+                        )}
+                      </button>
                     </div>
 
                     {/* Head-to-Toe Vertical Layer Breakdown ("Von Kopf bis Fuß") */}
-                    <div className="md:col-span-7 flex flex-col justify-between gap-2.5">
+                    <div
+                      className={`${
+                        isMobileDetailsExpanded ? 'flex' : 'hidden md:flex'
+                      } md:col-span-7 flex-col justify-between gap-2.5`}
+                    >
                       <div className="space-y-2.5">
                         {coreAnatomicalItems.map((item, layerIdx) => {
                           const isLocked = context.lockedGarmentIds.includes(item.id);

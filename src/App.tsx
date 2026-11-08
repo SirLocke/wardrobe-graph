@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
+  Check,
   Compass,
   Grid,
   Luggage,
@@ -41,6 +42,7 @@ import {
   bulkUpsertGarmentsToDb,
   deleteGarmentFromDb,
   deleteWornOutfitRecordFromDb,
+  enrichGarmentColor,
   getWornHistoryFromDb,
   importWardrobeBackup,
   loadOrSeedWardrobeData,
@@ -93,9 +95,22 @@ export default function App() {
   const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
   const [wizardStartOwnMode, setWizardStartOwnMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [quickStatusToast, setQuickStatusToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
   const isEn = locale === 'en';
   const t = useMemo(() => createTranslator(locale), [locale]);
+
+  const triggerQuickToast = (msg: string) => {
+    setQuickStatusToast(msg);
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setQuickStatusToast(null);
+      toastTimerRef.current = null;
+    }, 1800);
+  };
 
   const isDemoActive = useMemo(() => {
     if (profile.isDemoMode === false) return false;
@@ -158,7 +173,7 @@ export default function App() {
   const { gapReport } = useGapAnalysis(garments, profile);
 
   const handleSaveGarment = async (garment: Garment, keepOpenForDuplicate: boolean) => {
-    const saved = await saveGarmentToDb(garment);
+    const saved = enrichGarmentColor(garment);
     setGarments((prev) => {
       const exists = prev.some((g) => g.id === saved.id);
       if (exists) {
@@ -167,21 +182,24 @@ export default function App() {
       return [saved, ...prev];
     });
     if (!keepOpenForDuplicate) {
+      setIsModalOpen(false);
       setEditingGarment(null);
     }
+    triggerQuickToast(isEn ? `Saved "${saved.name}"` : `„${saved.name}“ gespeichert`);
+    void saveGarmentToDb(saved);
   };
 
   const handleDeleteGarment = async (id: string) => {
-    await deleteGarmentFromDb(id);
     setGarments((prev) => prev.filter((g) => g.id !== id));
     setContext((prev) => ({
       ...prev,
       lockedGarmentIds: prev.lockedGarmentIds.filter((lockedId) => lockedId !== id),
     }));
+    triggerQuickToast(isEn ? 'Removed from closet' : 'Entfernt');
+    void deleteGarmentFromDb(id);
   };
 
   const handleToggleClean = async (id: string, nextClean: boolean) => {
-    await updateGarmentsCleanStatus([id], nextClean);
     setGarments((prev) =>
       prev.map((g) =>
         g.id === id
@@ -189,6 +207,7 @@ export default function App() {
           : g
       )
     );
+    void updateGarmentsCleanStatus([id], nextClean);
   };
 
   const handleLogOutfitWorn = async (
@@ -278,13 +297,15 @@ export default function App() {
 
   const handleWashAllGarments = async () => {
     const allIds = garments.map((g) => g.id);
-    await updateGarmentsCleanStatus(allIds, true);
     setGarments((prev) => prev.map((g) => ({ ...g, isClean: true })));
+    triggerQuickToast(isEn ? 'All clothes marked clean' : 'Wäsche als frisch markiert');
+    void updateGarmentsCleanStatus(allIds, true);
   };
 
   const handleUpdateProfile = async (nextProfile: BiometricProfile) => {
     setProfile(nextProfile);
-    await saveBiometricProfile(nextProfile);
+    triggerQuickToast(isEn ? 'Saved' : 'Gespeichert');
+    void saveBiometricProfile(nextProfile);
   };
 
   const handleToggleFavoriteOutfit = async (fav: FavoriteOutfitRecord) => {
@@ -295,15 +316,26 @@ export default function App() {
     );
     const nextFavorites = exists
       ? current.filter(
-          (item) =>
+           (item) =>
             item.id !== fav.id && buildOutfitSignature(item.garmentIds) !== targetSig
         )
       : [fav, ...current];
 
-    await handleUpdateProfile({
+    const nextProfile: BiometricProfile = {
       ...profile,
       favoriteOutfits: nextFavorites,
-    });
+    };
+    setProfile(nextProfile);
+    triggerQuickToast(
+      exists
+        ? isEn
+          ? 'Removed from favorites'
+          : 'Aus Favoriten entfernt'
+        : isEn
+        ? 'Saved to favorites'
+        : 'Als Favorit gemerkt'
+    );
+    void saveBiometricProfile(nextProfile);
   };
 
   const handleWearOutfitItemsToday = async (
@@ -680,33 +712,40 @@ export default function App() {
       </header>
 
       {/* Main Content Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-5 space-y-5">
-        {/* Demo Mode Exit Banner */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-2.5 sm:pt-4 space-y-3 sm:space-y-4">
+        {/* Compact Single-Line Demo Mode Banner */}
         {isLoaded && isDemoActive && (
-          <div className="rounded-xl bg-amber-500/10 border border-amber-500/35 px-3.5 py-2 flex flex-col md:flex-row md:items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="text-xs font-semibold text-amber-200">
-                {t('demo.title')}
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/35 px-2.5 sm:px-3.5 py-1.5 flex items-center justify-between gap-2 overflow-hidden">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[11px] sm:text-xs font-semibold text-amber-200 truncate">
+                {locale === 'en' ? 'Demo' : 'Demo'}
+                <span className="hidden sm:inline"> · {t('demo.title')}</span>
               </span>
-              <span className="text-xs text-zinc-300 hidden sm:inline">
+              <span className="text-xs text-zinc-300 hidden lg:inline truncate">
                 · {t('demo.subtitle')}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0 w-full md:w-auto">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={handleExitDemoAndClearDirectly}
-                className="flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-xs font-medium text-zinc-200 cursor-pointer text-center touch-manipulation active:scale-95"
+                className="px-2 sm:px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-[11px] sm:text-xs font-medium text-zinc-200 cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
               >
-                {t('demo.emptyAndAdd')}
+                <span className="sm:hidden">
+                  {locale === 'en' ? 'Empty & add' : 'Leeren & +1'}
+                </span>
+                <span className="hidden sm:inline">{t('demo.emptyAndAdd')}</span>
               </button>
               <button
                 type="button"
                 onClick={handleExitDemoAndOpenWizard}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-semibold text-zinc-950 cursor-pointer text-center touch-manipulation active:scale-95"
+                className="inline-flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-[11px] sm:text-xs font-semibold text-zinc-950 cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
               >
-                <Wand2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{t('demo.exitAndSetup')}</span>
+                <Wand2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                <span className="sm:hidden">
+                  {locale === 'en' ? 'Own Wardrobe' : 'Eigener Schrank'}
+                </span>
+                <span className="hidden sm:inline">{t('demo.exitAndSetup')}</span>
               </button>
             </div>
           </div>
@@ -765,6 +804,7 @@ export default function App() {
                 onEditGarment={openEditGarment}
                 onDeleteGarment={handleDeleteGarment}
                 onToggleClean={handleToggleClean}
+                onWashAllGarments={handleWashAllGarments}
                 onLockAndStyle={handleLockItemInStylist}
               />
             )}
@@ -811,6 +851,18 @@ export default function App() {
           </>
         )}
       </main>
+
+      {/* Non-blocking Instant Save Confirmation Pill */}
+      {quickStatusToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-20 md:bottom-6 right-4 z-50 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 text-zinc-950 text-xs font-semibold shadow-xl border border-emerald-300/60 pointer-events-none transition-all"
+        >
+          <Check className="w-3.5 h-3.5 shrink-0" />
+          <span>{quickStatusToast}</span>
+        </div>
+      )}
 
       {/* Quiet Footer */}
       <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 mt-12 pt-6 border-t border-zinc-900 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 text-xs text-zinc-500">

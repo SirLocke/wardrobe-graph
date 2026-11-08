@@ -1634,6 +1634,72 @@ test('upperLayerToggle: resolves Komplett, Ohne Jacke, Drunter (underneath) and 
   assert.equal(stateMidOpen.isMidLayerOpen, true);
 });
 
+test('variationSeed: produces high outfit variance across consecutive shuffle clicks even within strict occasions', () => {
+  const occasions = ['casual', 'smart_casual_office', 'city_cafe', 'date_night'] as const;
 
+  for (const occasion of occasions) {
+    const batch0 = generateOutfitsForContext(
+      SEED_WARDROBE_GARMENTS,
+      DEFAULT_BIOMETRIC_PROFILE,
+      {
+        temperatureC: 18,
+        weather: 'sunny_dry',
+        occasion,
+        lockedGarmentIds: [],
+        variationSeed: 0,
+      },
+      3
+    );
+    const batch1 = generateOutfitsForContext(
+      SEED_WARDROBE_GARMENTS,
+      DEFAULT_BIOMETRIC_PROFILE,
+      {
+        temperatureC: 18,
+        weather: 'sunny_dry',
+        occasion,
+        lockedGarmentIds: [],
+        variationSeed: 1,
+      },
+      3
+    );
+    const batch2 = generateOutfitsForContext(
+      SEED_WARDROBE_GARMENTS,
+      DEFAULT_BIOMETRIC_PROFILE,
+      {
+        temperatureC: 18,
+        weather: 'sunny_dry',
+        occasion,
+        lockedGarmentIds: [],
+        variationSeed: 2,
+      },
+      3
+    );
 
+    assert.equal(batch0.length, 3, `Occasion ${occasion} batch0 should have 3 outfits`);
+    assert.equal(batch1.length, 3, `Occasion ${occasion} batch1 should have 3 outfits`);
+    assert.equal(batch2.length, 3, `Occasion ${occasion} batch2 should have 3 outfits`);
 
+    // Ensure the lead outfit changes on each click of "Neue Outfits"
+    assert.notEqual(
+      batch0[0].id,
+      batch1[0].id,
+      `Lead outfit for ${occasion} must change between seed 0 and seed 1`
+    );
+    assert.notEqual(
+      batch1[0].id,
+      batch2[0].id,
+      `Lead outfit for ${occasion} must change between seed 1 and seed 2`
+    );
+
+    // Ensure at least 5 distinct outfits across the 3 batches of 3 (9 slots total)
+    const uniqueOutfitIds = new Set([
+      ...batch0.map((o) => o.id),
+      ...batch1.map((o) => o.id),
+      ...batch2.map((o) => o.id),
+    ]);
+    assert.ok(
+      uniqueOutfitIds.size >= 5,
+      `Occasion ${occasion} should surface at least 5 distinct outfits across 3 shuffle steps (got ${uniqueOutfitIds.size})`
+    );
+  }
+});

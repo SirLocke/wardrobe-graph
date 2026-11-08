@@ -1125,14 +1125,25 @@ export function generateOutfitsForContext(
     }
   } else if (temp >= 14 && temp <= 20) {
     const hasLockedOuter = slotOuterwears.some((g) => lockedSet.has(g.id));
-    const effectiveMidPool =
-      slotMidLayers.some((g) => lockedSet.has(g.id))
-        ? slotMidLayers
-        : [...slotMidLayers, ...openableShirtLayersFromBase];
+    const hasLockedMid = slotMidLayers.some((g) => lockedSet.has(g.id));
+    const effectiveMidPool = hasLockedMid
+      ? slotMidLayers
+      : [...slotMidLayers, ...openableShirtLayersFromBase];
 
     for (const top of slotBaseTops) {
-      // Also allow solo long-sleeve button_down_shirt with light outerwear or solo at 17-20°C
-      if (isShirtSubcategory(top.subcategory) && temp >= 17 && !slotMidLayers.some((g) => lockedSet.has(g.id))) {
+      // Allow solo shirts at 17-20°C, and when exploring variations (variationSeed > 0) also allow solo polos, blouses, longsleeves & heavyweight tees at 15-20°C
+      const canWearSoloInMild =
+        !hasLockedMid &&
+        ((isShirtSubcategory(top.subcategory) && temp >= 17) ||
+          ((context.variationSeed || 0) > 0 &&
+            temp >= 15 &&
+            (isShirtSubcategory(top.subcategory) ||
+              top.subcategory === 'blouse' ||
+              top.subcategory === 'polo' ||
+              top.subcategory === 'longsleeve' ||
+              top.subcategory === 'heavyweight_tee')));
+
+      if (canWearSoloInMild) {
         for (const bottom of slotBottoms) {
           for (const shoe of slotFootwears) {
             if (hasLockedOuter) {
@@ -1141,6 +1152,20 @@ export function generateOutfitsForContext(
               }
             } else {
               candidateCombos.push(withRecommendedWearStyle([top, bottom, shoe]));
+            }
+          }
+        }
+      }
+
+      // When exploring variations (variationSeed > 0) at 14-20°C without a locked mid-layer,
+      // also allow transitional outerwear (light jacket, trenchcoat, leather jacket, blouson, coat) directly over a base top
+      if ((context.variationSeed || 0) > 0 && !hasLockedMid && !hasLockedOuter) {
+        for (const out of slotOuterwears) {
+          if (out.thermalRating <= 4) {
+            for (const bottom of slotBottoms) {
+              for (const shoe of slotFootwears) {
+                candidateCombos.push(withRecommendedWearStyle([top, out, bottom, shoe]));
+              }
             }
           }
         }
@@ -1367,116 +1392,265 @@ export function generateOutfitsForContext(
   const variationSeed = context.variationSeed || 0;
 
   // Deterministic Maximal Marginal Relevance (MMR) Diversity Selection on Core Outfits:
-  // Ensures the Top N recommended outfits on the start page do not repeat the same
-  // visible Mid-Layer, Outerwear, Bottom, Base-Top, or Footwear combination.
-  // When variationSeed > 0 ("Neue Outfits generieren"), starts from a rotated top candidate
-  // and applies a deterministic variation offset to surface fresh valid combinations.
-  const startPoolSize = Math.min(scoredCore.length, Math.max(5, limit * 3));
-  const firstIdx = variationSeed > 0 ? (variationSeed * 2) % startPoolSize : 0;
-  const selected: GeneratedOutfit[] = [scoredCore[firstIdx]];
-  const selectedIds = new Set<string>([scoredCore[firstIdx].id]);
+  // Ensures the Top N recommended outfits do not repeat the same visible Mid-Layer,
+  // Outerwear, Bottom, Base-Top, or Footwear combination.
+  // When variationSeed > 0 ("Neue Outfits"), runs a multi-step novelty rotation that
+  // penalizes outfits and (lead-layer + bottom) pairs already surfaced in prior steps
+  // and rotates across distinct bottoms, tops, mid-layers, and shoes.
+  const distinctBottomIds = Array.from(
+    new Set(
+      scoredCore
+        .map((o) => o.items.find((i) => i.category === 'bottom')?.id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const distinctLeadUpperIds = Array.from(
+    new Set(
+      scoredCore
+        .map(
+          (o) =>
+            (
+              o.items.find((i) => i.category === 'mid_layer') ||
+              o.items.find((i) => i.category === 'outerwear') ||
+              o.items.find((i) => i.category === 'base_top')
+            )?.id
+        )
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const distinctShoeIds = Array.from(
+    new Set(
+      scoredCore
+        .map((o) => o.items.find((i) => i.category === 'footwear')?.id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
 
-  while (selected.length < limit && selected.length < scoredCore.length) {
-    let bestCandidate: GeneratedOutfit | null = null;
-    let bestDiversityScore = -Infinity;
+  const getLeadPairKey = (outfit: GeneratedOutfit): string => {
+    const leadUpper =
+      outfit.items.find((i) => i.category === 'mid_layer') ||
+      outfit.items.find((i) => i.category === 'outerwear') ||
+      outfit.items.find((i) => i.category === 'base_top');
+    const bot = outfit.items.find((i) => i.category === 'bottom');
+    return `${leadUpper?.id || 'none'}__${bot?.id || 'none'}`;
+  };
 
-    for (let cIdx = 0; cIdx < scoredCore.length; cIdx++) {
-      const candidate = scoredCore[cIdx];
-      if (selectedIds.has(candidate.id)) continue;
+  const selectBatchForStep = (
+    stepSeed: number,
+    prevStepOutfitIds: Set<string>,
+    olderStepOutfitIds: Set<string>,
+    prevStepLeadPairs: Set<string>
+  ): GeneratedOutfit[] => {
+    const batch: GeneratedOutfit[] = [];
+    const batchIds = new Set<string>();
 
-      let penalty = 0;
-      const seedJitter =
-        variationSeed > 0 ? (((cIdx * 7 + variationSeed * 13) % 11) - 5) * 2.2 : 0;
-      let bonus = getVibeAlignmentPriority(candidate) * 0.25 + seedJitter;
+    if (stepSeed === 0) {
+      batch.push(scoredCore[0]);
+      batchIds.add(scoredCore[0].id);
+    } else {
+      // Pick a high-quality anchor for this variation step that hasn't been used in the previous step
+      // and rotates across available bottoms and upper layers
+      const targetBottomId =
+        distinctBottomIds.length > 0
+          ? distinctBottomIds[stepSeed % distinctBottomIds.length]
+          : undefined;
+      const targetLeadId =
+        distinctLeadUpperIds.length > 0
+          ? distinctLeadUpperIds[(stepSeed * 2 + 1) % distinctLeadUpperIds.length]
+          : undefined;
 
-      const candMid = candidate.items.find((i) => i.category === 'mid_layer');
-      const candOut = candidate.items.find((i) => i.category === 'outerwear');
-      const candBot = candidate.items.find((i) => i.category === 'bottom');
-      const candTop = candidate.items.find((i) => i.category === 'base_top');
-      const candShoe = candidate.items.find((i) => i.category === 'footwear');
+      let bestFirst: GeneratedOutfit = scoredCore[stepSeed % scoredCore.length];
+      let bestFirstScore = -Infinity;
 
-      let unseenMidSubcategory = true;
-      let unseenDominantHue = true;
-      const candDominantHex = (candOut || candMid || candTop)?.colorHex;
+      for (let idx = 0; idx < scoredCore.length; idx++) {
+        const cand = scoredCore[idx];
+        let s = cand.totalScore + getVibeAlignmentPriority(cand) * 0.25;
+        if (prevStepOutfitIds.has(cand.id)) s -= 160;
+        else if (olderStepOutfitIds.has(cand.id)) s -= 75;
+        if (prevStepLeadPairs.has(getLeadPairKey(cand))) s -= 55;
 
-      for (const prev of selected) {
-        const prevIds = new Set(prev.items.map((i) => i.id));
-        const sharedUnlockedCount = candidate.items.filter(
-          (i) => !lockedSet.has(i.id) && prevIds.has(i.id)
-        ).length;
-        const unlockedSlotsCount = candidate.items.filter((i) => !lockedSet.has(i.id)).length;
+        const bot = cand.items.find((i) => i.category === 'bottom');
+        const lead =
+          cand.items.find((i) => i.category === 'mid_layer') ||
+          cand.items.find((i) => i.category === 'outerwear') ||
+          cand.items.find((i) => i.category === 'base_top');
 
-        // Heavy penalty if candidate differs by only 1 item from an already selected outfit
-        if (unlockedSlotsCount >= 2 && sharedUnlockedCount >= unlockedSlotsCount - 1) {
-          penalty += 60;
-        } else if (unlockedSlotsCount >= 3 && sharedUnlockedCount >= unlockedSlotsCount - 2) {
-          penalty += 22;
-        }
+        if (targetBottomId && bot?.id === targetBottomId) s += 18;
+        if (targetLeadId && lead?.id === targetLeadId) s += 22;
+        s += (((idx * 11 + stepSeed * 17) % 13) - 6) * 1.8;
 
-        const prevMid = prev.items.find((i) => i.category === 'mid_layer');
-        const prevOut = prev.items.find((i) => i.category === 'outerwear');
-        const prevBot = prev.items.find((i) => i.category === 'bottom');
-        const prevTop = prev.items.find((i) => i.category === 'base_top');
-        const prevShoe = prev.items.find((i) => i.category === 'footwear');
-
-        if (candOut && prevOut && !lockedSet.has(candOut.id) && candOut.id === prevOut.id) {
-          penalty += 26;
-        }
-        if (candMid && prevMid && !lockedSet.has(candMid.id)) {
-          if (candMid.id === prevMid.id) {
-            penalty += 30;
-          }
-          if (candMid.subcategory === prevMid.subcategory) {
-            unseenMidSubcategory = false;
-          }
-        }
-        if (candBot && prevBot && !lockedSet.has(candBot.id) && candBot.id === prevBot.id) {
-          penalty += 20;
-        }
-        if (candTop && prevTop && !lockedSet.has(candTop.id) && candTop.id === prevTop.id) {
-          penalty += 18;
-        }
-        if (candShoe && prevShoe && !lockedSet.has(candShoe.id) && candShoe.id === prevShoe.id) {
-          penalty += 14;
-        }
-
-        // Extra penalty if exact same (Mid/Top + Bottom) visual torso-leg block repeats
-        if (
-          candMid &&
-          prevMid &&
-          candBot &&
-          prevBot &&
-          !lockedSet.has(candMid.id) &&
-          !lockedSet.has(candBot.id) &&
-          candMid.id === prevMid.id &&
-          candBot.id === prevBot.id
-        ) {
-          penalty += 35;
-        }
-
-        const prevDominantHex = (prevOut || prevMid || prevTop)?.colorHex;
-        if (candDominantHex && prevDominantHex && candDominantHex === prevDominantHex) {
-          unseenDominantHue = false;
+        if (s > bestFirstScore) {
+          bestFirstScore = s;
+          bestFirst = cand;
         }
       }
 
-      if (candMid && unseenMidSubcategory) {
-        bonus += 12;
-      }
-      if (candDominantHex && unseenDominantHue) {
-        bonus += 10;
-      }
-
-      const diversityAdjustedScore = candidate.totalScore + bonus - penalty;
-      if (diversityAdjustedScore > bestDiversityScore) {
-        bestDiversityScore = diversityAdjustedScore;
-        bestCandidate = candidate;
-      }
+      batch.push(bestFirst);
+      batchIds.add(bestFirst.id);
     }
 
-    if (!bestCandidate) break;
-    selected.push(bestCandidate);
-    selectedIds.add(bestCandidate.id);
+    while (batch.length < limit && batch.length < scoredCore.length) {
+      let bestCandidate: GeneratedOutfit | null = null;
+      let bestDiversityScore = -Infinity;
+      const slotIdx = batch.length;
+
+      const preferredBottomForSlot =
+        stepSeed > 0 && distinctBottomIds.length > 1
+          ? distinctBottomIds[(stepSeed + slotIdx) % distinctBottomIds.length]
+          : undefined;
+      const preferredShoeForSlot =
+        stepSeed > 0 && distinctShoeIds.length > 1
+          ? distinctShoeIds[(stepSeed + slotIdx) % distinctShoeIds.length]
+          : undefined;
+
+      for (let cIdx = 0; cIdx < scoredCore.length; cIdx++) {
+        const candidate = scoredCore[cIdx];
+        if (batchIds.has(candidate.id)) continue;
+
+        let penalty = 0;
+        const seedJitter =
+          stepSeed > 0
+            ? (((cIdx * 9 + stepSeed * 19 + slotIdx * 7) % 15) - 7) * 2.4
+            : 0;
+        let bonus = getVibeAlignmentPriority(candidate) * 0.25 + seedJitter;
+
+        if (stepSeed > 0) {
+          if (prevStepOutfitIds.has(candidate.id)) {
+            penalty += 150;
+          } else if (olderStepOutfitIds.has(candidate.id)) {
+            penalty += 65;
+          }
+          if (prevStepLeadPairs.has(getLeadPairKey(candidate))) {
+            penalty += 48;
+          }
+        }
+
+        const candMid = candidate.items.find((i) => i.category === 'mid_layer');
+        const candOut = candidate.items.find((i) => i.category === 'outerwear');
+        const candBot = candidate.items.find((i) => i.category === 'bottom');
+        const candTop = candidate.items.find((i) => i.category === 'base_top');
+        const candShoe = candidate.items.find((i) => i.category === 'footwear');
+
+        if (preferredBottomForSlot && candBot?.id === preferredBottomForSlot) {
+          bonus += 12;
+        }
+        if (preferredShoeForSlot && candShoe?.id === preferredShoeForSlot) {
+          bonus += 9;
+        }
+
+        let unseenMidSubcategory = true;
+        let unseenDominantHue = true;
+        let unseenSilhouetteLength = true;
+        const candDominantHex = (candOut || candMid || candTop)?.colorHex;
+
+        for (const prev of batch) {
+          const prevIds = new Set(prev.items.map((i) => i.id));
+          const sharedUnlockedCount = candidate.items.filter(
+            (i) => !lockedSet.has(i.id) && prevIds.has(i.id)
+          ).length;
+          const unlockedSlotsCount = candidate.items.filter((i) => !lockedSet.has(i.id)).length;
+
+          // Heavy penalty if candidate differs by only 1 item from an already selected outfit
+          if (unlockedSlotsCount >= 2 && sharedUnlockedCount >= unlockedSlotsCount - 1) {
+            penalty += 60;
+          } else if (unlockedSlotsCount >= 3 && sharedUnlockedCount >= unlockedSlotsCount - 2) {
+            penalty += 22;
+          }
+
+          if (prev.items.length === candidate.items.length) {
+            unseenSilhouetteLength = false;
+          }
+
+          const prevMid = prev.items.find((i) => i.category === 'mid_layer');
+          const prevOut = prev.items.find((i) => i.category === 'outerwear');
+          const prevBot = prev.items.find((i) => i.category === 'bottom');
+          const prevTop = prev.items.find((i) => i.category === 'base_top');
+          const prevShoe = prev.items.find((i) => i.category === 'footwear');
+
+          if (candOut && prevOut && !lockedSet.has(candOut.id) && candOut.id === prevOut.id) {
+            penalty += 26;
+          }
+          if (candMid && prevMid && !lockedSet.has(candMid.id)) {
+            if (candMid.id === prevMid.id) {
+              penalty += 30;
+            }
+            if (candMid.subcategory === prevMid.subcategory) {
+              unseenMidSubcategory = false;
+            }
+          }
+          if (candBot && prevBot && !lockedSet.has(candBot.id) && candBot.id === prevBot.id) {
+            penalty += 20;
+          }
+          if (candTop && prevTop && !lockedSet.has(candTop.id) && candTop.id === prevTop.id) {
+            penalty += 18;
+          }
+          if (candShoe && prevShoe && !lockedSet.has(candShoe.id) && candShoe.id === prevShoe.id) {
+            penalty += 14;
+          }
+
+          // Extra penalty if exact same (Mid/Top + Bottom) visual torso-leg block repeats
+          if (
+            candMid &&
+            prevMid &&
+            candBot &&
+            prevBot &&
+            !lockedSet.has(candMid.id) &&
+            !lockedSet.has(candBot.id) &&
+            candMid.id === prevMid.id &&
+            candBot.id === prevBot.id
+          ) {
+            penalty += 35;
+          }
+
+          const prevDominantHex = (prevOut || prevMid || prevTop)?.colorHex;
+          if (candDominantHex && prevDominantHex && candDominantHex === prevDominantHex) {
+            unseenDominantHue = false;
+          }
+        }
+
+        if (candMid && unseenMidSubcategory) {
+          bonus += 12;
+        }
+        if (candDominantHex && unseenDominantHue) {
+          bonus += 10;
+        }
+        if (stepSeed > 0 && unseenSilhouetteLength) {
+          bonus += 8;
+        }
+
+        const diversityAdjustedScore = candidate.totalScore + bonus - penalty;
+        if (diversityAdjustedScore > bestDiversityScore) {
+          bestDiversityScore = diversityAdjustedScore;
+          bestCandidate = candidate;
+        }
+      }
+
+      if (!bestCandidate) break;
+      batch.push(bestCandidate);
+      batchIds.add(bestCandidate.id);
+    }
+
+    return batch;
+  };
+
+  let selected: GeneratedOutfit[];
+  if (variationSeed <= 0) {
+    selected = selectBatchForStep(0, new Set(), new Set(), new Set());
+  } else {
+    // Cycle cleanly based on total candidate pool size so repeated clicks keep surfacing fresh sets
+    const maxCycleSteps = Math.max(4, Math.min(8, Math.ceil(scoredCore.length / Math.max(1, limit))));
+    const effectiveSteps = ((variationSeed - 1) % maxCycleSteps) + 1;
+    let prevBatch = selectBatchForStep(0, new Set(), new Set(), new Set());
+    let olderIds = new Set<string>();
+
+    for (let s = 1; s <= effectiveSteps; s++) {
+      const prevIds = new Set(prevBatch.map((o) => o.id));
+      const prevLeadPairs = new Set(prevBatch.map((o) => getLeadPairKey(o)));
+      const nextBatch = selectBatchForStep(s, prevIds, olderIds, prevLeadPairs);
+      olderIds = prevIds;
+      prevBatch = nextBatch;
+    }
+    selected = prevBatch;
   }
 
   // Attach configured / enabled accessories (incl. context-aware short vs. long socks)

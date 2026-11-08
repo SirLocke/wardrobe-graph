@@ -648,14 +648,14 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
         initialGarment && !keepOpenForDuplicate ? initialGarment.lastWornDate : undefined,
     };
 
-    await onSaveGarment(newGarment, keepOpenForDuplicate);
-
     if (keepOpenForDuplicate) {
+      void onSaveGarment(newGarment, true);
       setDuplicateNotice(
         `"${newGarment.name}" wurde gespeichert! Tippe einfach auf die nächste Farbe für ein weiteres Teil.`
       );
     } else {
       onClose();
+      void onSaveGarment(newGarment, false);
     }
   };
 

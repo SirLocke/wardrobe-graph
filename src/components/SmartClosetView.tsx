@@ -47,6 +47,7 @@ interface SmartClosetViewProps {
   onEditGarment: (garment: Garment) => void;
   onDeleteGarment: (id: string) => Promise<void>;
   onToggleClean: (id: string, nextClean: boolean) => Promise<void>;
+  onWashAllGarments?: () => Promise<void>;
   onLockAndStyle: (id: string) => void;
 }
 
@@ -72,6 +73,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
   onEditGarment,
   onDeleteGarment,
   onToggleClean,
+  onWashAllGarments,
   onLockAndStyle,
 }) => {
   const isEn = locale === 'en';
@@ -183,6 +185,11 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
     searchQuery,
   ]);
 
+  const dirtyGarmentCount = useMemo(
+    () => garments.filter((g) => canGarmentUseLaundry(g) && !g.isClean).length,
+    [garments]
+  );
+
   return (
     <div className="space-y-6">
       {/* Header & Summary Strip */}
@@ -196,10 +203,29 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               {garments.length} {isEn ? 'items in wardrobe' : 'Kleidungsstücke im Schrank'} ·{' '}
               {garments.filter((g) => (canGarmentUseLaundry(g) ? g.isClean : true)).length}{' '}
               {isEn ? 'clean & ready to wear' : 'tragebereit im Schrank'}
+              {dirtyGarmentCount > 0
+                ? isEn
+                  ? ` · ${dirtyGarmentCount} in laundry basket`
+                  : ` · ${dirtyGarmentCount} im Wäschekorb`
+                : ''}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto shrink-0">
+            {dirtyGarmentCount > 0 && onWashAllGarments && (
+              <button
+                type="button"
+                onClick={() => void onWashAllGarments()}
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg bg-emerald-500/15 border border-emerald-500/45 hover:bg-emerald-500/25 text-xs font-semibold text-emerald-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>
+                  {isEn
+                    ? `Empty laundry (${dirtyGarmentCount})`
+                    : `Wäschekorb leeren (${dirtyGarmentCount})`}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenImportExportModal}
