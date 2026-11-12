@@ -338,76 +338,99 @@ export function enrichGarmentColor(garment: Garment): Garment {
   };
 }
 
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleBackgroundServerSync(delayMs = 350): void {
+  if (isPublicClientOnly()) return;
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+  }
+  syncDebounceTimer = setTimeout(() => {
+    syncDebounceTimer = null;
+    void (async () => {
+      try {
+        const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
+        const allGarments = await db.garments.toArray();
+        const history = await db.wornHistory.orderBy('wornDate').reverse().toArray().catch(() => []);
+        await syncStateToServer(profile, allGarments, history);
+      } catch {
+        // Ignore offline/restricted errors
+      }
+    })();
+  }, delayMs);
+}
+
 export async function saveBiometricProfile(profile: BiometricProfile): Promise<void> {
-  void (async () => {
-    try {
-      await db.profiles.put({ ...profile, id: 'default_profile' });
-      const allGarments = await db.garments.toArray();
-      void syncStateToServer(profile, allGarments);
-    } catch {
-      // Fallback silent if IndexedDB restricted
-    }
-  })();
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await db.profiles.put({ ...profile, id: 'default_profile' });
+        scheduleBackgroundServerSync();
+      } catch {
+        // Fallback silent if IndexedDB restricted
+      }
+    })();
+  }, 16);
 }
 
 export async function saveGarmentToDb(garment: Garment): Promise<Garment> {
   const enriched = enrichGarmentColor(garment);
-  void (async () => {
-    try {
-      await db.garments.put(enriched);
-      const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-      const allGarments = await db.garments.toArray();
-      void syncStateToServer(profile, allGarments);
-    } catch {
-      // Fallback silent
-    }
-  })();
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await db.garments.put(enriched);
+        scheduleBackgroundServerSync();
+      } catch {
+        // Fallback silent
+      }
+    })();
+  }, 16);
   return enriched;
 }
 
 export async function bulkUpsertGarmentsToDb(garmentsToSave: Garment[]): Promise<Garment[]> {
   const enrichedList: Garment[] = garmentsToSave.map((g) => enrichGarmentColor(g));
-  void (async () => {
-    try {
-      await db.garments.bulkPut(enrichedList);
-      const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-      const allGarments = await db.garments.toArray();
-      void syncStateToServer(profile, allGarments);
-    } catch {
-      // Fallback silent
-    }
-  })();
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await db.garments.bulkPut(enrichedList);
+        scheduleBackgroundServerSync();
+      } catch {
+        // Fallback silent
+      }
+    })();
+  }, 16);
   return enrichedList;
 }
 
 export async function deleteGarmentFromDb(id: string): Promise<void> {
-  void (async () => {
-    try {
-      await db.garments.delete(id);
-      const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-      const allGarments = await db.garments.toArray();
-      void syncStateToServer(profile, allGarments);
-    } catch {
-      // Fallback silent
-    }
-  })();
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await db.garments.delete(id);
+        scheduleBackgroundServerSync();
+      } catch {
+        // Fallback silent
+      }
+    })();
+  }, 16);
 }
 
 export async function updateGarmentsCleanStatus(ids: string[], isClean: boolean): Promise<void> {
-  void (async () => {
-    try {
-      await db.transaction('rw', db.garments, async () => {
-        for (const id of ids) {
-          await db.garments.update(id, { isClean });
-        }
-      });
-      const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-      const allGarments = await db.garments.toArray();
-      void syncStateToServer(profile, allGarments);
-    } catch {
-      // Fallback silent
-    }
-  })();
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await db.transaction('rw', db.garments, async () => {
+          for (const id of ids) {
+            await db.garments.update(id, { isClean });
+          }
+        });
+        scheduleBackgroundServerSync();
+      } catch {
+        // Fallback silent
+      }
+    })();
+  }, 16);
 }
 
 export async function getWornHistoryFromDb(): Promise<WornOutfitRecord[]> {
@@ -423,34 +446,38 @@ export async function logOutfitAsWornInDb(
   record: WornOutfitRecord,
   updatedGarments: Garment[]
 ): Promise<void> {
-  try {
-    await db.transaction('rw', db.wornHistory, db.garments, async () => {
-      await db.wornHistory.put(record);
-      await db.garments.bulkPut(updatedGarments);
-    });
-    const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-    const history = await db.wornHistory.orderBy('wornDate').reverse().toArray();
-    void syncStateToServer(profile, updatedGarments, history);
-  } catch {
-    // Fallback silent
-  }
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await db.transaction('rw', db.wornHistory, db.garments, async () => {
+          await db.wornHistory.put(record);
+          await db.garments.bulkPut(updatedGarments);
+        });
+        scheduleBackgroundServerSync();
+      } catch {
+        // Fallback silent
+      }
+    })();
+  }, 16);
 }
 
 export async function deleteWornOutfitRecordFromDb(
   recordId: string,
   updatedGarments: Garment[]
 ): Promise<void> {
-  try {
-    await db.transaction('rw', db.wornHistory, db.garments, async () => {
-      await db.wornHistory.delete(recordId);
-      await db.garments.bulkPut(updatedGarments);
-    });
-    const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
-    const history = await db.wornHistory.orderBy('wornDate').reverse().toArray();
-    void syncStateToServer(profile, updatedGarments, history);
-  } catch {
-    // Fallback silent
-  }
+  setTimeout(() => {
+    void (async () => {
+      try {
+        await db.transaction('rw', db.wornHistory, db.garments, async () => {
+          await db.wornHistory.delete(recordId);
+          await db.garments.bulkPut(updatedGarments);
+        });
+        scheduleBackgroundServerSync();
+      } catch {
+        // Fallback silent
+      }
+    })();
+  }, 16);
 }
 
 export async function resetDatabaseToSeed(): Promise<{

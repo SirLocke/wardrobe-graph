@@ -102,6 +102,7 @@ const TEXTURE_LABELS: Record<TextureType, string> = {
   smooth_cotton: 'glatter Baumwolle/Seide',
   heavy_jersey: 'schwerem Jersey',
   twill_chino: 'Twill',
+  corduroy: 'Cord',
   denim: 'Denim',
   chunky_knit: 'Grobstrick',
   fine_knit: 'Feinstrick',
@@ -117,6 +118,7 @@ const SMOOTH_TEXTURES: TextureType[] = ['smooth_cotton', 'fine_knit', 'tech_wate
 const STRUCTURED_TEXTURES: TextureType[] = [
   'heavy_jersey',
   'twill_chino',
+  'corduroy',
   'denim',
   'chunky_knit',
   'flannel_wool',
@@ -1049,35 +1051,66 @@ export function generateOutfitsForContext(
   const isRealisticEverydayLayering = (top: Garment, mid: Garment): boolean => {
     if (top.id === mid.id) return false;
     if (top.neckline === 'hooded' && mid.neckline !== 'hooded') return false;
-    // Avoid wearing a blouse under a sporty hoodie or sweatshirt
+
+    // Never wear a shirt, blouse, polo, turtleneck, or collared top under a Rollkragenpullover (turtleneck)!
+    // Under a turtleneck, only a simple collarless undershirt (t_shirt, heavyweight_tee, longsleeve, tank_camisole) makes sense.
+    if (mid.subcategory === 'turtleneck' || mid.neckline === 'turtleneck') {
+      if (
+        !isSimpleUnderTee(top) ||
+        top.neckline === 'shirt_collar' ||
+        top.neckline === 'stand_collar' ||
+        top.neckline === 'turtleneck' ||
+        top.neckline === 'hooded'
+      ) {
+        return false;
+      }
+    }
+
+    // Avoid wearing a blouse under a sporty hoodie, sweatshirt, turtleneck, or overshirt
     if (
       top.subcategory === 'blouse' &&
       (mid.subcategory === 'hoodie' ||
         mid.subcategory === 'crewneck_sweater' ||
-        mid.subcategory === 'overshirt')
+        mid.subcategory === 'turtleneck' ||
+        mid.subcategory === 'overshirt' ||
+        isShirtSubcategory(mid.subcategory))
     ) {
       return false;
     }
-    // Avoid layering a collared shirt under an overshirt or hoodie, or a short-sleeve shirt under heavy sweaters
-    if (isShirtSubcategory(top.subcategory)) {
+
+    // Avoid layering a polo shirt or collared shirt under an overshirt, second shirt, hoodie, or turtleneck (no double collar!)
+    if (
+      isShirtSubcategory(top.subcategory) ||
+      top.subcategory === 'polo' ||
+      top.neckline === 'shirt_collar' ||
+      top.neckline === 'stand_collar'
+    ) {
       if (
         mid.subcategory === 'overshirt' ||
         mid.subcategory === 'hoodie' ||
+        mid.subcategory === 'turtleneck' ||
+        mid.neckline === 'turtleneck' ||
+        mid.neckline === 'stand_collar' ||
         isShirtSubcategory(mid.subcategory)
       ) {
         return false;
       }
       if (
-        top.subcategory === 'short_sleeve_shirt' &&
-        (mid.subcategory === 'knit_sweater' ||
-          mid.subcategory === 'crewneck_sweater' ||
-          mid.subcategory === 'turtleneck')
+        (top.subcategory === 'short_sleeve_shirt' || top.subcategory === 'polo') &&
+        (mid.subcategory === 'knit_sweater' || mid.subcategory === 'crewneck_sweater')
       ) {
         return false;
       }
     }
-    // Never layer a rollkragen under a button-down shirt
-    if (top. neckline === 'turtleneck' && isShirtSubcategory(mid.subcategory)) {
+
+    // Never layer a rollkragen under a button-down shirt, hoodie, or another turtleneck
+    if (
+      top.neckline === 'turtleneck' &&
+      (isShirtSubcategory(mid.subcategory) ||
+        mid.subcategory === 'turtleneck' ||
+        mid.neckline === 'turtleneck' ||
+        mid.subcategory === 'hoodie')
+    ) {
       return false;
     }
     return true;
@@ -1088,8 +1121,8 @@ export function generateOutfitsForContext(
     .filter(
       (g) =>
         isShirtSubcategory(g.subcategory) &&
-        (temp >= 14 || g.subcategory === 'button_down_shirt') &&
-        (temp <= 25 || g.subcategory === 'short_sleeve_shirt')
+        (temp >= 14 || g.subcategory === 'button_down_shirt' || lockedSet.has(g.id)) &&
+        (temp <= 25 || g.subcategory === 'short_sleeve_shirt' || lockedSet.has(g.id))
     )
     .map((shirt) => ({
       ...shirt,
@@ -1097,14 +1130,41 @@ export function generateOutfitsForContext(
       wornOpen: true,
     }));
 
+  // If the user locked BOTH a simple base top (e.g. T-shirt) AND an openable shirt, treat the locked shirt as the mid-layer
+  const lockedOpenableShirts = openableShirtLayersFromBase.filter((g) => lockedSet.has(g.id));
+  const lockedNonShirtBaseTops = baseTops.filter(
+    (g) => lockedSet.has(g.id) && !isShirtSubcategory(g.subcategory)
+  );
+  const hasDualLockedTopAndShirt =
+    lockedNonShirtBaseTops.length > 0 && lockedOpenableShirts.length > 0;
+
+  const effectiveSlotBaseTops = hasDualLockedTopAndShirt ? lockedNonShirtBaseTops : slotBaseTops;
+
   if (temp >= 21) {
-    const hasLockedMid = slotMidLayers.some((g) => lockedSet.has(g.id));
-    for (const top of slotBaseTops) {
+    const hasLockedMid =
+      slotMidLayers.some((g) => lockedSet.has(g.id)) || hasDualLockedTopAndShirt;
+    const hasLockedOuter = slotOuterwears.some((g) => lockedSet.has(g.id));
+    const warmMidPool = hasDualLockedTopAndShirt
+      ? [...slotMidLayers.filter((g) => lockedSet.has(g.id)), ...lockedOpenableShirts]
+      : slotMidLayers;
+
+    for (const top of effectiveSlotBaseTops) {
       for (const bottom of slotBottoms) {
         for (const shoe of slotFootwears) {
           if (hasLockedMid) {
-            for (const mid of slotMidLayers) {
-              candidateCombos.push(withRecommendedWearStyle([top, mid, bottom, shoe]));
+            for (const mid of warmMidPool) {
+              if (!isRealisticEverydayLayering(top, mid)) continue;
+              if (hasLockedOuter) {
+                for (const out of slotOuterwears) {
+                  candidateCombos.push(withRecommendedWearStyle([top, mid, out, bottom, shoe]));
+                }
+              } else {
+                candidateCombos.push(withRecommendedWearStyle([top, mid, bottom, shoe]));
+              }
+            }
+          } else if (hasLockedOuter) {
+            for (const out of slotOuterwears) {
+              candidateCombos.push(withRecommendedWearStyle([top, out, bottom, shoe]));
             }
           } else {
             candidateCombos.push(withRecommendedWearStyle([top, bottom, shoe]));
@@ -1125,16 +1185,19 @@ export function generateOutfitsForContext(
     }
   } else if (temp >= 14 && temp <= 20) {
     const hasLockedOuter = slotOuterwears.some((g) => lockedSet.has(g.id));
-    const hasLockedMid = slotMidLayers.some((g) => lockedSet.has(g.id));
-    const effectiveMidPool = hasLockedMid
+    const hasLockedMid =
+      slotMidLayers.some((g) => lockedSet.has(g.id)) || hasDualLockedTopAndShirt;
+    const effectiveMidPool = hasDualLockedTopAndShirt
+      ? [...slotMidLayers.filter((g) => lockedSet.has(g.id)), ...lockedOpenableShirts]
+      : slotMidLayers.some((g) => lockedSet.has(g.id))
       ? slotMidLayers
       : [...slotMidLayers, ...openableShirtLayersFromBase];
 
-    for (const top of slotBaseTops) {
-      // Allow solo shirts at 17-20°C, and when exploring variations (variationSeed > 0) also allow solo polos, blouses, longsleeves & heavyweight tees at 15-20°C
+    for (const top of effectiveSlotBaseTops) {
+      // Allow solo shirts & polos at 16-20°C, and when exploring variations (variationSeed > 0) also allow solo blouses, longsleeves & heavyweight tees at 15-20°C
       const canWearSoloInMild =
         !hasLockedMid &&
-        ((isShirtSubcategory(top.subcategory) && temp >= 17) ||
+        (((isShirtSubcategory(top.subcategory) || top.subcategory === 'polo') && temp >= 16) ||
           ((context.variationSeed || 0) > 0 &&
             temp >= 15 &&
             (isShirtSubcategory(top.subcategory) ||
@@ -1158,8 +1221,12 @@ export function generateOutfitsForContext(
       }
 
       // When exploring variations (variationSeed > 0) at 14-20°C without a locked mid-layer,
-      // also allow transitional outerwear (light jacket, trenchcoat, leather jacket, blouson, coat) directly over a base top
-      if ((context.variationSeed || 0) > 0 && !hasLockedMid && !hasLockedOuter) {
+      // or when a polo shirt is paired with transitional outerwear, allow outerwear directly over a base top
+      if (
+        ((context.variationSeed || 0) > 0 || top.subcategory === 'polo') &&
+        !hasLockedMid &&
+        !hasLockedOuter
+      ) {
         for (const out of slotOuterwears) {
           if (out.thermalRating <= 4) {
             for (const bottom of slotBottoms) {
@@ -1188,22 +1255,36 @@ export function generateOutfitsForContext(
       }
     }
   } else {
-    const effectiveMidPool =
-      slotMidLayers.some((g) => lockedSet.has(g.id))
-        ? slotMidLayers
-        : [
-            ...slotMidLayers,
-            ...openableShirtLayersFromBase.filter((s) => s.subcategory === 'button_down_shirt'),
-          ];
-    for (const top of slotBaseTops) {
+    const hasLockedMid =
+      slotMidLayers.some((g) => lockedSet.has(g.id)) || hasDualLockedTopAndShirt;
+    const effectiveMidPool = hasDualLockedTopAndShirt
+      ? [...slotMidLayers.filter((g) => lockedSet.has(g.id)), ...lockedOpenableShirts]
+      : slotMidLayers.some((g) => lockedSet.has(g.id))
+      ? slotMidLayers
+      : [
+          ...slotMidLayers,
+          ...openableShirtLayersFromBase.filter((s) => s.subcategory === 'button_down_shirt'),
+        ];
+    for (const top of effectiveSlotBaseTops) {
       if (top.subcategory === 'short_sleeve_shirt' && !lockedSet.has(top.id)) continue;
+      let matchedAnyMidForTop = false;
       for (const mid of effectiveMidPool) {
         if (isShirtSubcategory(mid.subcategory) && !isSimpleUnderTee(top)) continue;
         if (!isRealisticEverydayLayering(top, mid)) continue;
+        matchedAnyMidForTop = true;
         for (const out of slotOuterwears) {
           for (const bottom of slotBottoms) {
             for (const shoe of slotFootwears) {
               candidateCombos.push(withRecommendedWearStyle([top, mid, out, bottom, shoe]));
+            }
+          }
+        }
+      }
+      if (!matchedAnyMidForTop && !hasLockedMid && (top.subcategory === 'polo' || lockedSet.has(top.id))) {
+        for (const out of slotOuterwears) {
+          for (const bottom of slotBottoms) {
+            for (const shoe of slotFootwears) {
+              candidateCombos.push(withRecommendedWearStyle([top, out, bottom, shoe]));
             }
           }
         }
@@ -1213,23 +1294,47 @@ export function generateOutfitsForContext(
 
   const accessories = eligible.filter((g) => g.category === 'accessory');
   const lockedAccessories = accessories.filter((g) => lockedSet.has(g.id));
+  const lockedCoreGarments = eligible.filter(
+    (g) => g.category !== 'accessory' && lockedSet.has(g.id)
+  );
   const lockedCoreIds = Array.from(lockedSet).filter(
     (id) => !lockedAccessories.some((a) => a.id === id)
   );
 
+  // If a locked item could not be satisfied at all (e.g. missing from eligible), return empty
+  if (lockedSet.size > 0 && lockedCoreGarments.length + lockedAccessories.length < lockedSet.size) {
+    return [];
+  }
+
+  // Group locked core garments by slot so locking 1 item per slot requires all locked slots,
+  // while locking multiple items of the same slot (e.g. 2 pairs of pants) matches either locked item in that slot
+  const lockedIdsBySlot = new Map<string, Set<string>>();
+  for (const g of lockedCoreGarments) {
+    const slotKey =
+      hasDualLockedTopAndShirt && isShirtSubcategory(g.subcategory)
+        ? 'mid_layer'
+        : g.category;
+    if (!lockedIdsBySlot.has(slotKey)) {
+      lockedIdsBySlot.set(slotKey, new Set());
+    }
+    lockedIdsBySlot.get(slotKey)!.add(g.id);
+  }
+
   const validCoreCombos = candidateCombos.filter((combo) => {
-    if (lockedCoreIds.length === 0) return true;
-    const ids = new Set(combo.map((c) => c.id));
-    for (const lockedId of lockedCoreIds) {
-      if (!ids.has(lockedId)) return false;
+    if (lockedIdsBySlot.size === 0) return true;
+    const comboIds = new Set(combo.map((c) => c.id));
+    for (const requiredSet of lockedIdsBySlot.values()) {
+      let slotSatisfied = false;
+      for (const reqId of requiredSet) {
+        if (comboIds.has(reqId)) {
+          slotSatisfied = true;
+          break;
+        }
+      }
+      if (!slotSatisfied) return false;
     }
     return true;
   });
-
-  // If a locked item could not be satisfied at all (e.g. missing from eligible), return empty
-  if (lockedSet.size > 0 && lockedCoreIds.length + lockedAccessories.length < lockedSet.size) {
-    return [];
-  }
 
   // Compute a deterministic style-vibe alignment tie-breaker so switching 'Stil' in the UI
   // visibly re-orders and surfaces outfits matching the chosen style direction.

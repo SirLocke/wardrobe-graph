@@ -161,9 +161,25 @@ export const TravelPackerView: React.FC<TravelPackerViewProps> = ({
     ]
   );
 
+  const biometricGenerationKey = [
+    profile.skinHex,
+    profile.hairHex,
+    profile.eyeHex,
+    profile.undertone,
+    profile.contrastLevel,
+    profile.chromaLevel,
+    profile.valueLevel,
+    profile.haircutStyle,
+    profile.facialHair,
+    profile.preferredFit,
+    profile.wardrobeScope,
+    (profile.wardrobeScopes || []).join(','),
+  ].join('|');
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const plan = useMemo(
     () => generateTravelCapsule(garments, profile, config),
-    [garments, profile, config]
+    [garments, biometricGenerationKey, config]
   );
 
   const favoriteSignatures = useMemo(() => {
@@ -205,7 +221,7 @@ export const TravelPackerView: React.FC<TravelPackerViewProps> = ({
     const exists = lockedGarmentIds.includes(id);
     const next = exists
       ? lockedGarmentIds.filter((item) => item !== id)
-      : [...lockedGarmentIds.slice(-3), id];
+      : [...lockedGarmentIds, id];
     setLockedGarmentIds(next);
     persistTravelState({ lockedGarmentIds: next });
   };

@@ -83,6 +83,16 @@ export const GarmentVector: React.FC<GarmentVectorProps> = ({
             />
           </pattern>
         );
+      case 'corduroy':
+        return (
+          <pattern id={patternId} width="3.5" height="6" patternUnits="userSpaceOnUse">
+            <path
+              d="M1 0 V6 M2.75 0 V6"
+              stroke={patternStroke}
+              strokeWidth="0.9"
+            />
+          </pattern>
+        );
       case 'flannel_wool':
         return (
           <pattern id={patternId} width="10" height="10" patternUnits="userSpaceOnUse">

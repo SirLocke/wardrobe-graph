@@ -1703,3 +1703,174 @@ test('variationSeed: produces high outfit variance across consecutive shuffle cl
     );
   }
 });
+
+test('collarLayering & multiLock & corduroy: prevents polo/shirt double-collar or shirt-under-turtleneck combinations, supports 3+ locked items, and handles corduroy garments', () => {
+  const baseTemplate = SEED_WARDROBE_GARMENTS[0];
+  const customTestWardrobe = [
+    ...SEED_WARDROBE_GARMENTS,
+    {
+      ...baseTemplate,
+      id: 'test_polo_1',
+      name: 'Polo-Shirt Marineblau',
+      category: 'base_top' as const,
+      subcategory: 'polo' as const,
+      colorName: 'Marineblau',
+      colorHex: '#1F2A3C',
+      hsl: { h: 217, s: 32, l: 18 },
+      colorTemp: 'cool' as const,
+      brand: 'Lacoste',
+      size: 'M',
+      fit: 'regular' as const,
+      texture: 'smooth_cotton' as const,
+      neckline: 'shirt_collar' as const,
+      thermalRating: 2 as const,
+      formality: 3 as const,
+      targetScope: 'menswear' as const,
+      isClean: true,
+    },
+    {
+      ...baseTemplate,
+      id: 'test_turtleneck_1',
+      name: 'Rollkragenpullover Espresso',
+      category: 'mid_layer' as const,
+      subcategory: 'turtleneck' as const,
+      colorName: 'Espresso',
+      colorHex: '#3B2C26',
+      hsl: { h: 17, s: 22, l: 19 },
+      colorTemp: 'warm' as const,
+      brand: 'Uniqlo',
+      size: 'M',
+      fit: 'slim' as const,
+      texture: 'fine_knit' as const,
+      neckline: 'turtleneck' as const,
+      thermalRating: 4 as const,
+      formality: 4 as const,
+      targetScope: 'menswear' as const,
+      isClean: true,
+    },
+    {
+      ...baseTemplate,
+      id: 'test_cord_shirt_1',
+      name: 'Cordhemd Salbeigrün',
+      category: 'base_top' as const,
+      subcategory: 'button_down_shirt' as const,
+      colorName: 'Salbeigrün',
+      colorHex: '#6F826E',
+      hsl: { h: 117, s: 8, l: 47 },
+      colorTemp: 'warm' as const,
+      brand: 'Arket',
+      size: 'M',
+      fit: 'relaxed' as const,
+      texture: 'corduroy' as const,
+      neckline: 'shirt_collar' as const,
+      thermalRating: 3 as const,
+      formality: 3 as const,
+      targetScope: 'menswear' as const,
+      isClean: true,
+    },
+    {
+      ...baseTemplate,
+      id: 'test_cord_trousers_1',
+      name: 'Cordhose Camel',
+      category: 'bottom' as const,
+      subcategory: 'trousers' as const,
+      colorName: 'Camel',
+      colorHex: '#B68F66',
+      hsl: { h: 31, s: 36, l: 56 },
+      colorTemp: 'warm' as const,
+      brand: 'COS',
+      size: '48',
+      fit: 'relaxed' as const,
+      texture: 'corduroy' as const,
+      neckline: 'none' as const,
+      thermalRating: 4 as const,
+      formality: 3 as const,
+      targetScope: 'menswear' as const,
+      isClean: true,
+    },
+  ];
+
+  // 1) Locking a Polo shirt must NEVER combine with a second shirt, overshirt, hoodie, or turtleneck
+  for (const temp of [12, 18, 22]) {
+    const poloOutfits = generateOutfitsForContext(
+      customTestWardrobe,
+      DEFAULT_BIOMETRIC_PROFILE,
+      {
+        temperatureC: temp,
+        weather: 'sunny_dry',
+        occasion: 'casual',
+        lockedGarmentIds: ['test_polo_1'],
+      },
+      5
+    );
+    assert.ok(poloOutfits.length > 0, `Polo outfits should be generated at ${temp}°C`);
+    for (const outfit of poloOutfits) {
+      const subcats = outfit.items.map((i) => i.subcategory);
+      assert.ok(subcats.includes('polo'), 'Locked polo must be present');
+      assert.ok(
+        !subcats.includes('button_down_shirt') && !subcats.includes('short_sleeve_shirt'),
+        `Polo must never be layered with a button-down shirt (found ${subcats.join(', ')})`
+      );
+      assert.ok(
+        !subcats.includes('overshirt'),
+        `Polo must never be layered under an overshirt/Hemdjacke (found ${subcats.join(', ')})`
+      );
+      assert.ok(
+        !subcats.includes('turtleneck'),
+        `Polo must never be layered under a turtleneck (found ${subcats.join(', ')})`
+      );
+      assert.ok(
+        !subcats.includes('hoodie'),
+        `Polo must never be layered under a hoodie (found ${subcats.join(', ')})`
+      );
+    }
+  }
+
+  // 2) Locking a Turtleneck (Rollkragenpullover) must NEVER layer over a button_down_shirt, short_sleeve_shirt, or polo
+  const turtleneckOutfits = generateOutfitsForContext(
+    customTestWardrobe,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 10,
+      weather: 'cloudy_windy',
+      occasion: 'smart_casual_office',
+      lockedGarmentIds: ['test_turtleneck_1'],
+    },
+    5
+  );
+  assert.ok(turtleneckOutfits.length > 0, 'Turtleneck outfits should be generated');
+  for (const outfit of turtleneckOutfits) {
+    const subcats = outfit.items.map((i) => i.subcategory);
+    assert.ok(subcats.includes('turtleneck'), 'Locked turtleneck must be present');
+    assert.ok(
+      !subcats.includes('button_down_shirt') &&
+        !subcats.includes('short_sleeve_shirt') &&
+        !subcats.includes('polo') &&
+        !subcats.includes('blouse'),
+      `Turtleneck must never be worn over a collared shirt or polo (found ${subcats.join(', ')})`
+    );
+  }
+
+  // 3) Multi-item lock: locking 4 items simultaneously (e.g., corduroy shirt + corduroy trousers + sneakers + watch)
+  // keeps ALL 4 locked items in every generated outfit
+  const multiLockedIds = ['test_cord_shirt_1', 'test_cord_trousers_1', 'seed_shoe_1', 'seed_acc_1'];
+  const multiLockedOutfits = generateOutfitsForContext(
+    customTestWardrobe,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: multiLockedIds,
+    },
+    3
+  );
+  assert.ok(multiLockedOutfits.length > 0, 'Outfits with 4 locked items should be generated');
+  for (const lockedId of multiLockedIds) {
+    assert.ok(
+      multiLockedOutfits[0].items.some((i) => i.id === lockedId),
+      `Locked item ${lockedId} must be included in generated outfit when 4 items are locked`
+    );
+  }
+});
+

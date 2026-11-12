@@ -245,6 +245,7 @@ export const TEXTURE_LABELS: Record<TextureType, string> = {
   smooth_cotton: 'Glatte Baumwolle',
   heavy_jersey: 'Dicker Baumwollstoff (Sweat/Jersey)',
   twill_chino: 'Fester Hosenstoff (Chino/Twill)',
+  corduroy: 'Cord (Cordstoff)',
   denim: 'Jeansstoff (Denim)',
   chunky_knit: 'Grobstrick',
   fine_knit: 'Feinstrick',

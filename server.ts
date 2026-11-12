@@ -164,7 +164,7 @@ async function startServer() {
         middlewareMode: true,
         hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
         ws: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
-        watch: process.env.DISABLE_HMR === 'true' ? null : {},
+        watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/data/**'] },
       },
       appType: 'spa',
     });

@@ -161,8 +161,26 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, onClose]);
 
+  const initializedModalKeyRef = useRef<string | null>(null);
+
+  // Sync custom color presets whenever profile.customColors updates without resetting form fields
   useEffect(() => {
     if (!isOpen) return;
+    setCustomColors(loadCustomColors(profile));
+    setColorPresets(getAllColorPresets(profile));
+  }, [isOpen, profile.customColors]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      initializedModalKeyRef.current = null;
+      return;
+    }
+    const modalKey = initialGarment ? `edit_${initialGarment.id}` : 'create_new';
+    if (initializedModalKeyRef.current === modalKey) {
+      return;
+    }
+    initializedModalKeyRef.current = modalKey;
+
     const loadedCustom = loadCustomColors(profile);
     setCustomColors(loadedCustom);
     setColorPresets(getAllColorPresets(profile));
@@ -174,9 +192,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
     setHasManualCustomColorName(false);
     setShowAdvancedDetails(Boolean(initialGarment));
 
-    if (!hasManualCustomColorName) {
-      setNewCustomColorName(hexToGermanColorName('#6B8E78', locale).name);
-    }
+    setNewCustomColorName(hexToGermanColorName('#6B8E78', locale).name);
 
     if (initialGarment) {
       setName(initialGarment.name);
@@ -266,7 +282,7 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setName(`T-Shirt ${initColor}`);
       setHasCustomNameEdit(false);
     }
-  }, [isOpen, initialGarment, profile, locale]);
+  }, [isOpen, initialGarment, locale, profile]);
 
   useEffect(() => {
     if (!imageDataUrl || !canvasRef.current) return;
@@ -1117,29 +1133,101 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                 category === 'base_top' ||
                 category === 'mid_layer' ||
                 category === 'outerwear') && (
-                <div className="space-y-1.5">
-                  <span className="block text-xs text-zinc-400">
-                    Stoffmuster (z. B. Kariert, Nadelstreifen, Gestreift):
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(Object.keys(PATTERN_LABELS) as GarmentPattern[]).map((patKey) => {
-                      const isPatSelected = pattern === patKey;
-                      return (
-                        <button
-                          key={patKey}
-                          type="button"
-                          onClick={() => setPattern(patKey)}
-                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
-                            isPatSelected
-                              ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
-                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          {isPatSelected ? '✓ ' : ''}
-                          {PATTERN_LABELS[patKey]}
-                        </button>
-                      );
-                    })}
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <span className="block text-xs text-zinc-400">
+                      Stoff / Material:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(category === 'bottom'
+                        ? ([
+                            'denim',
+                            'twill_chino',
+                            'corduroy',
+                            'flannel_wool',
+                            'linen',
+                            'smooth_cotton',
+                            'leather_suede',
+                          ] as TextureType[])
+                        : subcategory === 'button_down_shirt' ||
+                          subcategory === 'short_sleeve_shirt' ||
+                          subcategory === 'overshirt' ||
+                          subcategory === 'blouse'
+                        ? ([
+                            'smooth_cotton',
+                            'corduroy',
+                            'linen',
+                            'flannel_wool',
+                            'denim',
+                            'twill_chino',
+                          ] as TextureType[])
+                        : (Object.keys(TEXTURE_LABELS) as TextureType[])
+                      ).map((texKey) => {
+                        const isTexSelected = texture === texKey;
+                        return (
+                          <button
+                            key={texKey}
+                            type="button"
+                            onClick={() => {
+                              setTexture(texKey);
+                              if (texKey === 'tech_waterproof') {
+                                setWaterResistant(true);
+                                setRainproof(true);
+                              }
+                              if (texKey === 'corduroy' && !hasCustomNameEdit) {
+                                if (subcategory === 'button_down_shirt') {
+                                  setName(`Cordhemd ${colorName}`);
+                                  setThermalRating(3);
+                                  setThermalRatings([3]);
+                                } else if (subcategory === 'overshirt') {
+                                  setName(`Cord-Hemdjacke ${colorName}`);
+                                  setThermalRating(3);
+                                  setThermalRatings([3]);
+                                } else if (category === 'bottom' && subcategory !== 'shorts') {
+                                  setName(`Cordhose ${colorName}`);
+                                  setThermalRating(3);
+                                  setThermalRatings([3]);
+                                }
+                              }
+                            }}
+                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                              isTexSelected
+                                ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {isTexSelected ? '✓ ' : ''}
+                            {TEXTURE_LABELS[texKey]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="block text-xs text-zinc-400">
+                      Stoffmuster (z. B. Kariert, Nadelstreifen, Gestreift):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(Object.keys(PATTERN_LABELS) as GarmentPattern[]).map((patKey) => {
+                        const isPatSelected = pattern === patKey;
+                        return (
+                          <button
+                            key={patKey}
+                            type="button"
+                            onClick={() => setPattern(patKey)}
+                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                              isPatSelected
+                                ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-semibold'
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            {isPatSelected ? '✓ ' : ''}
+                            {PATTERN_LABELS[patKey]}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

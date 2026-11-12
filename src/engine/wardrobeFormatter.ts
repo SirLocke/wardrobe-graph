@@ -58,6 +58,7 @@ const VALID_TEXTURES: TextureType[] = [
   'smooth_cotton',
   'heavy_jersey',
   'twill_chino',
+  'corduroy',
   'denim',
   'chunky_knit',
   'fine_knit',

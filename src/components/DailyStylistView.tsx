@@ -468,9 +468,38 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     });
   };
 
+  const biometricGenerationKey = useMemo(
+    () =>
+      JSON.stringify({
+        u: profile.undertone,
+        c: profile.contrastLevel,
+        ch: profile.chromaLevel,
+        h: profile.hairHex,
+        e: profile.eyeHex,
+        hc: profile.haircutStyle,
+        fh: profile.facialHair,
+        ws: profile.wardrobeScope,
+        wss: profile.wardrobeScopes,
+        co: profile.customOccasions,
+      }),
+    [
+      profile.undertone,
+      profile.contrastLevel,
+      profile.chromaLevel,
+      profile.hairHex,
+      profile.eyeHex,
+      profile.haircutStyle,
+      profile.facialHair,
+      profile.wardrobeScope,
+      profile.wardrobeScopes,
+      profile.customOccasions,
+    ]
+  );
+
   const generatedOutfits = useMemo(() => {
     return generateOutfitsForContext(garments, profile, context, 5);
-  }, [garments, profile, context]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [garments, biometricGenerationKey, context]);
 
   const effectiveProfileForRetention = useMemo<BiometricProfile>(() => {
     const mergedDismissed = Array.from(
@@ -480,7 +509,13 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
       ...profile,
       dismissedWornRecordIds: mergedDismissed,
     };
-  }, [profile, localDismissedRecordIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    biometricGenerationKey,
+    profile.wornOutfitRetentionHours,
+    profile.dismissedWornRecordIds,
+    localDismissedRecordIds,
+  ]);
 
   const activeWornByOutfitId = useMemo(() => {
     const map = new Map<string, ActiveWornOutfitEntry>();
@@ -619,12 +654,9 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
 
   const toggleLockGarment = (id: string) => {
     const exists = context.lockedGarmentIds.includes(id);
-    let nextIds: string[];
-    if (exists) {
-      nextIds = context.lockedGarmentIds.filter((item) => item !== id);
-    } else {
-      nextIds = [...context.lockedGarmentIds.slice(-1), id];
-    }
+    const nextIds = exists
+      ? context.lockedGarmentIds.filter((item) => item !== id)
+      : [...context.lockedGarmentIds, id];
     onChangeContext({
       ...context,
       lockedGarmentIds: nextIds,

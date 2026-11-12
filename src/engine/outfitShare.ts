@@ -220,6 +220,7 @@ const WOMENSWEAR_SUBCATEGORIES = new Set<GarmentSubcategory>([
 ]);
 
 const TEXTURE_SEARCH_KEYWORDS: Partial<Record<TextureType, string>> = {
+  corduroy: 'Cord',
   chunky_knit: 'Grobstrick',
   fine_knit: 'Feinstrick',
   flannel_wool: 'Wolle',

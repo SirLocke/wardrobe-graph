@@ -21,19 +21,35 @@ export function createFileWardrobeStore(customFilePath?: string): WardrobeStateS
   getFullPayload: () => Promise<PersistedWardrobeFile>;
 } {
   const filePath = customFilePath || DEFAULT_DATA_PATH;
+  let memoryCache: PersistedWardrobeFile | null = null;
+  let pendingWriteTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function flushToDisk(payload: PersistedWardrobeFile): Promise<void> {
+    try {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, JSON.stringify(payload), 'utf-8');
+    } catch {
+      // Ignore if read-only fs
+    }
+  }
 
   async function ensureInitialized(): Promise<PersistedWardrobeFile> {
+    if (memoryCache) {
+      return memoryCache;
+    }
+
     try {
       const raw = await fs.readFile(filePath, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<PersistedWardrobeFile>;
       if (parsed && parsed.profile && Array.isArray(parsed.garments)) {
-        return {
+        memoryCache = {
           version: 1,
           updatedAt: parsed.updatedAt || new Date().toISOString(),
           profile: parsed.profile,
           garments: parsed.garments,
           wornHistory: Array.isArray(parsed.wornHistory) ? parsed.wornHistory : [],
         };
+        return memoryCache;
       }
     } catch {
       // File does not exist or is invalid; initialize with default seed
@@ -48,12 +64,8 @@ export function createFileWardrobeStore(customFilePath?: string): WardrobeStateS
       wornHistory: [],
     };
 
-    try {
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, JSON.stringify(initial, null, 2), 'utf-8');
-    } catch {
-      // Ignore write error if read-only fs
-    }
+    memoryCache = initial;
+    void flushToDisk(initial);
 
     return initial;
   }
@@ -87,11 +99,18 @@ export function createFileWardrobeStore(customFilePath?: string): WardrobeStateS
             ? next.wornHistory
             : current.wornHistory || [],
       };
-      try {
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8');
-      } catch {
-        // Ignore if read-only fs
+      memoryCache = payload;
+
+      if (customFilePath) {
+        await flushToDisk(payload);
+      } else {
+        if (pendingWriteTimer) {
+          clearTimeout(pendingWriteTimer);
+        }
+        pendingWriteTimer = setTimeout(() => {
+          pendingWriteTimer = null;
+          void flushToDisk(payload);
+        }, 120);
       }
     },
   };

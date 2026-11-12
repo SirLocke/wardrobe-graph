@@ -520,10 +520,14 @@ const RUGGED_TEXTURES: TextureType[] = [
   'chunky_knit',
   'flannel_wool',
   'twill_chino',
+  'corduroy',
   'heavy_jersey',
   'denim',
   'leather_suede',
 ];
+
+const BIOMETRIC_SCORE_CACHE = new Map<string, BiometricScoreResult>();
+const MAX_BIO_CACHE_SIZE = 4000;
 
 /**
  * Deterministically evaluates how well a single garment matches the user's BiometricProfile.
@@ -533,6 +537,12 @@ export function scoreGarmentBiometrics(
   garment: Pick<Garment, 'category' | 'colorName' | 'colorHex' | 'hsl' | 'colorTemp' | 'neckline' | 'texture'>,
   profile: BiometricProfile
 ): BiometricScoreResult {
+  const cacheKey = `${garment.category}|${garment.colorHex}|${garment.colorName}|${garment.neckline}|${garment.texture}|${profile.undertone}|${profile.contrastLevel}|${profile.chromaLevel}|${profile.eyeHex}|${profile.eyeColorName}|${profile.haircutStyle}|${profile.facialHair}`;
+  const cached = BIOMETRIC_SCORE_CACHE.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const isUpperBody =
     garment.category === 'base_top' ||
     garment.category === 'mid_layer' ||
@@ -725,7 +735,7 @@ export function scoreGarmentBiometrics(
     reasons.push('Solide Basiskompatibilität mit deinem Biometrie-Profil');
   }
 
-  return {
+  const result: BiometricScoreResult = {
     score: finalScore,
     weightMultiplier,
     reasons,
@@ -738,4 +748,12 @@ export function scoreGarmentBiometrics(
       textureFacialHairBonus,
     },
   };
+
+  if (BIOMETRIC_SCORE_CACHE.size >= MAX_BIO_CACHE_SIZE) {
+    const oldestKey = BIOMETRIC_SCORE_CACHE.keys().next().value;
+    if (oldestKey) BIOMETRIC_SCORE_CACHE.delete(oldestKey);
+  }
+  BIOMETRIC_SCORE_CACHE.set(cacheKey, result);
+
+  return result;
 }
