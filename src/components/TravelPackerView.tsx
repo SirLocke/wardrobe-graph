@@ -26,6 +26,7 @@ import {
   CATEGORY_LABELS_EN,
   SUBCATEGORY_LABELS,
 } from '../data/seedData';
+import { getBiometricGenerationKey } from '../engine/gapCacheKey';
 import {
   generateTravelCapsule,
   TRAVEL_LUGGAGE_SPACE_META,
@@ -161,20 +162,7 @@ export const TravelPackerView: React.FC<TravelPackerViewProps> = ({
     ]
   );
 
-  const biometricGenerationKey = [
-    profile.skinHex,
-    profile.hairHex,
-    profile.eyeHex,
-    profile.undertone,
-    profile.contrastLevel,
-    profile.chromaLevel,
-    profile.valueLevel,
-    profile.haircutStyle,
-    profile.facialHair,
-    profile.preferredFit,
-    profile.wardrobeScope,
-    (profile.wardrobeScopes || []).join(','),
-  ].join('|');
+  const biometricGenerationKey = getBiometricGenerationKey(profile);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const plan = useMemo(

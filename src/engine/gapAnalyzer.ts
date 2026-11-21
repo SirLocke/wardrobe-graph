@@ -351,15 +351,148 @@ export function analyzeWardrobeGaps(
   // Sort orphans by highest biometric potential first
   orphanPieces.sort((a, b) => b.biometricScore - a.biometricScore);
 
-  // 3. Virtual Archetype Simulation ("What to Buy" Calculator)
+  // 3. Detect Worn / Aging Garments ("Ersetzen-Liste") and calculate their outfit restoration impact
+  const currentYear = new Date().getFullYear();
+  const replacementCandidates: import('../types/wardrobe').ReplacementCandidate[] = [];
+
+  // Going-out & everyday evaluation buckets where worn items are excluded or penalized
+  const goingOutBuckets = EVALUATION_BUCKETS.filter(
+    (b) =>
+      b.occasion === 'smart_casual_office' ||
+      b.occasion === 'date_night' ||
+      b.occasion === 'casual'
+  );
+
+  for (const garment of garments) {
+    if (garment.isWishlistSandbox) continue;
+    const isReplaceSoon = garment.condition === 'replace_soon';
+    const isWornCasual = garment.condition === 'worn_casual';
+    const ageYears =
+      garment.purchaseYear && garment.purchaseYear <= currentYear
+        ? currentYear - garment.purchaseYear
+        : undefined;
+    const wearCount = garment.wearCount || 0;
+    const isAgedHighWear =
+      !isReplaceSoon &&
+      !isWornCasual &&
+      ((ageYears !== undefined && ageYears >= 4 && wearCount >= 15) ||
+        (ageYears !== undefined && ageYears >= 6) ||
+        wearCount >= 35);
+
+    if (!isReplaceSoon && !isWornCasual && !isAgedHighWear) {
+      continue;
+    }
+
+    const replacementGarment: Garment = {
+      ...garment,
+      condition: 'good',
+      isClean: true,
+    };
+
+    // Simulate how many valid outfits across going-out & core buckets involve this garment when in 'good' condition vs current condition
+    const simulatedCloset = garments.map((g) =>
+      g.id === garment.id ? replacementGarment : g
+    );
+    let goodOutfitsWithItem = 0;
+    let currentOutfitsWithItem = 0;
+
+    for (const bucket of goingOutBuckets) {
+      const ctxLocked: OutfitContext = {
+        temperatureC: bucket.temperatureC,
+        weather: bucket.weather,
+        occasion: bucket.occasion,
+        lockedGarmentIds: [],
+        ignoreCleanStatus: true,
+      };
+      const goodList = generateOutfitsForContext(simulatedCloset, profile, ctxLocked, 0);
+      goodOutfitsWithItem += goodList.filter(
+        (o) =>
+          o.totalScore >= VALID_OUTFIT_THRESHOLD &&
+          o.items.some((i) => i.id === garment.id)
+      ).length;
+
+      const curList = generateOutfitsForContext(garments, profile, ctxLocked, 0);
+      currentOutfitsWithItem += curList.filter(
+        (o) =>
+          o.totalScore >= VALID_OUTFIT_THRESHOLD &&
+          o.items.some((i) => i.id === garment.id)
+      ).length;
+    }
+
+    const restoredOutfitsCount = Math.max(
+      1,
+      goodOutfitsWithItem - currentOutfitsWithItem || goodOutfitsWithItem
+    );
+
+    const urgency: 'high' | 'medium' = isReplaceSoon ? 'high' : 'medium';
+    const ageSuffixDe =
+      ageYears !== undefined && ageYears > 0
+        ? ` (${ageYears} ${ageYears === 1 ? 'Jahr' : 'Jahre'} alt${
+            wearCount > 0 ? `, ${wearCount}× getragen` : ''
+          })`
+        : wearCount > 0
+        ? ` (${wearCount}× getragen)`
+        : '';
+    const ageSuffixEn =
+      ageYears !== undefined && ageYears > 0
+        ? ` (${ageYears} ${ageYears === 1 ? 'year' : 'years'} old${
+            wearCount > 0 ? `, worn ${wearCount}×` : ''
+          })`
+        : wearCount > 0
+        ? ` (worn ${wearCount}×)`
+        : '';
+
+    const reasonDe = isReplaceSoon
+      ? `Als „Ersetzen“ markiert${ageSuffixDe} – fällt aktuell für Alltag & Ausgehen weg. Ein frischer Ersatz stellt ${restoredOutfitsCount} ${
+          restoredOutfitsCount === 1 ? 'Outfit' : 'Outfits'
+        } wieder her.`
+      : isWornCasual
+      ? `Abgetragen / nur noch für Zuhause & Freizeit${ageSuffixDe} – fehlt als ausgehtaugliches Teil für Büro, Café & Abend (${restoredOutfitsCount} ${
+          restoredOutfitsCount === 1 ? 'Ausgeh-Outfit' : 'Ausgeh-Outfits'
+        }).`
+      : `Vielgetragenes Bestandsteil${ageSuffixDe} – rechtzeitig Nachfolger sichern, da ${restoredOutfitsCount} ${
+          restoredOutfitsCount === 1 ? 'Outfit' : 'Outfits'
+        } darauf aufbauen.`;
+
+    const reasonEn = isReplaceSoon
+      ? `Marked "Replace soon"${ageSuffixEn} – excluded from everyday & going-out looks. Replacing it restores ${restoredOutfitsCount} ${
+          restoredOutfitsCount === 1 ? 'outfit' : 'outfits'
+        }.`
+      : isWornCasual
+      ? `Worn / home & casual only${ageSuffixEn} – no longer suitable for office, café or evening (${restoredOutfitsCount} going-out ${
+          restoredOutfitsCount === 1 ? 'outfit' : 'outfits'
+        }).`
+      : `Heavily worn staple${ageSuffixEn} – consider a fresh replacement (${restoredOutfitsCount} ${
+          restoredOutfitsCount === 1 ? 'outfit depends' : 'outfits depend'
+        } on it).`;
+
+    replacementCandidates.push({
+      garment,
+      replacementGarment,
+      urgency,
+      reasonDe,
+      reasonEn,
+      restoredOutfitsCount,
+      ageYears,
+    });
+  }
+
+  replacementCandidates.sort((a, b) => {
+    if (a.urgency !== b.urgency) return a.urgency === 'high' ? -1 : 1;
+    return b.restoredOutfitsCount - a.restoredOutfitsCount;
+  });
+
+  // 4. Virtual Archetype Simulation ("What to Buy" Calculator)
   // Targeted evaluation: only generates combinations involving the virtual archetype,
   // drastically reducing runtime without loss of precision.
   const candidates = instantiateCandidateArchetypes(profile);
 
-  // Filter out archetypes that duplicate items the user already owns (same subcategory + similar color ΔHSL < 22)
+  // Filter out archetypes that duplicate items the user already owns in GOOD condition (same subcategory + similar color ΔHSL < 22)
+  // Note: If an existing garment is marked 'worn_casual' or 'replace_soon', do NOT treat it as a duplicate blocker.
   const nonDuplicateCandidates = candidates.filter(({ garment: cand }) => {
     return !garments.some(
       (existing) =>
+        (!existing.condition || existing.condition === 'good') &&
         existing.subcategory === cand.subcategory &&
         getHslDistance(existing.hsl, cand.hsl) < 22
     );
@@ -474,6 +607,77 @@ export function analyzeWardrobeGaps(
     recommendationsByCategory[cat] = picked;
   }
 
+  // 5. Build Unified Prioritized Shopping List (combining Worn/Replace candidates + High-ROI Missing Pieces)
+  const rawShoppingItems: Array<Omit<import('../types/wardrobe').PrioritizedShoppingItem, 'rank'>> = [];
+
+  for (const rep of replacementCandidates) {
+    const priorityScore =
+      (rep.urgency === 'high' ? 50 : 28) +
+      rep.restoredOutfitsCount * 3 +
+      Math.min(15, Math.round((rep.garment.wearCount || 0) / 3));
+    rawShoppingItems.push({
+      id: `replace_${rep.garment.id}`,
+      type: 'replacement',
+      priorityLevel: rep.urgency === 'high' ? 'high' : 'medium',
+      priorityScore,
+      titleDe: `${rep.garment.name} ersetzen`,
+      titleEn: `Replace ${rep.garment.name}`,
+      reasonDe: rep.reasonDe,
+      reasonEn: rep.reasonEn,
+      targetGarment: rep.replacementGarment,
+      replacesGarment: rep.garment,
+      outfitsImpact: rep.restoredOutfitsCount,
+    });
+  }
+
+  for (const rec of diverseTop5) {
+    // Avoid adding a virtual recommendation if it already matches a replacement candidate of the same subcategory & similar color
+    const alreadyCoveredByReplacement = replacementCandidates.some(
+      (rep) =>
+        rep.garment.subcategory === rec.virtualGarment.subcategory &&
+        getHslDistance(rep.garment.hsl, rec.virtualGarment.hsl) < 25
+    );
+    if (alreadyCoveredByReplacement) continue;
+
+    const isMissingCategory = !garments.some(
+      (g) =>
+        g.category === rec.virtualGarment.category &&
+        g.isClean &&
+        g.condition !== 'replace_soon'
+    );
+    const priorityScore =
+      (isMissingCategory ? 45 : 0) +
+      rec.roiScore +
+      (rec.orphansRescued.length > 0 ? 8 : 0);
+    const priorityLevel: 'high' | 'medium' | 'normal' =
+      isMissingCategory || rec.roiScore >= 30
+        ? 'high'
+        : rec.roiScore >= 16
+        ? 'medium'
+        : 'normal';
+
+    rawShoppingItems.push({
+      id: `add_${rec.archetypeId}`,
+      type: 'new_addition',
+      priorityLevel,
+      priorityScore,
+      titleDe: rec.virtualGarment.name,
+      titleEn: rec.virtualGarment.name,
+      reasonDe: rec.rationale,
+      reasonEn: rec.rationale,
+      targetGarment: rec.virtualGarment,
+      recommendation: rec,
+      outfitsImpact: rec.newOutfitsUnlocked,
+    });
+  }
+
+  rawShoppingItems.sort((a, b) => b.priorityScore - a.priorityScore);
+  const prioritizedShoppingList: import('../types/wardrobe').PrioritizedShoppingItem[] =
+    rawShoppingItems.map((item, index) => ({
+      ...item,
+      rank: index + 1,
+    }));
+
   const totalCoreOutfits = allValidCoreOutfitsMap.size;
   const healthyBuckets = contextMatrix.filter((c) => !c.isBottleneck).length;
   const wardrobeHealthScore = Math.min(
@@ -493,5 +697,7 @@ export function analyzeWardrobeGaps(
     outfitCountsByGarmentId: countsByGarmentId,
     recommendations: diverseTop5,
     recommendationsByCategory,
+    replacementCandidates,
+    prioritizedShoppingList,
   };
 }

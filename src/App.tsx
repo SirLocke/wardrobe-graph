@@ -64,6 +64,7 @@ import {
   ContextBottleneck,
   FavoriteOutfitRecord,
   Garment,
+  GarmentCondition,
   GeneratedOutfit,
   OutfitContext,
   StyleVibe,
@@ -208,6 +209,36 @@ export default function App() {
       )
     );
     void updateGarmentsCleanStatus([id], nextClean);
+  };
+
+  const handleChangeGarmentCondition = async (
+    id: string,
+    nextCondition: GarmentCondition
+  ) => {
+    let targetUpdated: Garment | null = null;
+    setGarments((prev) =>
+      prev.map((g) => {
+        if (g.id !== id) return g;
+        targetUpdated = { ...g, condition: nextCondition };
+        return targetUpdated;
+      })
+    );
+    const labelDe =
+      nextCondition === 'replace_soon'
+        ? 'Als „Ersetzen“ markiert'
+        : nextCondition === 'worn_casual'
+        ? 'Als „Abgetragen (Zuhause/Freizeit)“ markiert'
+        : 'Status: Top / Ausgehtauglich';
+    const labelEn =
+      nextCondition === 'replace_soon'
+        ? 'Marked as "Replace soon"'
+        : nextCondition === 'worn_casual'
+        ? 'Marked as "Worn (Home/Casual)"'
+        : 'Condition: Good / Going out';
+    triggerQuickToast(isEn ? labelEn : labelDe);
+    if (targetUpdated) {
+      void saveGarmentToDb(targetUpdated);
+    }
   };
 
   const handleLogOutfitWorn = async (
@@ -804,6 +835,7 @@ export default function App() {
                 onEditGarment={openEditGarment}
                 onDeleteGarment={handleDeleteGarment}
                 onToggleClean={handleToggleClean}
+                onChangeCondition={handleChangeGarmentCondition}
                 onWashAllGarments={handleWashAllGarments}
                 onLockAndStyle={handleLockItemInStylist}
               />
@@ -830,6 +862,7 @@ export default function App() {
                 profile={profile}
                 locale={locale}
                 onToggleSandboxGarment={handleToggleSandboxGarment}
+                onChangeCondition={handleChangeGarmentCondition}
                 onJumpToContext={handleJumpToContext}
                 onLockOrphanInStylist={handleLockItemInStylist}
               />

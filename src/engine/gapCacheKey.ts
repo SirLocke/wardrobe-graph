@@ -21,17 +21,44 @@ export function computeGapStructuralKey(
           g.waterResistant ? 1 : 0
         }:${g.windproof ? 1 : 0}:${g.rainproof ? 1 : 0}:${g.hasPrint ? 1 : 0}:${
           g.hasLogo ? 1 : 0
-        }:${g.targetScope || ''}`
+        }:${g.targetScope || ''}:${g.condition || 'good'}:${g.purchaseYear || ''}`
     )
     .join('|');
 
-  const structuralProfileKey = `${profile.undertone}:${profile.contrastLevel}:${
-    profile.chromaLevel
-  }:${profile.valueLevel}:${profile.eyeHex}:${profile.haircutStyle}:${
-    profile.facialHair
-  }:${profile.wardrobeScope || ''}:${(profile.wardrobeScopes || []).join(',')}:${
-    profile.defaultStylePreferences?.colorHarmony || ''
-  }:${(profile.defaultStylePreferences?.preferredModifiers || []).join(',')}`;
+  const structuralProfileKey = getBiometricGenerationKey(profile);
 
   return `${structuralProfileKey}###${structuralGarmentKey}`;
 }
+
+/**
+ * Returns a deterministic fingerprint of the biometric and structural style fields of a BiometricProfile.
+ * Excludes non-combinatorial user preferences (favoriteOutfits, customOutfitNames, customColors,
+ * brandSizeRules, travelPackState) so UI interactions never trigger redundant outfit regeneration.
+ */
+export function getBiometricGenerationKey(profile: BiometricProfile): string {
+  const customOccasionsKey = (profile.customOccasions || [])
+    .map(
+      (co) =>
+        `${co.id}:${co.formalities.join(',')}:${(co.defaultModifiers || []).join(',')}`
+    )
+    .join(';');
+
+  return [
+    profile.undertone,
+    profile.contrastLevel,
+    profile.chromaLevel,
+    profile.valueLevel,
+    profile.skinHex,
+    profile.hairHex,
+    profile.eyeHex,
+    profile.haircutStyle,
+    profile.facialHair,
+    profile.preferredFit,
+    profile.wardrobeScope || '',
+    (profile.wardrobeScopes || []).join(','),
+    profile.defaultStylePreferences?.colorHarmony || '',
+    (profile.defaultStylePreferences?.preferredModifiers || []).join(','),
+    customOccasionsKey,
+  ].join('|');
+}
+

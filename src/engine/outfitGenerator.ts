@@ -257,8 +257,31 @@ export function passesHardContextFilter(
     }
   }
 
-  // 3. Occasion Formality Window (supports multi-select formalities[] and customOccasions)
+  // 3. Garment Condition & Occasion Formality Window
   if (!isLocked) {
+    // Items marked 'replace_soon' are only used for homeoffice_lounge unless explicitly locked
+    if (garment.condition === 'replace_soon' && context.occasion !== 'homeoffice_lounge') {
+      return false;
+    }
+    // Items marked 'worn_casual' (abgetragen) are excluded from going-out, office, date night, and formal occasions
+    if (garment.condition === 'worn_casual') {
+      const isGoingOutOrOffice =
+        context.occasion === 'smart_casual_office' ||
+        context.occasion === 'city_cafe' ||
+        context.occasion === 'date_night' ||
+        context.occasion === 'formal_event' ||
+        context.styleVibe === 'tailored_chic' ||
+        Boolean(
+          customOcc &&
+            customOcc.formalities &&
+            customOcc.formalities.length > 0 &&
+            Math.min(...customOcc.formalities) >= 3
+        );
+      if (isGoingOutOrOffice) {
+        return false;
+      }
+    }
+
     const activeFormalities =
       garment.formalities && garment.formalities.length > 0
         ? garment.formalities

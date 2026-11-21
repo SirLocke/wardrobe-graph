@@ -24,6 +24,7 @@ import {
   GapAnalysisReport,
   Garment,
   GarmentCategory,
+  GarmentCondition,
   OrphanPieceAnalysis,
 } from '../types/wardrobe';
 import { buildBrandOrShopUrl, isAmazonShopActive } from '../engine/outfitShare';
@@ -35,6 +36,7 @@ interface GapAnalyzerViewProps {
   profile?: BiometricProfile;
   locale?: AppLocale;
   onToggleSandboxGarment: (virtualGarment: Garment) => Promise<void>;
+  onChangeCondition?: (id: string, nextCondition: GarmentCondition) => Promise<void>;
   onJumpToContext: (bucket: ContextBottleneck) => void;
   onLockOrphanInStylist: (garmentId: string) => void;
 }
@@ -58,6 +60,7 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
   profile,
   locale = 'de',
   onToggleSandboxGarment,
+  onChangeCondition,
   onJumpToContext,
   onLockOrphanInStylist,
 }) => {
@@ -66,6 +69,7 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
   const [popupOrphan, setPopupOrphan] = useState<OrphanPieceAnalysis | null>(null);
   const [popupRec, setPopupRec] = useState<ArchetypeRecommendation | null>(null);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<'all' | GarmentCategory>('all');
+  const [shoppingFilter, setShoppingFilter] = useState<'all' | 'replacement' | 'new_addition'>('all');
 
   useEffect(() => {
     if (!popupOrphan && !popupRec) return;
@@ -180,6 +184,266 @@ export const GapAnalyzerView: React.FC<GapAnalyzerViewProps> = ({
                   Tipps für {c.label}
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* PRIORITIZED SHOPPING & REPLACEMENT LIST ("Priorisierte Kaufliste & Ersetzen") */}
+        {(report.prioritizedShoppingList?.length || 0) > 0 && (
+          <div className="rounded-2xl bg-zinc-950/75 border border-amber-500/30 p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-3.5">
+              <div>
+                <h2 className="text-base sm:text-lg font-semibold text-zinc-100 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    {isEn
+                      ? 'Prioritized Shopping & Replacement List'
+                      : 'Priorisierte Kaufliste (Ersetzen & Fehlende Teile)'}
+                  </span>
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {isEn
+                    ? 'Sorted by urgency and maximum outfit impact – combines worn-out staples to replace and missing high-value pieces.'
+                    : 'Sortiert nach Dringlichkeit und größtem Outfit-Mehrwert – kombiniert abgetragene Teile zum Ersetzen und fehlende Schlüsselstücke.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-900 border border-zinc-800 shrink-0">
+                {(
+                  [
+                    {
+                      id: 'all' as const,
+                      labelDe: `Alle (${report.prioritizedShoppingList?.length || 0})`,
+                      labelEn: `All (${report.prioritizedShoppingList?.length || 0})`,
+                    },
+                    {
+                      id: 'replacement' as const,
+                      labelDe: `Ersetzen (${
+                        (report.prioritizedShoppingList || []).filter(
+                          (i) => i.type === 'replacement'
+                        ).length
+                      })`,
+                      labelEn: `Replace (${
+                        (report.prioritizedShoppingList || []).filter(
+                          (i) => i.type === 'replacement'
+                        ).length
+                      })`,
+                    },
+                    {
+                      id: 'new_addition' as const,
+                      labelDe: `Neu ergänzen (${
+                        (report.prioritizedShoppingList || []).filter(
+                          (i) => i.type === 'new_addition'
+                        ).length
+                      })`,
+                      labelEn: `New Additions (${
+                        (report.prioritizedShoppingList || []).filter(
+                          (i) => i.type === 'new_addition'
+                        ).length
+                      })`,
+                    },
+                  ] as const
+                ).map((tab) => {
+                  const active = shoppingFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setShoppingFilter(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        active
+                          ? 'bg-amber-400 text-zinc-950 font-semibold'
+                          : 'text-zinc-400 hover:text-zinc-100'
+                      }`}
+                    >
+                      {isEn ? tab.labelEn : tab.labelDe}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {(report.prioritizedShoppingList || [])
+                .filter((item) => shoppingFilter === 'all' || item.type === shoppingFilter)
+                .map((item) => {
+                  const { targetGarment, replacesGarment, recommendation } = item;
+                  const isReplacement = item.type === 'replacement';
+                  const isAlreadyInSandbox =
+                    !isReplacement && garments.some((g) => g.id === targetGarment.id);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-xl border p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 transition-colors ${
+                        isReplacement
+                          ? 'bg-rose-950/15 border-rose-500/35 hover:border-rose-500/55'
+                          : 'bg-zinc-900/60 border-zinc-800/90 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="w-14 h-14 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
+                          <GarmentVector
+                            type={targetGarment.subcategory}
+                            colorHex={targetGarment.colorHex}
+                            accentColorHex={targetGarment.accentColorHex}
+                            pattern={targetGarment.pattern}
+                            texture={targetGarment.texture}
+                            neckline={targetGarment.neckline}
+                            hasPrint={targetGarment.hasPrint}
+                            hasLogo={targetGarment.hasLogo}
+                            className="w-11 h-11"
+                          />
+                        </div>
+
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono font-bold">
+                              #{item.rank}
+                            </span>
+                            {isReplacement ? (
+                              <span
+                                className={`px-2 py-0.5 rounded font-semibold border ${
+                                  replacesGarment?.condition === 'replace_soon'
+                                    ? 'bg-rose-500/20 border-rose-500/45 text-rose-200'
+                                    : 'bg-amber-500/20 border-amber-500/45 text-amber-200'
+                                }`}
+                              >
+                                {replacesGarment?.condition === 'replace_soon'
+                                  ? isEn
+                                    ? 'Replace Urgently'
+                                    : 'Dringend ersetzen'
+                                  : isEn
+                                  ? 'Worn · Replace for Going Out'
+                                  : 'Abgetragen · Für Ausgehen ersetzen'}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold">
+                                {isEn ? 'Missing Key Piece' : 'Fehlendes Schlüsselstück'}
+                              </span>
+                            )}
+                            <span className="text-emerald-400 font-semibold">
+                              +{item.outfitsImpact}{' '}
+                              {isReplacement
+                                ? isEn
+                                  ? 'outfits restored'
+                                  : 'Outfits wiederhergestellt'
+                                : isEn
+                                ? 'new outfits'
+                                : 'neue Outfits'}
+                            </span>
+                          </div>
+
+                          <h3 className="text-sm sm:text-base font-semibold text-zinc-100">
+                            {isEn ? item.titleEn : item.titleDe}
+                          </h3>
+
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full border border-white/20 inline-block"
+                              style={{ backgroundColor: targetGarment.colorHex }}
+                            />
+                            <span>{targetGarment.colorName}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>
+                              {SUBCATEGORY_LABELS[targetGarment.subcategory].split(' (')[0]}
+                            </span>
+                            {targetGarment.brand && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="text-amber-300 font-medium">
+                                  {targetGarment.brand}
+                                </span>
+                              </>
+                            )}
+                            {targetGarment.size && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span>Gr. {targetGarment.size}</span>
+                              </>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-zinc-300 leading-relaxed">
+                            {isEn ? item.reasonEn : item.reasonDe}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <a
+                          href={buildBrandOrShopUrl(targetGarment, { profile })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 border border-zinc-700/80 text-xs font-medium text-amber-300 hover:text-amber-200 hover:border-amber-400/60 transition-colors whitespace-nowrap touch-manipulation active:scale-95"
+                        >
+                          <span>
+                            {isAmazon
+                              ? isEn
+                                ? 'Find on Amazon'
+                                : 'Bei Amazon suchen'
+                              : isEn
+                              ? 'Find in Shop'
+                              : 'Im Shop suchen'}
+                          </span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </a>
+
+                        {isReplacement && replacesGarment && onChangeCondition && (
+                          <button
+                            type="button"
+                            onClick={() => void onChangeCondition(replacesGarment.id, 'good')}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/45 hover:bg-emerald-500/25 text-xs font-semibold text-emerald-200 transition-colors cursor-pointer whitespace-nowrap touch-manipulation active:scale-95"
+                          >
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>
+                              {isEn ? 'Replaced / Good again' : 'Ersetzt / Wieder Top'}
+                            </span>
+                          </button>
+                        )}
+
+                        {!isReplacement && recommendation && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPopupRec(recommendation)}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:border-zinc-700 cursor-pointer whitespace-nowrap"
+                            >
+                              <Layers className="w-3.5 h-3.5 text-amber-400" />
+                              <span>
+                                {isEn
+                                  ? `Outfits (${recommendation.unlockedCombinationsPreview.length})`
+                                  : `Outfits (${recommendation.unlockedCombinationsPreview.length})`}
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => onToggleSandboxGarment(targetGarment)}
+                              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                                isAlreadyInSandbox
+                                  ? 'bg-sky-500/20 border border-sky-500/50 text-sky-200 hover:bg-sky-500/30'
+                                  : 'bg-zinc-100 text-zinc-950 hover:bg-white'
+                              }`}
+                            >
+                              {isAlreadyInSandbox ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-sky-400" />
+                                  <span>{isEn ? 'Testing' : 'Im Test'}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>{isEn ? 'Test in Closet' : 'Im Schrank testen'}</span>
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}

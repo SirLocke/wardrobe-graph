@@ -177,6 +177,7 @@ export async function syncStateToServer(
 /**
  * Pulls the latest wardrobe state from the local Express/MCP server (/api/wardrobe)
  * and updates IndexedDB safely without overwriting user-entered data with demo/seed data.
+ * Includes a Pending-Write-Guard: if a local mutation is pending or debouncing, flushes local state UP to the server first.
  */
 export async function pullStateFromServer(): Promise<{
   profile: BiometricProfile;
@@ -184,11 +185,19 @@ export async function pullStateFromServer(): Promise<{
   wornHistory?: WornOutfitRecord[];
 } | null> {
   if (isPublicClientOnly()) return null;
+  if (syncDebounceTimer !== null || hasPendingLocalWrite) {
+    return flushPendingServerSync();
+  }
   try {
     const res = await fetch('/api/wardrobe');
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || !data.profile || !Array.isArray(data.garments)) return null;
+
+    // Re-check after network roundtrip in case the user clicked while GET /api/wardrobe was in flight
+    if (syncDebounceTimer !== null || hasPendingLocalWrite) {
+      return flushPendingServerSync();
+    }
 
     // Check what local IndexedDB currently has before touching anything
     let localProfile: BiometricProfile | null = null;
@@ -339,14 +348,44 @@ export function enrichGarmentColor(garment: Garment): Garment {
 }
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let hasPendingLocalWrite = false;
+
+async function flushPendingServerSync(): Promise<{
+  profile: BiometricProfile;
+  garments: Garment[];
+  wornHistory: WornOutfitRecord[];
+} | null> {
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = null;
+  }
+  // Allow any 16ms deferred IndexedDB write timer to settle first
+  await new Promise((resolve) => setTimeout(resolve, 24));
+  hasPendingLocalWrite = false;
+  try {
+    const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
+    const allGarments = await db.garments.toArray();
+    const history = await db.wornHistory.orderBy('wornDate').reverse().toArray().catch(() => []);
+    await syncStateToServer(profile, allGarments, history);
+    return {
+      profile,
+      garments: allGarments,
+      wornHistory: history,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function scheduleBackgroundServerSync(delayMs = 350): void {
   if (isPublicClientOnly()) return;
+  hasPendingLocalWrite = true;
   if (syncDebounceTimer) {
     clearTimeout(syncDebounceTimer);
   }
   syncDebounceTimer = setTimeout(() => {
     syncDebounceTimer = null;
+    hasPendingLocalWrite = false;
     void (async () => {
       try {
         const profile = (await db.profiles.get('default_profile')) || DEFAULT_BIOMETRIC_PROFILE;
@@ -361,13 +400,14 @@ function scheduleBackgroundServerSync(delayMs = 350): void {
 }
 
 export async function saveBiometricProfile(profile: BiometricProfile): Promise<void> {
+  hasPendingLocalWrite = true;
   setTimeout(() => {
     void (async () => {
       try {
         await db.profiles.put({ ...profile, id: 'default_profile' });
         scheduleBackgroundServerSync();
       } catch {
-        // Fallback silent if IndexedDB restricted
+        hasPendingLocalWrite = false;
       }
     })();
   }, 16);
@@ -375,13 +415,14 @@ export async function saveBiometricProfile(profile: BiometricProfile): Promise<v
 
 export async function saveGarmentToDb(garment: Garment): Promise<Garment> {
   const enriched = enrichGarmentColor(garment);
+  hasPendingLocalWrite = true;
   setTimeout(() => {
     void (async () => {
       try {
         await db.garments.put(enriched);
         scheduleBackgroundServerSync();
       } catch {
-        // Fallback silent
+        hasPendingLocalWrite = false;
       }
     })();
   }, 16);
@@ -390,13 +431,14 @@ export async function saveGarmentToDb(garment: Garment): Promise<Garment> {
 
 export async function bulkUpsertGarmentsToDb(garmentsToSave: Garment[]): Promise<Garment[]> {
   const enrichedList: Garment[] = garmentsToSave.map((g) => enrichGarmentColor(g));
+  hasPendingLocalWrite = true;
   setTimeout(() => {
     void (async () => {
       try {
         await db.garments.bulkPut(enrichedList);
         scheduleBackgroundServerSync();
       } catch {
-        // Fallback silent
+        hasPendingLocalWrite = false;
       }
     })();
   }, 16);
@@ -404,19 +446,21 @@ export async function bulkUpsertGarmentsToDb(garmentsToSave: Garment[]): Promise
 }
 
 export async function deleteGarmentFromDb(id: string): Promise<void> {
+  hasPendingLocalWrite = true;
   setTimeout(() => {
     void (async () => {
       try {
         await db.garments.delete(id);
         scheduleBackgroundServerSync();
       } catch {
-        // Fallback silent
+        hasPendingLocalWrite = false;
       }
     })();
   }, 16);
 }
 
 export async function updateGarmentsCleanStatus(ids: string[], isClean: boolean): Promise<void> {
+  hasPendingLocalWrite = true;
   setTimeout(() => {
     void (async () => {
       try {
@@ -427,7 +471,7 @@ export async function updateGarmentsCleanStatus(ids: string[], isClean: boolean)
         });
         scheduleBackgroundServerSync();
       } catch {
-        // Fallback silent
+        hasPendingLocalWrite = false;
       }
     })();
   }, 16);

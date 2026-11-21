@@ -15,6 +15,7 @@ import {
   isExampleGarment,
 } from './outfitShare';
 import { analyzeWardrobeGaps } from './gapAnalyzer';
+import { getBiometricGenerationKey } from './gapCacheKey';
 import { instantiateCandidateArchetypes } from './archetypes';
 import {
   buildLlmWardrobeAnalysisPrompt,
@@ -1873,4 +1874,146 @@ test('collarLayering & multiLock & corduroy: prevents polo/shirt double-collar o
     );
   }
 });
+
+test('garmentCondition & prioritizedShoppingList: excludes worn_casual from going out, excludes replace_soon from everyday, and builds prioritized replacement & shopping list', () => {
+  // Mark seed_top_1 as 'worn_casual' (Abgetragen) and seed_bot_1 as 'replace_soon' (Ersetzen)
+  const modifiedWardrobe = SEED_WARDROBE_GARMENTS.map((g) => {
+    if (g.id === 'seed_top_1') {
+      return { ...g, condition: 'worn_casual' as const, purchaseYear: 2021, wearCount: 28 };
+    }
+    if (g.id === 'seed_bot_1') {
+      return { ...g, condition: 'replace_soon' as const, purchaseYear: 2020, wearCount: 42 };
+    }
+    return g;
+  });
+
+  // 1) 'worn_casual' must NOT be suggested for going-out / office / date_night occasions
+  for (const goingOutOccasion of ['smart_casual_office', 'city_cafe', 'date_night'] as const) {
+    const outfits = generateOutfitsForContext(
+      modifiedWardrobe,
+      DEFAULT_BIOMETRIC_PROFILE,
+      {
+        temperatureC: 18,
+        weather: 'sunny_dry',
+        occasion: goingOutOccasion,
+        lockedGarmentIds: [],
+      },
+      10
+    );
+    for (const outfit of outfits) {
+      assert.equal(
+        outfit.items.some((i) => i.id === 'seed_top_1'),
+        false,
+        `worn_casual item seed_top_1 must not be suggested for going-out occasion ${goingOutOccasion}`
+      );
+      assert.equal(
+        outfit.items.some((i) => i.id === 'seed_bot_1'),
+        false,
+        `replace_soon item seed_bot_1 must not be suggested for ${goingOutOccasion}`
+      );
+    }
+  }
+
+  // 2) 'replace_soon' must NOT be suggested for everyday casual, while 'worn_casual' IS still allowed for homeoffice_lounge
+  const casualOutfits = generateOutfitsForContext(
+    modifiedWardrobe,
+    DEFAULT_BIOMETRIC_PROFILE,
+    {
+      temperatureC: 18,
+      weather: 'sunny_dry',
+      occasion: 'casual',
+      lockedGarmentIds: [],
+    },
+    10
+  );
+  for (const outfit of casualOutfits) {
+    assert.equal(
+      outfit.items.some((i) => i.id === 'seed_bot_1'),
+      false,
+      'replace_soon item seed_bot_1 must not be suggested for casual everyday outfits'
+    );
+  }
+
+  // 3) Gap analysis must list both items in replacementCandidates and prioritizedShoppingList
+  const gapReport = analyzeWardrobeGaps(modifiedWardrobe, DEFAULT_BIOMETRIC_PROFILE);
+  assert.ok(
+    Array.isArray(gapReport.replacementCandidates) && gapReport.replacementCandidates.length >= 2,
+    'Gap report should include worn_casual and replace_soon items in replacementCandidates'
+  );
+  assert.equal(
+    gapReport.replacementCandidates![0].garment.id,
+    'seed_bot_1',
+    'Urgent replace_soon item should be ranked first in replacementCandidates'
+  );
+  assert.ok(
+    Array.isArray(gapReport.prioritizedShoppingList) &&
+      gapReport.prioritizedShoppingList.length >= 3,
+    'Gap report should include a unified prioritizedShoppingList'
+  );
+  assert.ok(
+    gapReport.prioritizedShoppingList!.some(
+      (item) => item.type === 'replacement' && item.replacesGarment?.id === 'seed_bot_1'
+    ),
+    'prioritizedShoppingList must contain replacement entry for seed_bot_1'
+  );
+  assert.ok(
+    gapReport.prioritizedShoppingList!.some(
+      (item) => item.type === 'replacement' && item.replacesGarment?.id === 'seed_top_1'
+    ),
+    'prioritizedShoppingList must contain replacement entry for seed_top_1'
+  );
+  assert.ok(
+    gapReport.prioritizedShoppingList!.some((item) => item.type === 'new_addition'),
+    'prioritizedShoppingList must also contain new_addition recommendations'
+  );
+
+  // 4) Wardrobe backup parser preserves condition and purchaseYear
+  const parsed = parseAndNormalizeWardrobeImport(
+    JSON.stringify([
+      {
+        id: 'test_cond_1',
+        name: 'Altes Lieblingsshirt',
+        category: 'base_top',
+        subcategory: 't_shirt',
+        colorName: 'Salbeigrün',
+        colorHex: '#8F9779',
+        condition: 'worn_casual',
+        purchaseYear: 2021,
+      },
+    ])
+  );
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.garments[0].condition, 'worn_casual');
+  assert.equal(parsed.garments[0].purchaseYear, 2021);
+
+  // 5) getBiometricGenerationKey ignores favoriteOutfits, customOutfitNames, customColors, brandSizeRules
+  const baseKey = getBiometricGenerationKey(DEFAULT_BIOMETRIC_PROFILE);
+  const keyWithLikesAndColors = getBiometricGenerationKey({
+    ...DEFAULT_BIOMETRIC_PROFILE,
+    favoriteOutfits: [
+      { id: 'fav_1', title: 'Look 1', garmentIds: ['a', 'b'], garments: [], savedAt: '2026-01-01' },
+    ],
+    customOutfitNames: { fav_1: 'Mein Look' },
+    customColors: [{ name: 'Testfarbe', hex: '#123456', group: 'Accent' }],
+    brandSizeRules: [{ brand: 'Nike', categoryGroup: 'shoes', size: '43' }],
+  });
+  assert.equal(
+    baseKey,
+    keyWithLikesAndColors,
+    'getBiometricGenerationKey must stay stable when likes, custom colors, or brand size rules change'
+  );
+
+  const keyWithChangedUndertone = getBiometricGenerationKey({
+    ...DEFAULT_BIOMETRIC_PROFILE,
+    undertone: 'cool',
+  });
+  assert.notEqual(
+    baseKey,
+    keyWithChangedUndertone,
+    'getBiometricGenerationKey must change when biometric attributes change'
+  );
+});
+
+
+
 

@@ -1,19 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BookmarkCheck,
   Check,
   ChevronDown,
   ChevronUp,
   CopyPlus,
-  Edit3,
   Palette,
-  Plus,
-  Ruler,
   SlidersHorizontal,
   Sparkles,
-  Tag,
-  Trash2,
-  Upload,
   X,
 } from 'lucide-react';
 import {
@@ -55,12 +48,16 @@ import {
   FitType,
   Garment,
   GarmentCategory,
+  GarmentCondition,
   GarmentPattern,
   GarmentSubcategory,
   NecklineType,
   TextureType,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
+import { BrandSizeConditionSection } from './garment-modal/BrandSizeConditionSection';
+import { CustomColorCreatorPanel } from './garment-modal/CustomColorCreatorPanel';
+import { PhotoColorPickerSection } from './garment-modal/PhotoColorPickerSection';
 
 interface AddGarmentModalProps {
   isOpen: boolean;
@@ -125,6 +122,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
   const [hasPrint, setHasPrint] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
   const [isClean, setIsClean] = useState(true);
+  const [condition, setCondition] = useState<GarmentCondition>('good');
+  const [purchaseYear, setPurchaseYear] = useState<string>('');
   const [buyUrl, setBuyUrl] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>(undefined);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
@@ -249,6 +248,10 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setIsClean(
         canGarmentUseLaundry(initialGarment) ? initialGarment.isClean : true
       );
+      setCondition(initialGarment.condition || 'good');
+      setPurchaseYear(
+        initialGarment.purchaseYear ? String(initialGarment.purchaseYear) : ''
+      );
       setBuyUrl(initialGarment.buyUrl || '');
       setImageDataUrl(initialGarment.imageDataUrl);
     } else {
@@ -277,6 +280,8 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       setHasPrint(false);
       setHasLogo(false);
       setIsClean(true);
+      setCondition('good');
+      setPurchaseYear('');
       setBuyUrl('');
       setImageDataUrl(undefined);
       setName(`T-Shirt ${initColor}`);
@@ -655,6 +660,14 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
       hasLogo:
         (category === 'base_top' || category === 'mid_layer') && hasLogo ? true : undefined,
       isClean: laundryAllowed ? isClean : true,
+      condition: condition !== 'good' ? condition : 'good',
+      purchaseYear:
+        purchaseYear.trim() &&
+        Number.isFinite(Number(purchaseYear.trim())) &&
+        Number(purchaseYear.trim()) >= 1980 &&
+        Number(purchaseYear.trim()) <= 2100
+          ? Math.round(Number(purchaseYear.trim()))
+          : undefined,
       imageDataUrl,
       brand: brand.trim() || undefined,
       size: size.trim() || undefined,
@@ -887,130 +900,21 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
             </div>
 
             {showNewColorCreator && (
-              <div className="p-4 rounded-xl bg-zinc-900/90 border border-amber-500/30 space-y-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-zinc-200">
-                    {editingCustomColorOriginalName
-                      ? isEn
-                        ? `Edit custom color "${editingCustomColorOriginalName}":`
-                        : `Eigene Farbe „${editingCustomColorOriginalName}“ bearbeiten:`
-                      : isEn
-                      ? 'Add new color to palette:'
-                      : 'Neue Farbe zur Farbpalette hinzufügen:'}
-                  </p>
-                  <span className="text-[11px] text-amber-300/90">
-                    {isEn ? 'Detected shade:' : 'Erkannter Farbton:'}{' '}
-                    <strong>{hexToGermanColorName(newCustomColorHex, locale).name}</strong>
-                  </span>
-                </div>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer shrink-0">
-                    <input
-                      type="color"
-                      value={newCustomColorHex}
-                      onChange={(e) => {
-                        const nextHex = e.target.value;
-                        setNewCustomColorHex(nextHex);
-                        if (!hasManualCustomColorName) {
-                          setNewCustomColorName(hexToGermanColorName(nextHex, locale).name);
-                        }
-                      }}
-                      className="w-7 h-7 rounded cursor-pointer border-0 bg-transparent"
-                    />
-                    <span className="text-xs text-zinc-300">
-                      {isEn ? 'Pick shade' : 'Farbton wählen'}
-                    </span>
-                  </label>
-                  <div className="flex-1 flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={newCustomColorName}
-                      onChange={(e) => {
-                        setNewCustomColorName(e.target.value);
-                        setHasManualCustomColorName(Boolean(e.target.value.trim()));
-                      }}
-                      placeholder={`${isEn ? 'e.g.' : 'z. B.'} ${
-                        hexToGermanColorName(newCustomColorHex, locale).name
-                      }`}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                    />
-                    {hasManualCustomColorName &&
-                      newCustomColorName.trim() !==
-                        hexToGermanColorName(newCustomColorHex, locale).name && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNewCustomColorName(
-                              hexToGermanColorName(newCustomColorHex, locale).name
-                            );
-                            setHasManualCustomColorName(false);
-                          }}
-                          className="px-2 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-[11px] text-amber-300 hover:border-amber-400 whitespace-nowrap cursor-pointer"
-                          title={
-                            isEn
-                              ? 'Use detected English color name'
-                              : 'Erkannten deutschen Farbnamen übernehmen'
-                          }
-                        >
-                          {isEn ? 'Suggestion:' : 'Vorschlag:'}{' '}
-                          {hexToGermanColorName(newCustomColorHex, locale).name}
-                        </button>
-                      )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddOrUpdateCustomColor}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 text-xs font-semibold hover:bg-amber-400 transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    {editingCustomColorOriginalName
-                      ? isEn
-                        ? 'Save changes'
-                        : 'Änderung speichern'
-                      : isEn
-                      ? 'Save & select color'
-                      : 'Farbe speichern & wählen'}
-                  </button>
-                </div>
-
-                {customColors.length > 0 && (
-                  <div className="pt-2.5 border-t border-zinc-800/80 space-y-1.5">
-                    <p className="text-[11px] text-zinc-400">
-                      {isEn ? 'Your custom colors:' : 'Deine eigenen Farben:'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {customColors.map((cc) => (
-                        <div
-                          key={`${cc.name}_${cc.hex}`}
-                          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200"
-                        >
-                          <span
-                            className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0"
-                            style={{ backgroundColor: cc.hex }}
-                          />
-                          <span>{cc.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleStartEditCustomColor(cc)}
-                            className="text-zinc-400 hover:text-amber-300 cursor-pointer p-0.5"
-                            title={isEn ? `Edit ${cc.name}` : `${cc.name} bearbeiten`}
-                          >
-                            <Edit3 className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCustomColor(cc.name)}
-                            className="text-zinc-500 hover:text-rose-400 cursor-pointer p-0.5"
-                            title={isEn ? `Delete ${cc.name}` : `${cc.name} löschen`}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <CustomColorCreatorPanel
+                isEn={isEn}
+                locale={locale}
+                editingCustomColorOriginalName={editingCustomColorOriginalName}
+                newCustomColorHex={newCustomColorHex}
+                setNewCustomColorHex={setNewCustomColorHex}
+                newCustomColorName={newCustomColorName}
+                setNewCustomColorName={setNewCustomColorName}
+                hasManualCustomColorName={hasManualCustomColorName}
+                setHasManualCustomColorName={setHasManualCustomColorName}
+                customColors={customColors}
+                onAddOrUpdateCustomColor={handleAddOrUpdateCustomColor}
+                onStartEditCustomColor={handleStartEditCustomColor}
+                onDeleteCustomColor={handleDeleteCustomColor}
+              />
             )}
 
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -1337,137 +1241,26 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
           )}
 
           {/* STEP 3: Marke & Größe (Optional – mit eigenen/häufigen Marken & Größen-Vorschlag) */}
-          <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-amber-400" />
-                3. Marke &amp; Größe (Optional)
-              </label>
-              {sizeSuggestionInfo.reasonDe && (
-                <span className="text-[11px] text-amber-300 font-medium">
-                  {sizeSuggestionInfo.reasonDe}
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Brand Selection */}
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-zinc-400">
-                  Marke (eigene Marken &amp; Schnellauswahl)
-                </label>
-                <input
-                  type="text"
-                  value={brand}
-                  onChange={(e) => handleBrandChange(e.target.value)}
-                  placeholder="Marke eingeben oder unten antippen..."
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                />
-                {brandSuggestions.ownBrands.length > 0 && (
-                  <div className="space-y-1">
-                    <span className="block text-[10px] font-medium text-amber-300/90">
-                      Deine häufigen Marken:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {brandSuggestions.ownBrands.slice(0, 10).map((b) => {
-                        const active = brand.toLowerCase() === b.toLowerCase();
-                        return (
-                          <button
-                            key={`own_${b}`}
-                            type="button"
-                            onClick={() => handleBrandChange(active ? '' : b)}
-                            className={`px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors cursor-pointer ${
-                              active
-                                ? 'bg-amber-500/25 border-amber-400 text-amber-200 font-semibold'
-                                : 'bg-amber-500/10 border-amber-500/30 text-amber-200/90 hover:border-amber-400/60'
-                            }`}
-                          >
-                            {b}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-1.5">
-                  {brandSuggestions.popularBrands.slice(0, 9).map((b) => {
-                    const active = brand.toLowerCase() === b.toLowerCase();
-                    return (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => handleBrandChange(active ? '' : b)}
-                        className={`px-2 py-1 rounded-md border text-[11px] font-medium transition-colors cursor-pointer ${
-                          active
-                            ? 'bg-amber-500/20 border-amber-400 text-amber-200'
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        {b}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Size Selection */}
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-zinc-400 flex items-center gap-1">
-                  <Ruler className="w-3.5 h-3.5 text-zinc-500" />
-                  Größe
-                </label>
-                <input
-                  type="text"
-                  value={size}
-                  onChange={(e) => {
-                    setSize(e.target.value);
-                    setRuleSavedNotice(null);
-                  }}
-                  placeholder="z.B. M, L, 38, 42, W32/L32..."
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                />
-                <div className="flex flex-wrap gap-1.5">
-                  {sizePills.map((s) => {
-                    const active = size.toUpperCase() === s.toUpperCase();
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setSize(s)}
-                        className={`px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors cursor-pointer ${
-                          active
-                            ? 'bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold'
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {brand.trim() && size.trim() && onUpdateProfile && (
-              <div className="pt-2 border-t border-zinc-800/70 flex flex-wrap items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={handleRememberBrandSizeRule}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-300 hover:text-amber-200 cursor-pointer"
-                >
-                  <BookmarkCheck className="w-3.5 h-3.5" />
-                  <span>
-                    Merken: „Bei {brand.trim()} habe ich immer Größe {size.trim()}“
-                  </span>
-                </button>
-                {ruleSavedNotice && (
-                  <span className="text-[11px] text-emerald-400 font-medium">
-                    ✓ {ruleSavedNotice}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+          <BrandSizeConditionSection
+            isEn={isEn}
+            brand={brand}
+            onBrandChange={handleBrandChange}
+            brandSuggestions={brandSuggestions}
+            size={size}
+            onSizeChange={(nextSize) => {
+              setSize(nextSize);
+              setRuleSavedNotice(null);
+            }}
+            sizePills={sizePills}
+            sizeSuggestionReasonDe={sizeSuggestionInfo.reasonDe}
+            canRememberBrandSizeRule={Boolean(brand.trim() && size.trim() && onUpdateProfile)}
+            onRememberBrandSizeRule={handleRememberBrandSizeRule}
+            ruleSavedNotice={ruleSavedNotice}
+            condition={condition}
+            onConditionChange={setCondition}
+            purchaseYear={purchaseYear}
+            onPurchaseYearChange={setPurchaseYear}
+          />
 
           {/* STEP 4 (OPTIONAL): Erweiterte Details (Schnitt, Stoff, Dicke, Foto) */}
           <div className="border-t border-zinc-800/80 pt-4">
@@ -1643,86 +1436,26 @@ export const AddGarmentModal: React.FC<AddGarmentModalProps> = ({
                   </>
                 )}
 
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                  <div className="flex items-center gap-3">
-                    {category !== 'accessory' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = !waterResistant;
-                          setWaterResistant(next);
-                          if (!next) setRainproof(false);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
-                          waterResistant
-                            ? 'bg-sky-950/50 border-sky-500/50 text-sky-200'
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                        }`}
-                      >
-                        {waterResistant ? '✓ Wasserabweisend (Regenfest)' : 'Nicht wasserabweisend'}
-                      </button>
-                    )}
-
-                    {laundrySupported && (
-                      <button
-                        type="button"
-                        onClick={() => setIsClean((v) => !v)}
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
-                          isClean
-                            ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-200'
-                            : 'bg-rose-950/50 border-rose-500/50 text-rose-200'
-                        }`}
-                      >
-                        {isClean ? '✓ Frisch gewaschen' : 'In der Wäsche'}
-                      </button>
-                    )}
-                  </div>
-
-                  <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-medium text-zinc-300 hover:border-zinc-600 cursor-pointer">
-                    <Upload className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Foto hochladen (Farbe antippen)</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                {imageDataUrl && (
-                  <div className="flex items-center gap-4 pt-2">
-                    <canvas
-                      ref={canvasRef}
-                      onClick={handleCanvasClick}
-                      className="rounded-lg border border-zinc-700 cursor-crosshair max-h-36"
-                      title="Klicke auf eine Stelle im Foto, um die Farbe zu übernehmen"
-                    />
-                    <div className="text-xs text-zinc-400 space-y-1">
-                      <p className="text-zinc-200 font-medium">Foto-Farbwähler aktiv</p>
-                      <p>Tippe direkt ins Foto, um die genaue Kleidungsfarbe zu übernehmen.</p>
-                      <button
-                        type="button"
-                        onClick={() => setImageDataUrl(undefined)}
-                        className="text-rose-400 hover:text-rose-300 underline"
-                      >
-                        Foto entfernen
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1">
-                    {isEn ? 'Product / Shop Link (optional)' : 'Produkt- / Kauf-Link (optional)'}
-                  </label>
-                  <input
-                    type="url"
-                    value={buyUrl}
-                    onChange={(e) => setBuyUrl(e.target.value)}
-                    placeholder="https://www.amazon.de/dp/..."
-                    className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+                <PhotoColorPickerSection
+                  isEn={isEn}
+                  category={category}
+                  waterResistant={waterResistant}
+                  onToggleWaterResistant={() => {
+                    const next = !waterResistant;
+                    setWaterResistant(next);
+                    if (!next) setRainproof(false);
+                  }}
+                  laundrySupported={laundrySupported}
+                  isClean={isClean}
+                  onToggleClean={() => setIsClean((v) => !v)}
+                  imageDataUrl={imageDataUrl}
+                  onPhotoUpload={handlePhotoUpload}
+                  onRemovePhoto={() => setImageDataUrl(undefined)}
+                  canvasRef={canvasRef}
+                  onCanvasClick={handleCanvasClick}
+                  buyUrl={buyUrl}
+                  onBuyUrlChange={setBuyUrl}
+                />
               </div>
             )}
           </div>

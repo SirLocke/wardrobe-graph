@@ -32,6 +32,7 @@ import {
   BiometricProfile,
   Garment,
   GarmentCategory,
+  GarmentCondition,
 } from '../types/wardrobe';
 import { GarmentVector } from './GarmentVector';
 
@@ -47,11 +48,12 @@ interface SmartClosetViewProps {
   onEditGarment: (garment: Garment) => void;
   onDeleteGarment: (id: string) => Promise<void>;
   onToggleClean: (id: string, nextClean: boolean) => Promise<void>;
+  onChangeCondition?: (id: string, nextCondition: GarmentCondition) => Promise<void>;
   onWashAllGarments?: () => Promise<void>;
   onLockAndStyle: (id: string) => void;
 }
 
-type CleanFilter = 'all' | 'clean' | 'dirty' | 'sandbox';
+type CleanFilter = 'all' | 'clean' | 'dirty' | 'worn' | 'sandbox';
 type SeasonFilter = 'all' | 'warm_weather' | 'transition' | 'cold_weather';
 type SortMode =
   | 'biometric_desc'
@@ -73,6 +75,7 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
   onEditGarment,
   onDeleteGarment,
   onToggleClean,
+  onChangeCondition,
   onWashAllGarments,
   onLockAndStyle,
 }) => {
@@ -136,6 +139,13 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
         const effectivelyClean = usesLaundry ? garment.isClean : true;
         if (cleanFilter === 'clean' && !effectivelyClean) return false;
         if (cleanFilter === 'dirty' && (!usesLaundry || effectivelyClean)) return false;
+        if (
+          cleanFilter === 'worn' &&
+          garment.condition !== 'worn_casual' &&
+          garment.condition !== 'replace_soon'
+        ) {
+          return false;
+        }
         if (cleanFilter === 'sandbox' && !garment.isWishlistSandbox) return false;
 
         if (seasonFilter === 'warm_weather' && garment.thermalRating > 2) return false;
@@ -187,6 +197,14 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
 
   const dirtyGarmentCount = useMemo(
     () => garments.filter((g) => canGarmentUseLaundry(g) && !g.isClean).length,
+    [garments]
+  );
+
+  const wornGarmentCount = useMemo(
+    () =>
+      garments.filter(
+        (g) => g.condition === 'worn_casual' || g.condition === 'replace_soon'
+      ).length,
     [garments]
   );
 
@@ -377,12 +395,17 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2.5 min-h-[42px] text-xs text-zinc-200 cursor-pointer"
             >
               <option value="all">
-                {isEn ? 'Status: All items' : 'Wäsche-Status: Alle'}
+                {isEn ? 'Status: All items' : 'Wäsche & Zustand: Alle'}
               </option>
               <option value="clean">
                 {isEn ? 'Clean & ready to wear' : 'Nur tragebereit / frisch'}
               </option>
               <option value="dirty">{isEn ? 'In laundry' : 'Im Wäschekorb'}</option>
+              <option value="worn">
+                {isEn
+                  ? `Worn / Replace (${wornGarmentCount})`
+                  : `Abgetragen / Ersetzen (${wornGarmentCount})`}
+              </option>
               <option value="sandbox">{isEn ? 'Test items only' : 'Nur Test-Stücke'}</option>
             </select>
 
@@ -635,6 +658,21 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
                             ? 'Never worn'
                             : 'Nie getragen'}
                         </span>
+                        {garment.purchaseYear && (
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/60 text-[10px] text-zinc-300 font-mono">
+                            {isEn ? `Since ${garment.purchaseYear}` : `Seit ${garment.purchaseYear}`}
+                          </span>
+                        )}
+                        {garment.condition === 'worn_casual' && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-[10px] font-semibold text-amber-300">
+                            {isEn ? 'Worn · Home/Casual' : 'Abgetragen · Nur Zuhause/Freizeit'}
+                          </span>
+                        )}
+                        {garment.condition === 'replace_soon' && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/45 text-[10px] font-semibold text-rose-300">
+                            {isEn ? 'Replace soon' : 'Ersetzen'}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-zinc-500 truncate">
                         {TEXTURE_LABELS[garment.texture].split(' (')[0]}
@@ -648,31 +686,77 @@ export const SmartClosetView: React.FC<SmartClosetViewProps> = ({
 
                 {/* Card Bottom Actions */}
                 <div className="mt-2 pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
-                  {supportsLaundry ? (
-                    <button
-                      type="button"
-                      onClick={() => onToggleClean(garment.id, !garment.isClean)}
-                      className={`inline-flex items-center gap-1.5 min-h-[42px] px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer touch-manipulation active:scale-95 ${
-                        garment.isClean ? 'text-emerald-400 hover:text-emerald-300' : 'text-amber-400 hover:text-amber-300'
-                      }`}
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>
-                        {garment.isClean
-                          ? isEn
-                            ? 'Clean in closet'
-                            : 'Frisch im Schrank'
-                          : isEn
-                          ? 'In laundry'
-                          : 'Im Wäschekorb'}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {supportsLaundry ? (
+                      <button
+                        type="button"
+                        onClick={() => onToggleClean(garment.id, !garment.isClean)}
+                        className={`inline-flex items-center gap-1.5 min-h-[38px] px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer touch-manipulation active:scale-95 ${
+                          garment.isClean
+                            ? 'text-emerald-400 hover:text-emerald-300'
+                            : 'text-amber-400 hover:text-amber-300'
+                        }`}
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>
+                          {garment.isClean
+                            ? isEn
+                              ? 'Clean'
+                              : 'Frisch'
+                            : isEn
+                            ? 'In laundry'
+                            : 'Wäschekorb'}
+                        </span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 min-h-[38px] px-2 py-1.5 text-xs text-zinc-400">
+                        <Check className="w-3.5 h-3.5 text-emerald-400/80" />
+                        <span>{isEn ? 'Ready' : 'Bereit'}</span>
                       </span>
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 min-h-[42px] px-2.5 py-1.5 text-xs text-zinc-400">
-                      <Check className="w-3.5 h-3.5 text-emerald-400/80" />
-                      <span>{isEn ? 'Always ready' : 'Immer tragebereit'}</span>
-                    </span>
-                  )}
+                    )}
+
+                    {onChangeCondition && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cur = garment.condition || 'good';
+                          const next: GarmentCondition =
+                            cur === 'good'
+                              ? 'worn_casual'
+                              : cur === 'worn_casual'
+                              ? 'replace_soon'
+                              : 'good';
+                          void onChangeCondition(garment.id, next);
+                        }}
+                        title={
+                          isEn
+                            ? 'Toggle condition: Good -> Worn (Home/Casual) -> Replace soon'
+                            : 'Zustand umschalten: Top -> Abgetragen (Zuhause/Freizeit) -> Ersetzen'
+                        }
+                        className={`inline-flex items-center gap-1 min-h-[34px] px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer touch-manipulation active:scale-95 ${
+                          garment.condition === 'replace_soon'
+                            ? 'bg-rose-500/15 border-rose-500/45 text-rose-200 hover:bg-rose-500/25'
+                            : garment.condition === 'worn_casual'
+                            ? 'bg-amber-500/15 border-amber-500/45 text-amber-200 hover:bg-amber-500/25'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span>
+                          {garment.condition === 'replace_soon'
+                            ? isEn
+                              ? 'Condition: Replace'
+                              : 'Zustand: Ersetzen'
+                            : garment.condition === 'worn_casual'
+                            ? isEn
+                              ? 'Condition: Worn'
+                              : 'Zustand: Abgetragen'
+                            : isEn
+                            ? 'Condition: Good'
+                            : 'Zustand: Top'}
+                        </span>
+                      </button>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-2">
                     {isExampleGarment(garment) && (

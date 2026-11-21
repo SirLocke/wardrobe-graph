@@ -136,6 +136,8 @@ export type GarmentPattern =
   | 'herringbone'
   | 'dotted';
 
+export type GarmentCondition = 'good' | 'worn_casual' | 'replace_soon';
+
 export interface Garment {
   id: string;
   name: string;
@@ -164,6 +166,8 @@ export interface Garment {
   wornOpen?: boolean;               // Dynamically set by outfitGenerator for wearing recommendation (Offen vs. Geschlossen)
   targetScope?: WardrobeScopeTarget;
   isClean: boolean;
+  condition?: GarmentCondition;     // 'good' (Ausgehtauglich), 'worn_casual' (Abgetragen / Nur Zuhause & Freizeit), 'replace_soon' (Ersetzen)
+  purchaseYear?: number;            // Optional purchase year (e.g. 2022) to track garment age
   brand?: string;                   // Optional brand tag (e.g. "Nike", "Adidas", "Levi's", "Zara")
   size?: string;                    // Optional garment size (e.g. "M", "L", "38", "W32/L32", "42")
   buyUrl?: string;                  // Optional product/brand shop URL
@@ -322,6 +326,32 @@ export interface ArchetypeRecommendation {
   rationale: string;
 }
 
+export interface ReplacementCandidate {
+  garment: Garment;
+  replacementGarment: Garment;
+  urgency: 'high' | 'medium';
+  reasonDe: string;
+  reasonEn: string;
+  restoredOutfitsCount: number;
+  ageYears?: number;
+}
+
+export interface PrioritizedShoppingItem {
+  id: string;
+  rank: number;
+  type: 'replacement' | 'new_addition';
+  priorityLevel: 'high' | 'medium' | 'normal';
+  priorityScore: number;
+  titleDe: string;
+  titleEn: string;
+  reasonDe: string;
+  reasonEn: string;
+  targetGarment: Garment;
+  replacesGarment?: Garment;
+  recommendation?: ArchetypeRecommendation;
+  outfitsImpact: number;
+}
+
 export interface GapAnalysisReport {
   totalValidOutfitsAcrossContexts: number;
   wardrobeHealthScore: number;
@@ -331,6 +361,8 @@ export interface GapAnalysisReport {
   outfitCountsByGarmentId: Record<string, number>;
   recommendations: ArchetypeRecommendation[];
   recommendationsByCategory?: Partial<Record<GarmentCategory, ArchetypeRecommendation[]>>;
+  replacementCandidates?: ReplacementCandidate[];
+  prioritizedShoppingList?: PrioritizedShoppingItem[];
 }
 
 export interface WornOutfitRecord {

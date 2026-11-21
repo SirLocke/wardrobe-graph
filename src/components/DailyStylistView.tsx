@@ -42,6 +42,7 @@ import {
   TEXTURE_LABELS,
 } from '../data/seedData';
 import { getShortOutfitTitle } from '../engine/brandSizeMatcher';
+import { getBiometricGenerationKey } from '../engine/gapCacheKey';
 import {
   ActiveWornOutfitEntry,
   generateOutfitsForContext,
@@ -468,33 +469,7 @@ export const DailyStylistView: React.FC<DailyStylistViewProps> = ({
     });
   };
 
-  const biometricGenerationKey = useMemo(
-    () =>
-      JSON.stringify({
-        u: profile.undertone,
-        c: profile.contrastLevel,
-        ch: profile.chromaLevel,
-        h: profile.hairHex,
-        e: profile.eyeHex,
-        hc: profile.haircutStyle,
-        fh: profile.facialHair,
-        ws: profile.wardrobeScope,
-        wss: profile.wardrobeScopes,
-        co: profile.customOccasions,
-      }),
-    [
-      profile.undertone,
-      profile.contrastLevel,
-      profile.chromaLevel,
-      profile.hairHex,
-      profile.eyeHex,
-      profile.haircutStyle,
-      profile.facialHair,
-      profile.wardrobeScope,
-      profile.wardrobeScopes,
-      profile.customOccasions,
-    ]
-  );
+  const biometricGenerationKey = getBiometricGenerationKey(profile);
 
   const generatedOutfits = useMemo(() => {
     return generateOutfitsForContext(garments, profile, context, 5);

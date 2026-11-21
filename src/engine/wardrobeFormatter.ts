@@ -331,6 +331,19 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       item.targetScope === 'unisex'
         ? item.targetScope
         : undefined;
+    const condition =
+      item.condition === 'good' ||
+      item.condition === 'worn_casual' ||
+      item.condition === 'replace_soon'
+        ? item.condition
+        : item.isWornOut === true || item.worn === true
+        ? 'worn_casual'
+        : undefined;
+    const rawPurchaseYear = Number(item.purchaseYear);
+    const purchaseYear =
+      Number.isFinite(rawPurchaseYear) && rawPurchaseYear >= 1980 && rawPurchaseYear <= 2100
+        ? Math.round(rawPurchaseYear)
+        : undefined;
 
     const hsl = hexToHsl(colorHex);
     const colorTemp = classifyColorTemp(hsl);
@@ -366,6 +379,8 @@ export function parseAndNormalizeWardrobeImport(rawInput: string): ParsedWardrob
       hasLogo,
       wornOpen,
       isClean,
+      condition,
+      purchaseYear,
       isWishlistSandbox,
       wearCount,
       lastWornDate,
